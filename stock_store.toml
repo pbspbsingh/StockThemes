@@ -1,0 +1,311 @@
+[industry_info.AAOI]
+ticker = "AAOI"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.AAOI.sector]
+name = "Electronic Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/electronic-technology/"
+
+[industry_info.AAOI.industry]
+name = "Semiconductors"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/semiconductors/"
+
+[industry_info.LYEL]
+ticker = "LYEL"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.LYEL.sector]
+name = "Health Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/health-technology/"
+
+[industry_info.LYEL.industry]
+name = "Biotechnology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/biotechnology/"
+
+[industry_info.PEPG]
+ticker = "PEPG"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.PEPG.sector]
+name = "Health Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/health-technology/"
+
+[industry_info.PEPG.industry]
+name = "Biotechnology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/biotechnology/"
+
+[industry_info.TCNNF]
+ticker = "TCNNF"
+exchange = "OTC"
+last_update = "2026-01-10"
+
+[industry_info.TCNNF.sector]
+name = "Process Industries"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/process-industries/"
+
+[industry_info.TCNNF.industry]
+name = "Agricultural Commodities/Milling"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/agricultural-commodities-milling/"
+
+[industry_info.OLMA]
+ticker = "OLMA"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.OLMA.sector]
+name = "Health Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/health-technology/"
+
+[industry_info.OLMA.industry]
+name = "Pharmaceuticals: Major"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/pharmaceuticals-major/"
+
+[industry_info.DRTS]
+ticker = "DRTS"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.DRTS.sector]
+name = "Health Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/health-technology/"
+
+[industry_info.DRTS.industry]
+name = "Medical Specialties"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/medical-specialties/"
+
+[industry_info.ELVA]
+ticker = "ELVA"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.ELVA.sector]
+name = "Producer Manufacturing"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/producer-manufacturing/"
+
+[industry_info.ELVA.industry]
+name = "Electrical Products"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/electrical-products/"
+
+[industry_info.UAMY]
+ticker = "UAMY"
+exchange = "NYSE ARCA"
+last_update = "2026-01-10"
+
+[industry_info.UAMY.sector]
+name = "Non-Energy Minerals"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/non-energy-minerals/"
+
+[industry_info.UAMY.industry]
+name = "Other Metals/Minerals"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/other-metals-minerals/"
+
+[industry_info.FBYD]
+ticker = "FBYD"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.FBYD.sector]
+name = "Industrial Services"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/industrial-services/"
+
+[industry_info.FBYD.industry]
+name = "Engineering & Construction"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/engineering-construction/"
+
+[industry_info.GPCR]
+ticker = "GPCR"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.GPCR.sector]
+name = "Health Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/health-technology/"
+
+[industry_info.GPCR.industry]
+name = "Pharmaceuticals: Major"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/pharmaceuticals-major/"
+
+[industry_info.APLD]
+ticker = "APLD"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.APLD.sector]
+name = "Technology Services"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/technology-services/"
+
+[industry_info.APLD.industry]
+name = "Data Processing Services"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/data-processing-services/"
+
+[industry_info.ELME]
+ticker = "ELME"
+exchange = "NYSE"
+last_update = "2026-01-10"
+
+[industry_info.ELME.sector]
+name = "Finance"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/finance/"
+
+[industry_info.ELME.industry]
+name = "Real Estate Investment Trusts"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/real-estate-investment-trusts/"
+
+[industry_info.LUNR]
+ticker = "LUNR"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.LUNR.sector]
+name = "Electronic Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/electronic-technology/"
+
+[industry_info.LUNR.industry]
+name = "Aerospace & Defense"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/aerospace-defense/"
+
+[industry_info.TE]
+ticker = "TE"
+exchange = "NYSE"
+last_update = "2026-01-10"
+
+[industry_info.TE.sector]
+name = "Producer Manufacturing"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/producer-manufacturing/"
+
+[industry_info.TE.industry]
+name = "Electrical Products"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/electrical-products/"
+
+[industry_info.AFJK]
+ticker = "AFJK"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.AFJK.sector]
+name = "Finance"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/finance/"
+
+[industry_info.AFJK.industry]
+name = "Financial Conglomerates"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/financial-conglomerates/"
+
+[industry_info.LAR]
+ticker = "LAR"
+exchange = "NYSE"
+last_update = "2026-01-10"
+
+[industry_info.LAR.sector]
+name = "Non-Energy Minerals"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/non-energy-minerals/"
+
+[industry_info.LAR.industry]
+name = "Other Metals/Minerals"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/other-metals-minerals/"
+
+[industry_info.TENX]
+ticker = "TENX"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.TENX.sector]
+name = "Health Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/health-technology/"
+
+[industry_info.TENX.industry]
+name = "Pharmaceuticals: Major"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/pharmaceuticals-major/"
+
+[industry_info.PLRZ]
+ticker = "PLRZ"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.PLRZ.sector]
+name = "Health Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/health-technology/"
+
+[industry_info.PLRZ.industry]
+name = "Biotechnology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/biotechnology/"
+
+[industry_info.SKYT]
+ticker = "SKYT"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.SKYT.sector]
+name = "Producer Manufacturing"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/producer-manufacturing/"
+
+[industry_info.SKYT.industry]
+name = "Industrial Machinery"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/industrial-machinery/"
+
+[industry_info.NVA]
+ticker = "NVA"
+exchange = "ASX"
+last_update = "2026-01-10"
+
+[industry_info.NVA.sector]
+name = "Non-Energy Minerals"
+url = "https://www.tradingview.com/markets/stocks-australia/sectorandindustry-sector/non-energy-minerals/"
+
+[industry_info.NVA.industry]
+name = "Precious Metals"
+url = "https://www.tradingview.com/markets/stocks-australia/sectorandindustry-industry/precious-metals/"
+
+[industry_info.VTYX]
+ticker = "VTYX"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.VTYX.sector]
+name = "Health Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/health-technology/"
+
+[industry_info.VTYX.industry]
+name = "Pharmaceuticals: Major"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/pharmaceuticals-major/"
+
+[industry_info.ATHA]
+ticker = "ATHA"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.ATHA.sector]
+name = "Health Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/health-technology/"
+
+[industry_info.ATHA.industry]
+name = "Biotechnology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/biotechnology/"
+
+[industry_info.GLSI]
+ticker = "GLSI"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.GLSI.sector]
+name = "Health Technology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/health-technology/"
+
+[industry_info.GLSI.industry]
+name = "Biotechnology"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/biotechnology/"
+
+[industry_info.HYMC]
+ticker = "HYMC"
+exchange = "NASDAQ"
+last_update = "2026-01-10"
+
+[industry_info.HYMC.sector]
+name = "Non-Energy Minerals"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/non-energy-minerals/"
+
+[industry_info.HYMC.industry]
+name = "Precious Metals"
+url = "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/precious-metals/"

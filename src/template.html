@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Sector Explorer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: #1a1a1a;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 0.8fr 0.8fr 150px 3fr;
+            height: 100vh;
+            gap: 1px;
+            background: #0a0a0a;
+        }
+
+        .column {
+            background: #1e1e1e;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .column-header {
+            position: sticky;
+            top: 0;
+            background: #2d2d2d;
+            color: #e0e0e0;
+            padding: 15px;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .item {
+            padding: 12px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #2a2a2a;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #d0d0d0;
+        }
+
+        .item:hover {
+            background: #252525;
+        }
+
+        .item.selected {
+            background: #1a3a52;
+            border-left: 3px solid #4a9eff;
+        }
+
+        .item-name {
+            flex: 1;
+            font-size: 13px;
+        }
+
+        .item-size {
+            background: #3a3a3a;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            color: #a0a0a0;
+            margin-left: 8px;
+        }
+
+        .ticker-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .exchange-badge {
+            background: #34495e;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .preview-column {
+            background: #1a1a1a;
+            position: relative;
+        }
+
+        .preview-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .sector-summary {
+            padding: 30px;
+            color: #d0d0d0;
+        }
+
+        .sector-summary h2 {
+            color: #4a9eff;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .sector-summary .stat {
+            margin: 15px 0;
+            font-size: 15px;
+        }
+
+        .sector-summary .stat-label {
+            color: #888;
+            display: inline-block;
+            width: 150px;
+        }
+
+        .sector-summary .stat-value {
+            color: #e0e0e0;
+            font-weight: 600;
+        }
+
+        .sector-summary .link-button {
+            display: inline-block;
+            margin-top: 25px;
+            padding: 12px 24px;
+            background: #4a9eff;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .sector-summary .link-button:hover {
+            background: #3a8eef;
+        }
+
+        .sector-summary .industries-list {
+            margin-top: 25px;
+        }
+
+        .sector-summary .industries-list h3 {
+            color: #4a9eff;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .sector-summary .industry-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sector-summary .industry-name {
+            color: #d0d0d0;
+        }
+
+        .sector-summary .industry-name a {
+            color: #4a9eff;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .sector-summary .industry-name a:hover {
+            color: #6ab0ff;
+            text-decoration: underline;
+        }
+
+        .sector-summary .industry-size {
+            color: #888;
+        }
+
+        .sector-summary .tickers-list {
+            margin-top: 25px;
+        }
+
+        .sector-summary .tickers-list h3 {
+            color: #4a9eff;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .sector-summary .ticker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .sector-summary .ticker-link {
+            padding: 8px 12px;
+            background: #2a2a2a;
+            color: #4a9eff;
+            text-decoration: none;
+            border-radius: 4px;
+            text-align: center;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .sector-summary .ticker-link:hover {
+            background: #3a3a3a;
+            color: #6ab0ff;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .no-items {
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="column">
+            <div class="column-header">Sectors</div>
+            <div id="sectors"></div>
+        </div>
+
+        <div class="column">
+            <div class="column-header">Industry Groups</div>
+            <div id="industries"></div>
+        </div>
+
+        <div class="column">
+            <div class="column-header">Tickers</div>
+            <div id="tickers"></div>
+        </div>
+
+        <div class="column preview-column">
+            <div class="column-header">Preview</div>
+            <div id="preview" style="height: 100%;">
+                <div class="preview-empty">Click on a sector or ticker to view details</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        const data  = "__REPLACE_ME__";
+
+        let selectedSectors = new Set();
+        let selectedIndustries = new Set();
+        let selectedTickerIndex = -1;
+        let currentTickers = [];
+
+        // Sort sectors by size (descending)
+        const sortedSectors = [...data.sectors].sort((a, b) => b.size - a.size);
+
+        function renderSectors() {
+            const sectorsDiv = document.getElementById('sectors');
+            sectorsDiv.innerHTML = '';
+
+            sortedSectors.forEach(sector => {
+                const item = document.createElement('div');
+                item.className = 'item' + (selectedSectors.has(sector.name) ? ' selected' : '');
+                item.innerHTML = `
+                    <span class="item-name">${sector.name}</span>
+                    <span class="item-size">${sector.size}</span>
+                `;
+
+                item.addEventListener('click', (e) => {
+                    // Always toggle selection
+                    if (selectedSectors.has(sector.name)) {
+                        selectedSectors.delete(sector.name);
+                    } else {
+                        selectedSectors.add(sector.name);
+                    }
+
+                    selectedIndustries.clear();
+                    selectedTickerIndex = -1; // Reset ticker selection
+                    renderSectors();
+                    renderIndustries();
+                    renderTickers();
+                    updatePreview();
+                });
+
+                sectorsDiv.appendChild(item);
+            });
+        }
+
+        function renderIndustries() {
+            const industriesDiv = document.getElementById('industries');
+            industriesDiv.innerHTML = '';
+
+            let industries = [];
+
+            if (selectedSectors.size === 0) {
+                // Show all industries
+                sortedSectors.forEach(sector => {
+                    sector.industries.forEach(industry => {
+                        industries.push({ ...industry, sectorName: sector.name });
+                    });
+                });
+            } else {
+                // Show only industries from selected sectors
+                sortedSectors.forEach(sector => {
+                    if (selectedSectors.has(sector.name)) {
+                        sector.industries.forEach(industry => {
+                            industries.push({ ...industry, sectorName: sector.name });
+                        });
+                    }
+                });
+            }
+
+            // Sort by size descending
+            industries.sort((a, b) => b.size - a.size);
+
+            if (industries.length === 0) {
+                industriesDiv.innerHTML = '<div class="no-items">No industries found</div>';
+                return;
+            }
+
+            industries.forEach(industry => {
+                const item = document.createElement('div');
+                item.className = 'item' + (selectedIndustries.has(industry.name) ? ' selected' : '');
+                item.innerHTML = `
+                    <span class="item-name">${industry.name}</span>
+                    <span class="item-size">${industry.size}</span>
+                `;
+
+                item.addEventListener('click', (e) => {
+                    // Always toggle selection
+                    if (selectedIndustries.has(industry.name)) {
+                        selectedIndustries.delete(industry.name);
+                    } else {
+                        selectedIndustries.add(industry.name);
+                    }
+
+                    selectedTickerIndex = -1; // Reset ticker selection
+                    renderIndustries();
+                    renderTickers();
+                    updatePreview();
+                });
+
+                industriesDiv.appendChild(item);
+            });
+        }
+
+        function renderTickers() {
+            const tickersDiv = document.getElementById('tickers');
+            tickersDiv.innerHTML = '';
+
+            let tickers = [];
+
+            sortedSectors.forEach(sector => {
+                const isSectorSelected = selectedSectors.size === 0 || selectedSectors.has(sector.name);
+
+                sector.industries.forEach(industry => {
+                    const isIndustrySelected = selectedIndustries.size === 0 || selectedIndustries.has(industry.name);
+
+                    if (isSectorSelected && isIndustrySelected) {
+                        industry.tickers.forEach(ticker => {
+                            tickers.push(ticker);
+                        });
+                    }
+                });
+            });
+
+            // Sort alphabetically by ticker symbol
+            tickers.sort((a, b) => a.ticker.localeCompare(b.ticker));
+            currentTickers = tickers;
+
+            if (tickers.length === 0) {
+                tickersDiv.innerHTML = '<div class="no-items">No tickers found</div>';
+                selectedTickerIndex = -1;
+                return;
+            }
+
+            tickers.forEach((ticker, index) => {
+                const item = document.createElement('div');
+                item.className = 'item' + (index === selectedTickerIndex ? ' selected' : '');
+                item.innerHTML = `
+                    <span class="item-name">${ticker.ticker}</span>
+                `;
+
+                item.addEventListener('click', () => {
+                    selectedTickerIndex = index;
+                    renderTickers();
+                    showTradingViewWidget(ticker.ticker);
+                });
+
+                tickersDiv.appendChild(item);
+            });
+        }
+
+        function showPreview(url) {
+            const previewDiv = document.getElementById('preview');
+            previewDiv.innerHTML = `<iframe src="${url}"></iframe>`;
+        }
+
+        function showSectorSummary(sector) {
+            const previewDiv = document.getElementById('preview');
+
+            const industriesHTML = sector.industries
+                .sort((a, b) => b.size - a.size)
+                .map(industry => `
+                    <div class="industry-item">
+                        <span class="industry-name">
+                            <a href="${industry.url}" target="_blank">${industry.name}</a>
+                        </span>
+                        <span class="industry-size">${industry.size} stocks</span>
+                    </div>
+                `).join('');
+
+            previewDiv.innerHTML = `
+                <div class="sector-summary">
+                    <h2>${sector.name}</h2>
+                    
+                    <div class="stat">
+                        <span class="stat-label">Total Companies:</span>
+                        <span class="stat-value">${sector.size}</span>
+                    </div>
+                    
+                    <div class="stat">
+                        <span class="stat-label">Industry Groups:</span>
+                        <span class="stat-value">${sector.industries.length}</span>
+                    </div>
+                    
+                    <a href="${sector.url}" target="_blank" class="link-button">
+                        View on TradingView ↗
+                    </a>
+                    
+                    <div class="industries-list">
+                        <h3>Industries in this Sector</h3>
+                        ${industriesHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        function showMultipleSectorsSummary(sectors) {
+            const previewDiv = document.getElementById('preview');
+            updatePreviewHeader();
+
+            // Collect all industries from selected sectors
+            let allIndustries = [];
+            sectors.forEach(sector => {
+                sector.industries.forEach(industry => {
+                    allIndustries.push({
+                        ...industry,
+                        sectorName: sector.name
+                    });
+                });
+            });
+
+            // Sort by size descending
+            allIndustries.sort((a, b) => b.size - a.size);
+
+            const industriesHTML = allIndustries.map(industry => `
+                <div class="industry-item">
+                    <span class="industry-name">
+                        <a href="${industry.url}" target="_blank">${industry.name}</a>
+                    </span>
+                    <span class="industry-size">${industry.size} stocks</span>
+                </div>
+            `).join('');
+
+            previewDiv.innerHTML = `
+                <div class="sector-summary">
+                    <div class="industries-list">
+                        <h3>Industry Groups (${allIndustries.length})</h3>
+                        ${industriesHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        function showIndustrySummary(industry, sectorName) {
+            const previewDiv = document.getElementById('preview');
+            updatePreviewHeader();
+
+            const sortedTickers = [...industry.tickers].sort((a, b) =>
+                a.ticker.localeCompare(b.ticker)
+            );
+
+            const tickersHTML = sortedTickers.map(ticker =>
+                `<a href="#" class="ticker-link" data-ticker="${ticker.ticker}">${ticker.ticker}</a>`
+            ).join('');
+
+            previewDiv.innerHTML = `
+                <div class="sector-summary">
+                    <h2>${industry.name}</h2>
+                    
+                    <div class="stat">
+                        <span class="stat-label">Sector:</span>
+                        <span class="stat-value">${sectorName}</span>
+                    </div>
+                    
+                    <div class="stat">
+                        <span class="stat-label">Total Stocks:</span>
+                        <span class="stat-value">${industry.size}</span>
+                    </div>
+                    
+                    <a href="${industry.url}" target="_blank" class="link-button">
+                        View on TradingView ↗
+                    </a>
+                    
+                    <div class="tickers-list">
+                        <h3>Stocks in this Industry</h3>
+                        <div class="ticker-grid">
+                            ${tickersHTML}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Add click handlers to ticker links
+            previewDiv.querySelectorAll('.ticker-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const ticker = e.target.getAttribute('data-ticker');
+                    showTradingViewWidget(ticker);
+                });
+            });
+        }
+
+        function showMultipleIndustriesSummary(industries) {
+            const previewDiv = document.getElementById('preview');
+            updatePreviewHeader();
+
+            // Collect all tickers from selected industries
+            let allTickers = [];
+            industries.forEach(industry => {
+                industry.tickers.forEach(ticker => {
+                    allTickers.push(ticker);
+                });
+            });
+
+            // Sort alphabetically by ticker symbol
+            allTickers.sort((a, b) => a.ticker.localeCompare(b.ticker));
+
+            const tickersHTML = allTickers.map(ticker =>
+                `<a href="#" class="ticker-link" data-ticker="${ticker.ticker}">${ticker.ticker}</a>`
+            ).join('');
+
+            previewDiv.innerHTML = `
+                <div class="sector-summary">
+                    <div class="tickers-list">
+                        <h3>Stocks (${allTickers.length})</h3>
+                        <div class="ticker-grid">
+                            ${tickersHTML}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Add click handlers to ticker links
+            previewDiv.querySelectorAll('.ticker-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const ticker = e.target.getAttribute('data-ticker');
+                    showTradingViewWidget(ticker);
+                });
+            });
+        }
+
+        function updatePreview() {
+            // If exactly one sector is selected and no industries selected
+            if (selectedSectors.size === 1 && selectedIndustries.size === 0) {
+                const sectorName = Array.from(selectedSectors)[0];
+                const sector = sortedSectors.find(s => s.name === sectorName);
+                if (sector) {
+                    showSectorSummary(sector);
+                    return;
+                }
+            }
+
+            // If multiple sectors are selected and no industries selected
+            if (selectedSectors.size > 1 && selectedIndustries.size === 0) {
+                const sectors = sortedSectors.filter(s => selectedSectors.has(s.name));
+                showMultipleSectorsSummary(sectors);
+                return;
+            }
+
+            // If exactly one industry is selected
+            if (selectedIndustries.size === 1) {
+                const industryName = Array.from(selectedIndustries)[0];
+                for (const sector of sortedSectors) {
+                    const industry = sector.industries.find(i => i.name === industryName);
+                    if (industry) {
+                        showIndustrySummary(industry, sector.name);
+                        return;
+                    }
+                }
+            }
+
+            // If multiple industries are selected
+            if (selectedIndustries.size > 1) {
+                let industries = [];
+                for (const sector of sortedSectors) {
+                    sector.industries.forEach(industry => {
+                        if (selectedIndustries.has(industry.name)) {
+                            industries.push({ ...industry, sectorName: sector.name });
+                        }
+                    });
+                }
+                showMultipleIndustriesSummary(industries);
+                return;
+            }
+        }
+
+        function showTradingViewWidget(ticker) {
+            const previewDiv = document.getElementById('preview');
+            const widgetId = 'tradingview_' + Date.now();
+            previewDiv.innerHTML = `
+                <div class="tradingview-widget-container" style="height:100%;width:100%">
+                  <div id="${widgetId}" style="height:100%;width:100%"></div>
+                </div>
+            `;
+
+            // Update header with ticker info
+            const tickerInfo = findTickerInfo(ticker);
+            updatePreviewHeader(tickerInfo);
+
+            // Load TradingView script if not already loaded
+            if (!window.TradingView) {
+                const script = document.createElement('script');
+                script.src = 'https://s3.tradingview.com/tv.js';
+                script.onload = () => createWidget(ticker, widgetId);
+                document.head.appendChild(script);
+            } else {
+                createWidget(ticker, widgetId);
+            }
+        }
+
+        function createWidget(ticker, containerId) {
+            new TradingView.widget({
+                "width": "100%",
+                "height": "100%",
+                "symbol": ticker,
+                "interval": "D",
+                "timezone": "Etc/UTC",
+                "theme": "dark",
+                "style": "1",
+                "locale": "en",
+                "toolbar_bg": "#1e1e1e",
+                "enable_publishing": false,
+                "allow_symbol_change": true,
+                "container_id": containerId,
+                "studies": [
+                    "STD;MA%Ribbon"
+                ],
+                "loading_screen": { "backgroundColor": "#1e1e1e" }
+            });
+        }
+
+        function findTickerInfo(tickerSymbol) {
+            for (const sector of sortedSectors) {
+                for (const industry of sector.industries) {
+                    const ticker = industry.tickers.find(t => t.ticker === tickerSymbol);
+                    if (ticker) {
+                        return {
+                            sector: sector.name,
+                            industry: industry.name,
+                            ticker: tickerSymbol
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function updatePreviewHeader(tickerInfo = null) {
+            const headerDiv = document.querySelector('.preview-column .column-header');
+            if (tickerInfo) {
+                headerDiv.textContent = `Preview: ${tickerInfo.sector} / ${tickerInfo.industry} / ${tickerInfo.ticker}`;
+            } else {
+                headerDiv.textContent = 'Preview';
+            }
+        }
+
+        // Initial render
+        renderSectors();
+        renderIndustries();
+        renderTickers();
+
+        // Keyboard navigation for tickers
+        document.addEventListener('keydown', (e) => {
+            if (currentTickers.length === 0) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (selectedTickerIndex < currentTickers.length - 1) {
+                    selectedTickerIndex++;
+                    renderTickers();
+                    showTradingViewWidget(currentTickers[selectedTickerIndex].ticker);
+                    scrollTickerIntoView();
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (selectedTickerIndex > 0) {
+                    selectedTickerIndex--;
+                    renderTickers();
+                    showTradingViewWidget(currentTickers[selectedTickerIndex].ticker);
+                    scrollTickerIntoView();
+                }
+            }
+        });
+
+        function scrollTickerIntoView() {
+            const tickersDiv = document.getElementById('tickers');
+            const items = tickersDiv.querySelectorAll('.item');
+            if (items[selectedTickerIndex]) {
+                items[selectedTickerIndex].scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest'
+                });
+            }
+        }
+    </script>
+</body>
+
+</html>
