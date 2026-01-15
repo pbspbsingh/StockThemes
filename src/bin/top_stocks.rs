@@ -9,6 +9,7 @@ use std::{
 use anyhow::Context;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
+use itertools::Itertools;
 use log::info;
 use stock_themes::{browser, config::APP_CONFIG, tv::top_stocks_fetcher::TopStocksFetcher};
 
@@ -20,6 +21,10 @@ struct TopStocksArgs {
     #[arg(required = true)]
     pub tv_screen_url: String,
 
+    /// Time frames from which top stocks to pick from
+    #[arg(short = 't', long, default_value = "1W,1M,3M,6M")]
+    pub time_frames: String,
+
     /// Numbers of top stocks to pick
     #[arg(short = 'c', long, default_value_t = 30)]
     pub top_count: usize,
@@ -28,8 +33,6 @@ struct TopStocksArgs {
     #[arg(short = 'o', long, default_value = "top_performers.csv")]
     pub output_file: PathBuf,
 }
-
-const SORT_BY_KEYS: &[&str] = &["1W", "1M", "3M", "6M"];
 
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::new()
@@ -41,9 +44,10 @@ fn main() -> anyhow::Result<()> {
 
     let browser = browser::init_browser()?;
 
+    let tf = args.time_frames.split(',').map(str::trim).collect_vec();
     let mut stocks = HashSet::new();
 
-    let pb = ProgressBar::new((SORT_BY_KEYS.len() * args.top_count) as u64);
+    let pb = ProgressBar::new((tf.len() * args.top_count) as u64);
     pb.set_style(
         ProgressStyle::default_bar().template(
             "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len} {msg}",
@@ -51,7 +55,7 @@ fn main() -> anyhow::Result<()> {
     );
 
     let fetcher = TopStocksFetcher::load(&browser, &args.tv_screen_url, args.top_count, &pb)?;
-    for &sort_by in SORT_BY_KEYS {
+    for sort_by in tf {
         stocks.extend(fetcher.fetch_stocks(sort_by)?);
     }
     pb.finish_with_message("Done fetching top stocks");
