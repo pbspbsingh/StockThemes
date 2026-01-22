@@ -22,7 +22,7 @@
 
         .container {
             display: grid;
-            grid-template-columns: 0.8fr 0.8fr 150px 3fr;
+            grid-template-columns: 265px 265px 150px 3fr;
             height: 100vh;
             gap: 1px;
             background: #0a0a0a;
@@ -234,6 +234,41 @@
             color: #666;
             font-size: 13px;
         }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chart-toggle {
+            display: flex;
+            gap: 2px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            padding: 2px;
+        }
+
+        .chart-toggle button {
+            padding: 4px 10px;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+
+        .chart-toggle button:hover {
+            color: #d0d0d0;
+        }
+
+        .chart-toggle button.active {
+            background: #4a9eff;
+            color: white;
+        }
     </style>
 </head>
 
@@ -252,14 +287,19 @@
             <div id="tickers"></div>
         </div>
         <div class="column preview-column">
-            <div class="column-header">Preview</div>
+            <div class="column-header preview-header">
+                <span id="preview-title">Preview</span>
+                <div class="chart-toggle" id="chart-toggle" style="display:none;">
+                    <button data-mode="single">D</button>
+                    <button data-mode="split" class="active">D/W</button>
+                </div>
+            </div>
             <div id="preview" style="height: 100%;"></div>
         </div>
     </div>
 
     <!-- ============================================================
-         EMBEDDED DATA - Replace the content of this script tag
-         Your script should replace everything between the script tags
+         EMBEDDED DATA - Replace "__REPLACE_ME__" with the json data
     ============================================================ -->
     <script id="stock-data" type="application/json">
         "__REPLACE_ME__"
@@ -300,6 +340,8 @@
             selectedTickerIndex: -1,
             currentTickers: [],
             sortedSectors: [...stockData.sectors].sort((a, b) => b.size - a.size),
+            chartMode: 'split',
+            currentTickerSymbol: null,
 
             clearIndustrySelection() {
                 this.selectedIndustries.clear();
@@ -638,10 +680,15 @@
                     item.innerHTML = Templates.tickerItem(ticker.ticker);
 
                     item.addEventListener('click', () => {
-                        if (index === AppState.selectedTickerIndex) return;
-                        AppState.selectTicker(index);
-                        this.renderTickers();
-                        TradingViewWidget.show(ticker.ticker);
+                        if (index === AppState.selectedTickerIndex) {
+                            AppState.selectedTickerIndex = -1;
+                            this.renderTickers();
+                            PreviewManager.updatePreview();
+                        } else {
+                            AppState.selectTicker(index);
+                            this.renderTickers();
+                            TradingViewWidget.show(ticker.ticker);
+                        }
                     });
 
                     container.appendChild(item);
@@ -665,10 +712,16 @@
             },
 
             updateHeader(tickerInfo = null) {
-                const header = document.querySelector('.preview-column .column-header');
-                header.textContent = tickerInfo
-                    ? `Preview: ${tickerInfo.sector} / ${tickerInfo.industry} / ${tickerInfo.ticker}`
-                    : 'Preview';
+                const titleElement = document.getElementById('preview-title');
+                const toggleElement = document.getElementById('chart-toggle');
+
+                if (tickerInfo) {
+                    titleElement.textContent = `${tickerInfo.sector} / ${tickerInfo.industry} / ${tickerInfo.ticker}`;
+                    toggleElement.style.display = 'flex';
+                } else {
+                    titleElement.textContent = 'Preview';
+                    toggleElement.style.display = 'none';
+                }
             },
 
             showOverallSummary() {
@@ -726,6 +779,7 @@
                 allIndustries.sort((a, b) => b.size - a.size);
 
                 const industriesHtml = allIndustries.map(i => Templates.industryItem(i)).join('');
+                const sortedSectors = [...sectors].sort((a, b) => b.size - a.size);
 
                 container.innerHTML = `
                     <div class="sector-summary">
@@ -733,8 +787,15 @@
                             <h3>Industry Groups (${allIndustries.length})</h3>
                             ${industriesHtml}
                         </div>
+                        <div class="pie-charts-row" style="display:flex;gap:20px;flex-wrap:wrap;margin-top:30px;">
+                            ${Templates.pieChartSection('Sector Distribution', 'multiSectorPieChart')}
+                            ${Templates.pieChartSection('Industry Distribution', 'multiIndustryPieChart')}
+                        </div>
                     </div>
                 `;
+
+                PieChart.draw('multiSectorPieChart', sortedSectors);
+                PieChart.draw('multiIndustryPieChart', allIndustries);
             },
 
             showIndustrySummary(industry, sectorName) {
@@ -771,6 +832,7 @@
                 allTickers.sort((a, b) => a.ticker.localeCompare(b.ticker));
 
                 const tickersHtml = allTickers.map(t => Templates.tickerLink(t.ticker)).join('');
+                const sortedIndustries = [...industries].sort((a, b) => b.size - a.size);
 
                 container.innerHTML = `
                     <div class="sector-summary">
@@ -778,10 +840,12 @@
                             <h3>Stocks (${allTickers.length})</h3>
                             <div class="ticker-grid">${tickersHtml}</div>
                         </div>
+                        ${Templates.pieChartSection('Industry Group Distribution', 'multiIndustryGroupPieChart')}
                     </div>
                 `;
 
                 this.attachTickerLinkHandlers(container);
+                PieChart.draw('multiIndustryGroupPieChart', sortedIndustries);
             },
 
             attachTickerLinkHandlers(container) {
@@ -795,6 +859,9 @@
 
             updatePreview() {
                 const { selectedSectors, selectedIndustries, sortedSectors } = AppState;
+
+                AppState.currentTickerSymbol = null;
+                this.updateHeader(null);
 
                 if (selectedSectors.size === 0 && selectedIndustries.size === 0) {
                     this.showOverallSummary();
@@ -844,42 +911,91 @@
         // ============================================================
         const TradingViewWidget = {
             show(tickerSymbol) {
+                AppState.currentTickerSymbol = tickerSymbol;
                 const container = PreviewManager.getContainer();
-                const widgetId = 'tradingview_' + Date.now();
-
-                container.innerHTML = `
-                    <div class="tradingview-widget-container" style="height:100%;width:100%">
-                        <div id="${widgetId}" style="height:100%;width:100%"></div>
-                    </div>
-                `;
+                const timestamp = Date.now();
 
                 PreviewManager.updateHeader(DataHelpers.findTickerInfo(tickerSymbol));
+
+                if (AppState.chartMode === 'split') {
+                    this.renderSplitView(container, tickerSymbol, timestamp);
+                } else {
+                    this.renderSingleView(container, tickerSymbol, timestamp);
+                }
+            },
+
+            renderSplitView(container, tickerSymbol, timestamp) {
+                const dailyWidgetId = 'tradingview_daily_' + timestamp;
+                const weeklyWidgetId = 'tradingview_weekly_' + timestamp;
+
+                container.innerHTML = `
+                    <div class="tradingview-widget-container" style="height:100%;width:100%;display:flex;flex-direction:column;">
+                        <div id="${dailyWidgetId}" style="height:50%;width:100%;"></div>
+                        <div id="${weeklyWidgetId}" style="height:50%;width:100%;"></div>
+                    </div>
+                `;
 
                 if (!window.TradingView) {
                     const script = document.createElement('script');
                     script.src = 'https://s3.tradingview.com/tv.js';
-                    script.onload = () => this.createWidget(tickerSymbol, widgetId);
+                    script.onload = () => {
+                        this.createWidget(tickerSymbol, dailyWidgetId, 'D');
+                        this.createWidget(tickerSymbol, weeklyWidgetId, 'W');
+                    };
                     document.head.appendChild(script);
                 } else {
-                    this.createWidget(tickerSymbol, widgetId);
+                    this.createWidget(tickerSymbol, dailyWidgetId, 'D');
+                    this.createWidget(tickerSymbol, weeklyWidgetId, 'W');
                 }
             },
 
-            createWidget(tickerSymbol, containerId) {
+            renderSingleView(container, tickerSymbol, timestamp) {
+                const dailyWidgetId = 'tradingview_daily_' + timestamp;
+
+                container.innerHTML = `
+                    <div class="tradingview-widget-container" style="height:100%;width:100%;">
+                        <div id="${dailyWidgetId}" style="height:100%;width:100%;"></div>
+                    </div>
+                `;
+
+                if (!window.TradingView) {
+                    const script = document.createElement('script');
+                    script.src = 'https://s3.tradingview.com/tv.js';
+                    script.onload = () => {
+                        this.createWidget(tickerSymbol, dailyWidgetId, 'D');
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    this.createWidget(tickerSymbol, dailyWidgetId, 'D');
+                }
+            },
+
+            createWidget(tickerSymbol, containerId, interval) {
+                const studies = interval === 'W'
+                    ? ["MASimple@tv-basicstudies"]
+                    : ["STD;MA%Ribbon"];
+
+                const studiesOverrides = interval === 'W'
+                    ? {
+                        "moving average.length": 10,
+                        "moving average.ma.color": "#ff922b"
+                    }
+                    : {};
+
                 new TradingView.widget({
                     width: "100%",
                     height: "100%",
                     symbol: tickerSymbol,
-                    interval: "D",
-                    timezone: "Etc/UTC",
+                    interval: interval,
+                    timezone: "America/Los_Angeles",
                     theme: "dark",
                     style: "1",
                     locale: "en",
                     toolbar_bg: "#1e1e1e",
                     enable_publishing: false,
-                    allow_symbol_change: true,
                     container_id: containerId,
-                    studies: ["STD;MA%Ribbon"],
+                    studies: studies,
+                    studies_overrides: studiesOverrides,
                     loading_screen: { backgroundColor: "#1e1e1e" }
                 });
             }
@@ -940,6 +1056,28 @@
         function initializeApp() {
             Renderers.renderAll();
             KeyboardNavigation.init();
+            initChartToggle();
+        }
+
+        function initChartToggle() {
+            const toggleContainer = document.getElementById('chart-toggle');
+            const buttons = toggleContainer.querySelectorAll('button');
+
+            buttons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const mode = button.getAttribute('data-mode');
+                    if (mode === AppState.chartMode) return;
+
+                    AppState.chartMode = mode;
+
+                    buttons.forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+
+                    if (AppState.currentTickerSymbol) {
+                        TradingViewWidget.show(AppState.currentTickerSymbol);
+                    }
+                });
+            });
         }
 
         initializeApp();
