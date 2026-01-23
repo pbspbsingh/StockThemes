@@ -971,16 +971,14 @@
             },
 
             createWidget(tickerSymbol, containerId, interval) {
-                const studies = interval === 'W'
-                    ? ["MASimple@tv-basicstudies"]
-                    : ["STD;MA%Ribbon"];
-
-                const studiesOverrides = interval === 'W'
-                    ? {
-                        "moving average.length": 10,
-                        "moving average.ma.color": "#ff922b"
-                    }
-                    : {};
+                const studies = ["MASimple@tv-basicstudies"];
+                const studiesOverrides = {
+                    "moving average.length": 10,
+                    "moving average.ma.color": interval === "W" ? "#ff922b" : "#5693e7",
+                };
+                if (interval === 'D') {
+                    studies.push("STD;MA%Ribbon");
+                }
 
                 new TradingView.widget({
                     width: "100%",
