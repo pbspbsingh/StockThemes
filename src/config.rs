@@ -14,6 +14,7 @@ pub struct Config {
     pub log_config: String,
     pub chrome_path: String,
     pub chrome_args: Vec<String>,
+    pub kill_chrome_on_exit: bool,
     pub stock_store_file: PathBuf,
 }
 
