@@ -5,6 +5,7 @@ use log::{debug, info, warn};
 use serde::Deserialize;
 use std::io::{BufRead, BufReader};
 use std::net::{Ipv4Addr, TcpListener};
+use std::ops::Deref;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -18,7 +19,57 @@ const PID_FILE: &str = "chrome.pid";
 
 const REMOTE_DEBUG_ARG: &str = "--remote-debugging-port";
 
-pub fn init_browser() -> anyhow::Result<Browser> {
+pub struct KillableBrowser {
+    browser: Browser,
+    pid: Option<u32>,
+}
+
+impl Deref for KillableBrowser {
+    type Target = Browser;
+
+    fn deref(&self) -> &Self::Target {
+        &self.browser
+    }
+}
+
+impl Drop for KillableBrowser {
+    fn drop(&mut self) {
+        #[cfg(not(debug_assertions))]
+        {
+            use sysinfo::Pid;
+
+            let Some(pid) = self.pid.take() else {
+                info!("No need to kill the Browser process");
+                return;
+            };
+
+            let sys = System::new_with_specifics(RefreshKind::everything());
+            let Some(process) = sys.process(Pid::from_u32(pid)) else {
+                warn!("Didn't find any process with pid: {pid}");
+                return;
+            };
+            info!(
+                "Trying to kill process: {:?} (PID: {})",
+                process.name(),
+                process.pid(),
+            );
+            process.kill();
+        }
+    }
+}
+
+impl KillableBrowser {
+    fn new(browser: Browser, pid: u32) -> Self {
+        let pid = Some(pid);
+        Self { browser, pid }
+    }
+
+    fn old(browser: Browser) -> Self {
+        Self { browser, pid: None }
+    }
+}
+
+pub fn init_browser() -> anyhow::Result<KillableBrowser> {
     try_resume_previous_session()
         .or_else(|e| {
             warn!("Couldn't resume prev session '{e}', try connecting to live session");
@@ -30,7 +81,7 @@ pub fn init_browser() -> anyhow::Result<Browser> {
         })
 }
 
-fn try_resume_previous_session() -> anyhow::Result<Browser> {
+fn try_resume_previous_session() -> anyhow::Result<KillableBrowser> {
     if !fs::exists(PID_FILE)? {
         anyhow::bail!("{PID_FILE} file doesn't exist");
     }
@@ -43,7 +94,7 @@ fn try_resume_previous_session() -> anyhow::Result<Browser> {
     match connect(ws_url.trim()) {
         Ok(browser) => {
             debug!("Successfully resumed the previous browser session");
-            Ok(browser)
+            Ok(KillableBrowser::old(browser))
         }
         Err(e) => {
             fs::remove_file(pid_file)?;
@@ -52,7 +103,7 @@ fn try_resume_previous_session() -> anyhow::Result<Browser> {
     }
 }
 
-fn try_connect_existing_session() -> anyhow::Result<Browser> {
+fn try_connect_existing_session() -> anyhow::Result<KillableBrowser> {
     let sys_info = System::new_with_specifics(RefreshKind::everything());
     let chrome_process = sys_info
         .processes()
@@ -94,11 +145,11 @@ fn try_connect_existing_session() -> anyhow::Result<Browser> {
     info!("Successfully fetched debug ws url: {ws_url}");
     fs::write(PID_FILE, &ws_url)?;
 
-    connect(ws_url)
+    Ok(KillableBrowser::old(connect(&ws_url)?))
 }
 
-fn start_new_session() -> anyhow::Result<Browser> {
-    fn start_chrome_process() -> anyhow::Result<String> {
+fn start_new_session() -> anyhow::Result<KillableBrowser> {
+    fn start_chrome_process() -> anyhow::Result<(String, u32)> {
         let port = quick_port()?;
         debug!("Starting new chrome session with remote debugging port at: {port}");
         let mut process = Command::new(&APP_CONFIG.chrome_path)
@@ -118,7 +169,7 @@ fn start_new_session() -> anyhow::Result<Browser> {
                 if buff.starts_with("DevTools listening on") {
                     let ws_url = buff.trim_start_matches("DevTools listening on").trim();
                     fs::write(PID_FILE, ws_url)?;
-                    return Ok(ws_url.to_owned());
+                    return Ok((ws_url.to_owned(), process.id()));
                 }
 
                 buff.clear();
@@ -131,8 +182,8 @@ fn start_new_session() -> anyhow::Result<Browser> {
         anyhow::bail!("Failed to get stdout of child process")
     }
 
-    let ws_url = start_chrome_process()?;
-    connect(&ws_url)
+    let (ws_url, id) = start_chrome_process()?;
+    Ok(KillableBrowser::new(connect(&ws_url)?, id))
 }
 
 fn connect(ws_url: impl Into<String>) -> anyhow::Result<Browser> {

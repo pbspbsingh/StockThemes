@@ -53,7 +53,7 @@ fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
     if !new_stocks.is_empty() {
         let browser = browser::init_browser()?;
 
-        debug!("Browser info: {:?}", browser.get_version()?);
+        debug!("Browser version: {:?}", browser.get_version()?.product);
         info!("Starting fetching of stock info...");
 
         let tv = StockInfoLoader::load(&browser)?;

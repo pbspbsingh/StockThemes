@@ -26,7 +26,7 @@ struct TopStocksArgs {
     pub time_frames: String,
 
     /// Numbers of top stocks to pick
-    #[arg(short = 'c', long, default_value_t = 30)]
+    #[arg(short = 'c', long, default_value_t = 50)]
     pub top_count: usize,
 
     /// Output CSV File
