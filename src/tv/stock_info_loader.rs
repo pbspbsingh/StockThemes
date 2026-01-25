@@ -1,60 +1,107 @@
-use std::{sync::Arc, time::Duration};
+use anyhow::Context;
+use chromiumoxide::{
+    Browser, Element, Page,
+    cdp::browser_protocol::input::{
+        DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
+    },
+};
+use chrono::Local;
+use log::info;
 
 use super::TV_HOME;
+
 use crate::{Group, Stock, tv::Sleepable};
-use anyhow::Context;
-use chrono::Local;
-use headless_chrome::{Browser, Element, Tab, browser::tab::ModifierKey};
-use log::warn;
 
 pub struct StockInfoLoader {
-    tab: Arc<Tab>,
+    page: Page,
 }
 
 impl StockInfoLoader {
-    pub fn load(browser: &Browser) -> anyhow::Result<Self> {
-        let tab = browser.new_tab()?;
-        tab.navigate_to(&format!("{TV_HOME}/markets/usa/"))?
-            .wait_until_navigated()?;
-        Ok(Self { tab })
+    pub async fn load(browser: &Browser) -> anyhow::Result<Self> {
+        for page in browser.pages().await? {
+            if let Some(url) = page.url().await?
+                && url.starts_with(TV_HOME)
+            {
+                info!("Reusing the existing page: {url}");
+                return Ok(Self { page });
+            }
+        }
+
+        let page = browser.new_page("about:blank").await?;
+        page.goto(&format!("{TV_HOME}/markets/usa/"))
+            .await?
+            .wait_for_navigation()
+            .await?
+            .sleep()
+            .await;
+
+        Ok(Self { page })
     }
 
-    pub fn fetch_stock_info(&self, ticker: &str) -> anyhow::Result<Stock> {
+    pub async fn fetch_stock_info(&self, ticker: &str) -> anyhow::Result<Stock> {
         if let Ok(promo_button) = self
-            .tab
+            .page
             .find_element("button[data-qa-id='promo-dialog-close-button']")
+            .await
         {
-            promo_button.click()?;
+            promo_button.click().await?;
         }
 
-        if !self.tab.get_url().starts_with(&format!("{TV_HOME}/chart/")) {
-            self.tab
-                .press_key_with_modifiers("k", Some(&[ModifierKey::Meta]))?
-                .sleep();
+        if !self
+            .page
+            .url()
+            .await?
+            .unwrap_or_default()
+            .starts_with(&format!("{TV_HOME}/chart/"))
+        {
+            self.page
+                .find_element(r#"button[aria-label="Search"]"#)
+                .await?
+        } else {
+            self.page
+                .find_element("button#header-toolbar-symbol-search")
+                .await?
         }
+        .click()
+        .await?;
 
-        self.tab
-            .type_str(ticker)?
+        self.page
             .sleep()
-            .press_key("Enter")?
-            .wait_until_navigated()?
-            .sleep();
+            .await
+            .execute(InsertTextParams::new(ticker))
+            .await?;
+        self.send_enter().await?;
+        self.page.wait_for_navigation().await?.sleep().await;
 
-        let timeout = Duration::from_secs(2);
+        let mut error = None;
+        for _ in 0..3 {
+            match self.parse_ticker_info(ticker).await {
+                Ok(res) => return Ok(res),
+                Err(e) => {
+                    error = Some(e);
+                    self.page.sleep().await;
+                }
+            }
+        }
+        if error.is_some() {
+            return Err(error.unwrap());
+        }
+        anyhow::bail!("Failed to fetch stock info for {ticker}")
+    }
+
+    async fn parse_ticker_info(&self, ticker: &str) -> anyhow::Result<Stock> {
         let detail_widget = self
-            .tab
-            .wait_for_element_with_custom_timeout(
-                r#"div[data-test-id-widget-type="detail"]"#,
-                timeout,
-            )
+            .page
+            .find_element(r#"div[data-test-id-widget-type="detail"]"#)
+            .await
             .context("No detail widget found")?;
         let symbol = detail_widget
-            .wait_for_element_with_custom_timeout(
-                r#"span[data-qa-id="details-element symbol"]"#,
-                timeout,
-            )
+            .find_element(r#"span[data-qa-id="details-element symbol"]"#)
+            .await
             .context("No exchange info found")?
-            .get_inner_text()?
+            .inner_text()
+            .await?
+            .unwrap_or_default()
             .trim()
             .to_uppercase();
         if symbol != ticker {
@@ -64,44 +111,66 @@ impl StockInfoLoader {
         }
 
         let exchange = detail_widget
-            .wait_for_element_with_custom_timeout(
-                r#"span[data-qa-id="details-element exchange"]"#,
-                timeout,
-            )
+            .find_element(r#"span[data-qa-id="details-element exchange"]"#)
+            .await
             .context("No exchange info found")?;
         let sector = detail_widget
-            .wait_for_element_with_custom_timeout(
-                r#"a[data-qa-id="details-element sector"]"#,
-                timeout,
-            )
+            .find_element(r#"a[data-qa-id="details-element sector"]"#)
+            .await
             .context("No sector info found")?;
         let industry = detail_widget
-            .wait_for_element_with_custom_timeout(
-                r#"a[data-qa-id="details-element industry"]"#,
-                timeout,
-            )
+            .find_element(r#"a[data-qa-id="details-element industry"]"#)
+            .await
             .context("No industry info found")?;
 
-        fn find_group(element: &Element) -> Option<Group> {
-            let name = element.get_inner_text().ok()?.trim().to_owned();
-            let url = element.get_attribute_value("href").ok()??.trim().to_owned();
+        async fn find_group(element: &Element) -> Option<Group> {
+            let name = element.inner_text().await.ok()??.trim().to_owned();
+            let url = element.attribute("href").await.ok()??.trim().to_owned();
             Some(Group { name, url })
         }
 
         Ok(Stock {
             ticker: ticker.to_owned(),
-            exchange: exchange.get_inner_text()?.trim().to_uppercase(),
-            sector: find_group(&sector).context("Couldn't find sector")?,
-            industry: find_group(&industry).context("Couldn't find sector")?,
+            exchange: exchange
+                .inner_text()
+                .await?
+                .unwrap_or_default()
+                .trim()
+                .to_uppercase(),
+            sector: find_group(&sector).await.context("Couldn't find sector")?,
+            industry: find_group(&industry)
+                .await
+                .context("Couldn't find industry group")?,
             last_update: Local::now().date_naive(),
         })
     }
-}
 
-impl Drop for StockInfoLoader {
-    fn drop(&mut self) {
-        if let Err(e) = self.tab.close(false) {
-            warn!("Failed to close the TradingView tab properly: {e}");
-        }
+    async fn send_enter(&self) -> anyhow::Result<()> {
+        // 1. KeyDown for Enter
+        self.page
+            .execute(
+                DispatchKeyEventParams::builder()
+                    .r#type(DispatchKeyEventType::KeyDown)
+                    .key("Enter")
+                    .code("Enter")
+                    .windows_virtual_key_code(13) // Standard code for Enter
+                    .build()
+                    .unwrap(),
+            )
+            .await?;
+
+        // 2. KeyUp for Enter
+        self.page
+            .execute(
+                DispatchKeyEventParams::builder()
+                    .r#type(DispatchKeyEventType::KeyUp)
+                    .key("Enter")
+                    .code("Enter")
+                    .windows_virtual_key_code(13)
+                    .build()
+                    .unwrap(),
+            )
+            .await?;
+        Ok(())
     }
 }

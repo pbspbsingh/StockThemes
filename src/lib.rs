@@ -2,6 +2,7 @@ use std::{collections::HashSet, path::PathBuf};
 
 use chrono::NaiveDate;
 use clap::Parser;
+use futures::{StreamExt, TryStreamExt, stream};
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
@@ -77,18 +78,17 @@ pub struct Ticker {
     pub ticker: String,
 }
 
-pub fn read_stocks(args: &StockThemesArgs) -> anyhow::Result<Vec<String>> {
+pub async fn read_stocks(args: &StockThemesArgs) -> anyhow::Result<Vec<String>> {
     let skips = args
         .skip_stocks
         .split(',')
         .map(str::trim)
         .map(str::to_uppercase)
         .collect::<HashSet<_>>();
-    let mut stocks = args
-        .files
-        .iter()
-        .map(|file| util::parse_stocks(file, args.skip_lines))
-        .collect::<Result<Vec<_>, _>>()?
+    let mut stocks = stream::iter(&args.files)
+        .then(|file| util::parse_stocks(file, args.skip_lines))
+        .try_collect::<Vec<_>>()
+        .await?
         .into_iter()
         .flatten()
         .filter(|s| !skips.contains(s))

@@ -1,8 +1,5 @@
 use std::{
     collections::HashSet,
-    fs::File,
-    io::BufWriter,
-    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -34,7 +31,8 @@ struct TopStocksArgs {
     pub output_file: PathBuf,
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
+async fn main() -> anyhow::Result<()> {
     env_logger::Builder::new()
         .parse_filters(&APP_CONFIG.log_config)
         .init();
@@ -42,7 +40,7 @@ fn main() -> anyhow::Result<()> {
     let args = TopStocksArgs::parse();
     info!("Screen url: {}", args.tv_screen_url);
 
-    let browser = browser::init_browser()?;
+    let browser = browser::init_browser().await?;
 
     let tf = args.time_frames.split(',').map(str::trim).collect_vec();
     let mut stocks = HashSet::new();
@@ -54,25 +52,30 @@ fn main() -> anyhow::Result<()> {
         )?,
     );
 
-    let fetcher = TopStocksFetcher::load(&browser, &args.tv_screen_url, args.top_count, &pb)?;
+    let fetcher =
+        TopStocksFetcher::load(&browser, &args.tv_screen_url, args.top_count, &pb).await?;
     for sort_by in tf {
-        stocks.extend(fetcher.fetch_stocks(sort_by)?);
+        stocks.extend(fetcher.fetch_stocks(sort_by).await?);
     }
     pb.finish_with_message("Done fetching top stocks");
     info!("Total {} unique stocks fetched", stocks.len());
-    save_csv(&args.output_file, &args.tv_screen_url, stocks)
+    save_csv(&args.output_file, &args.tv_screen_url, stocks).await
 }
 
-fn save_csv(file: &Path, source: &str, stocks: HashSet<String>) -> anyhow::Result<()> {
-    let f = File::create(file).with_context(|| format!("Failed to write to {file:?}"))?;
-    let mut writer = BufWriter::new(f);
-    writeln!(writer, "======= Top Performing Stocks ======")?;
-    writeln!(writer, "Source: {source}")?;
-    writeln!(writer, "Count: {}", stocks.len())?;
-    writeln!(writer)?;
+async fn save_csv(file: &Path, source: &str, stocks: HashSet<String>) -> anyhow::Result<()> {
+    use std::fmt::Write;
+
+    let mut content = String::new();
+    writeln!(content, "======= Top Performing Stocks ======")?;
+    writeln!(content, "Source: {source}")?;
+    writeln!(content, "Count: {}", stocks.len())?;
+    writeln!(content)?;
     for stock in stocks {
-        writeln!(writer, "{stock}")?;
+        writeln!(content, "{stock}")?;
     }
+    tokio::fs::write(file, content)
+        .await
+        .with_context(|| format!("Error writing output to {file:?}"))?;
     info!("Saved the output to {:?}\n", file.canonicalize()?);
     Ok(())
 }

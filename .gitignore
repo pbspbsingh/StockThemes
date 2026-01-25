@@ -2,3 +2,5 @@
 *.csv
 .idea
 target
+*.csv
+stock_store.toml

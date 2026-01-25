@@ -13,6 +13,8 @@ const CONFIG_FILE: &str = "config.toml";
 pub struct Config {
     pub log_config: String,
     pub chrome_path: String,
+    pub user_data_dir: PathBuf,
+    #[serde(default)]
     pub chrome_args: Vec<String>,
     pub kill_chrome_on_exit: bool,
     pub stock_store_file: PathBuf,

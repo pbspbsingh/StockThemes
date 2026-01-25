@@ -1,19 +1,22 @@
 use std::collections::HashMap;
 
 use anyhow::Context;
+use axum::{Router, response::Html, routing};
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use stock_themes::{
     Stock, StockThemesArgs, browser, config::APP_CONFIG, read_stocks, store::Store, summarize,
     template::create_html, tv::stock_info_loader::StockInfoLoader,
 };
-use tiny_http::{Header, Response, Server, StatusCode};
+
+use tokio::{fs, net::TcpListener};
 
 const HTML_FILE: &str = "stocks_themes.html";
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
+async fn main() -> anyhow::Result<()> {
     env_logger::Builder::new()
         .parse_filters(&APP_CONFIG.log_config)
         .init();
@@ -25,24 +28,26 @@ fn main() -> anyhow::Result<()> {
         args.skip_lines,
     );
 
-    let stocks = read_stocks(&args)?;
+    let stocks = read_stocks(&args).await?;
     info!("Total unique stocks: {}", stocks.len());
 
-    let stocks = fetch_stock_info(stocks)?;
+    let stocks = fetch_stock_info(stocks).await?;
     info!("Fetched stock info of {} stocks", stocks.len());
 
     let summary = summarize(stocks);
     let html = create_html(&summary)?;
-    std::fs::write(HTML_FILE, &html).with_context(|| format!("Failed to write {HTML_FILE}"))?;
+    fs::write(HTML_FILE, &html)
+        .await
+        .with_context(|| format!("Failed to write {HTML_FILE}"))?;
     info!(
         "Done! Wrote html to {:?}",
-        std::fs::canonicalize(HTML_FILE)?
+        fs::canonicalize(HTML_FILE).await?
     );
 
-    start_http_server(html)
+    start_http_server(html).await
 }
 
-fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
+async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
     let mut store = Store::load_store()?;
     let new_stocks = stocks
         .iter()
@@ -51,12 +56,10 @@ fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
     info!("New stocks: {}", new_stocks.len());
 
     if !new_stocks.is_empty() {
-        let browser = browser::init_browser()?;
-
-        debug!("Browser version: {:?}", browser.get_version()?.product);
+        let browser = browser::init_browser().await?;
         info!("Starting fetching of stock info...");
 
-        let tv = StockInfoLoader::load(&browser)?;
+        let tv = StockInfoLoader::load(&browser).await?;
         let pb = ProgressBar::new(new_stocks.len() as u64);
         pb.set_style(ProgressStyle::default_bar().template(
             "{spinner:.green} [{elapsed_precise}] [{bar:60.cyan/blue}] {pos}/{len} {msg}",
@@ -65,7 +68,7 @@ fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
         for ticker in new_stocks {
             pb.set_message(format!("[{ticker}]"));
             pb.inc(1);
-            let stock = match tv.fetch_stock_info(ticker) {
+            let stock = match tv.fetch_stock_info(ticker).await {
                 Ok(stock) => stock,
                 Err(e) => {
                     errors.insert(ticker, e);
@@ -94,24 +97,13 @@ fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
         .collect())
 }
 
-fn start_http_server(html: String) -> anyhow::Result<()> {
+async fn start_http_server(html: String) -> anyhow::Result<()> {
     let addr = "127.0.0.1:8000";
-    let server = Server::http(addr)
-        .map_err(|e| anyhow::anyhow!("Failed to start http server at {addr}: {e}"))?;
-    info!("Http server: http://{addr}/");
-
-    let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html"[..])
-        .map_err(|_| anyhow::anyhow!("Header parsing error"))?;
-    for request in server.incoming_requests() {
-        let response = if request.url().ends_with("favicon.ico") {
-            Response::from_string("").with_status_code(StatusCode(404))
-        } else {
-            Response::from_string(&html).with_header(header.clone())
-        };
-
-        if let Err(e) = request.respond(response) {
-            warn!("Failed to send html to the client: {e}");
-        }
-    }
+    let listener = TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("Failed to bind at {addr}: e"))?;
+    info!("Running http server at: {addr}");
+    let app = Router::new().route("/", routing::get(async || Html(html)));
+    axum::serve(listener, app).await?;
     Ok(())
 }

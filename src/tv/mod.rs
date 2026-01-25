@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use headless_chrome::Tab;
+use chromiumoxide::Page;
+use tokio::time;
 
 pub mod stock_info_loader;
 pub mod top_stocks_fetcher;
@@ -8,13 +9,13 @@ pub mod top_stocks_fetcher;
 const TV_HOME: &str = "https://www.tradingview.com";
 
 trait Sleepable {
-    fn sleep(&self) -> &Self;
+    async fn sleep(&self) -> &Self;
 }
 
-impl Sleepable for Tab {
-    fn sleep(&self) -> &Self {
-        let sleep_time = rand::random_range(500..2000);
-        std::thread::sleep(Duration::from_millis(sleep_time));
+impl Sleepable for Page {
+    async fn sleep(&self) -> &Self {
+        let sleep_time = rand::random_range(500..2500);
+        time::sleep(Duration::from_millis(sleep_time)).await;
         self
     }
 }
