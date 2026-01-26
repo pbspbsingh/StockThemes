@@ -30,7 +30,11 @@ pub async fn init_browser() -> anyhow::Result<Browser> {
         }
     });
 
-    info!("Browser: {}", browser.version().await?.product);
+    info!(
+        "Browser: {} => {}",
+        browser.version().await?.product,
+        browser.websocket_address()
+    );
     Ok(browser)
 }
 

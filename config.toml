@@ -1,6 +1,6 @@
 chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 user_data_dir = "/Users/singhpra/Trading/ChromeDataDir"
-# chrome_args = ["--headless=false"]
+chrome_args = ["--headless=new"]
 kill_chrome_on_exit = false
 
 log_config = "info,headless_chrome=warn,stock_themes=debug"
