@@ -6,3 +6,4 @@ kill_chrome_on_exit = false
 log_config = "info,headless_chrome=warn,stock_themes=debug"
 
 stock_store_file = "stock_store.toml"
+ignored_stocks = ["SPAI"]

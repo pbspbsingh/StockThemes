@@ -18,6 +18,8 @@ pub struct Config {
     pub chrome_args: Vec<String>,
     pub kill_chrome_on_exit: bool,
     pub stock_store_file: PathBuf,
+    #[serde(default)]
+    pub ignored_stocks: Vec<String>,
 }
 
 pub static APP_CONFIG: LazyLock<Config> = LazyLock::new(|| {

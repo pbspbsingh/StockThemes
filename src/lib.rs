@@ -4,8 +4,11 @@ use chrono::NaiveDate;
 use clap::Parser;
 use futures::{StreamExt, TryStreamExt, stream};
 use itertools::Itertools;
+use log::info;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
+
+use crate::config::APP_CONFIG;
 
 pub mod browser;
 pub mod config;
@@ -82,9 +85,19 @@ pub async fn read_stocks(args: &StockThemesArgs) -> anyhow::Result<Vec<String>> 
     let skips = args
         .skip_stocks
         .split(',')
+        .chain(APP_CONFIG.ignored_stocks.iter().map(|s| s.as_str()))
         .map(str::trim)
+        .filter(|&s| !s.is_empty())
         .map(str::to_uppercase)
         .collect::<HashSet<_>>();
+    if !skips.is_empty() {
+        if skips.len() <= 10 {
+            info!("Skipping: [{}]", skips.iter().sorted().join(","));
+        } else {
+            info!("Skipping {} stocks", skips.len());
+        }
+    }
+
     let mut stocks = stream::iter(&args.files)
         .then(|file| util::parse_stocks(file, args.skip_lines))
         .try_collect::<Vec<_>>()
