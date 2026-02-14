@@ -1,5 +1,5 @@
 use anyhow::Ok;
-use chromiumoxide::{Browser, Page};
+use chromiumoxide::{Browser, Page, cdp::browser_protocol::target::CloseTargetParams};
 use indicatif::ProgressBar;
 
 use crate::tv::Sleepable;
@@ -7,6 +7,7 @@ use crate::tv::Sleepable;
 pub struct TopStocksFetcher<'a> {
     page: Page,
     count: usize,
+    descending: bool,
     pb: &'a ProgressBar,
 }
 
@@ -15,6 +16,7 @@ impl<'a> TopStocksFetcher<'a> {
         browser: &Browser,
         screen_url: &str,
         count: usize,
+        descending: bool,
         pb: &'a ProgressBar,
     ) -> anyhow::Result<Self> {
         pb.set_message("Opening new tab");
@@ -28,7 +30,12 @@ impl<'a> TopStocksFetcher<'a> {
             .sleep()
             .await;
 
-        Ok(Self { page, count, pb })
+        Ok(Self {
+            page,
+            count,
+            descending,
+            pb,
+        })
     }
 
     pub async fn fetch_stocks(&self, sort_by: &str) -> anyhow::Result<Vec<String>> {
@@ -55,10 +62,21 @@ impl<'a> TopStocksFetcher<'a> {
 
         self.pb
             .set_message(format!("[{sort_by}] Clicking sort by popup button"));
+        let sort_selector = format!(
+            r#"//div[@data-qa-id="column-menu"]//div[@data-qa-id="column-menu-item"]//div[.//*[contains(., 'Sort {}')]]"#,
+            if self.descending {
+                "descending"
+            } else {
+                "ascending"
+            }
+        );
         self.page
-            .sleep().await
-            .find_xpath(r#"//div[@data-qa-id="column-menu"]//div[@data-qa-id="column-menu-item"]//div[.//*[contains(., 'Sort descending')]]"#).await?
-            .click().await?;
+            .sleep()
+            .await
+            .find_xpath(sort_selector)
+            .await?
+            .click()
+            .await?;
 
         self.pb
             .set_message(format!("[{sort_by}] Quering rows from the table"));
@@ -87,5 +105,10 @@ impl<'a> TopStocksFetcher<'a> {
             }
         }
         Ok(result)
+    }
+
+    pub async fn close(self) {
+        let target_id = self.page.target_id().clone();
+        self.page.execute(CloseTargetParams::new(target_id)).await.ok();
     }
 }

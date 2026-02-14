@@ -88,6 +88,7 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
             )
         }
         pb.finish_with_message("Done fetching all the tickers!");
+        tv.close().await;
     }
 
     Ok(stocks

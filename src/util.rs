@@ -24,8 +24,10 @@ pub async fn parse_stocks(
             line.trim()
                 .split(',')
                 .next()
+                .map(str::trim)
                 .map(|stock| stock.trim().to_uppercase())
         })
+        .filter(|s| !s.is_empty())
         .collect();
 
     let total_lines = content.lines().count();

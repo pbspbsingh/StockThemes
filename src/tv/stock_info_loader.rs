@@ -1,9 +1,9 @@
 use anyhow::Context;
 use chromiumoxide::{
     Browser, Element, Page,
-    cdp::browser_protocol::input::{
+    cdp::browser_protocol::{input::{
         DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
-    },
+    }, target::CloseTargetParams},
 };
 use chrono::Local;
 use log::info;
@@ -172,5 +172,10 @@ impl StockInfoLoader {
             )
             .await?;
         Ok(())
+    }
+
+    pub async fn close(self) {
+        let target_id = self.page.target_id().clone();
+        self.page.execute(CloseTargetParams::new(target_id)).await.ok();
     }
 }

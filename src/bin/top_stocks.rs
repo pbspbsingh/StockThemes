@@ -23,11 +23,15 @@ struct TopStocksArgs {
     pub time_frames: String,
 
     /// Numbers of top stocks to pick
-    #[arg(short = 'c', long, default_value_t = 50)]
+    #[arg(short = 'c', long, default_value_t = 100)]
     pub top_count: usize,
 
+    /// Fetch the stocks which are gainers or losers
+    #[arg(short = 'l', long, default_value_t = false)]
+    pub fetch_losers: bool,
+
     /// Output CSV File
-    #[arg(short = 'o', long, default_value = "top_performers.csv")]
+    #[arg(short = 'o', long, default_value = "watchlist.csv")]
     pub output_file: PathBuf,
 }
 
@@ -52,12 +56,20 @@ async fn main() -> anyhow::Result<()> {
         )?,
     );
 
-    let fetcher =
-        TopStocksFetcher::load(&browser, &args.tv_screen_url, args.top_count, &pb).await?;
+    let fetcher = TopStocksFetcher::load(
+        &browser,
+        &args.tv_screen_url,
+        args.top_count,
+        !args.fetch_losers,
+        &pb,
+    )
+    .await?;
     for sort_by in tf {
         stocks.extend(fetcher.fetch_stocks(sort_by).await?);
     }
     pb.finish_with_message("Done fetching top stocks");
+    fetcher.close().await;
+
     info!("Total {} unique stocks fetched", stocks.len());
     save_csv(&args.output_file, &args.tv_screen_url, stocks).await
 }
