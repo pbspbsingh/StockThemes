@@ -1,48 +1,49 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::Context;
 use chrono::{Local, TimeDelta};
 use log::error;
 use serde::{Deserialize, Serialize};
 
-use crate::{Stock, config::APP_CONFIG};
+use crate::Stock;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Store {
-    industry_info: HashMap<String, Stock>,
+    store_file: PathBuf,
+    info: HashMap<String, Stock>,
 }
 
 impl Store {
-    pub fn load_store() -> anyhow::Result<Store> {
-        let store_file = &APP_CONFIG.stock_store_file;
-        let Ok(content) = std::fs::read_to_string(store_file) else {
+    pub fn load_store(store_file: impl Into<PathBuf>) -> anyhow::Result<Store> {
+        let store_file = store_file.into();
+        let Ok(content) = std::fs::read_to_string(&store_file) else {
             error!("Stock info file: {store_file:?} not found");
-            return Ok(Default::default());
+            return Ok(Self {
+                store_file,
+                info: HashMap::new(),
+            });
         };
 
         let today = Local::now().date_naive();
-        let mut store = toml::from_str::<Store>(&content)
+        let mut info = serde_json::from_str::<HashMap<String, Stock>>(&content)
             .with_context(|| format!("Failed to parse:\n{content}"))?;
-        store
-            .industry_info
-            .retain(|_ticker, stock| today - stock.last_update <= TimeDelta::days(30));
-        Ok(store)
+
+        info.retain(|_, stock| today - stock.last_update <= TimeDelta::days(30));
+        Ok(Store { store_file, info })
     }
 
     pub fn get(&self, ticker: impl AsRef<str>) -> Option<&Stock> {
-        self.industry_info.get(ticker.as_ref())
+        self.info.get(ticker.as_ref())
     }
 
     pub fn add(&mut self, stock: Stock) -> anyhow::Result<()> {
-        self.industry_info.insert(stock.ticker.clone(), stock);
+        self.info.insert(stock.ticker.clone(), stock);
         self.save()
     }
 
     pub fn save(&mut self) -> anyhow::Result<()> {
-        let store_file = &APP_CONFIG.stock_store_file;
-        let content = toml::to_string_pretty(self)?;
-        std::fs::write(store_file, content)
-            .with_context(|| format!("Failed to write stock info to {store_file:?}"))?;
-        Ok(())
+        let content = serde_json::to_string_pretty(&self.info)?;
+        std::fs::write(&self.store_file, content)
+            .with_context(|| format!("Failed to write stock info to {:?}", self.store_file))
     }
 }

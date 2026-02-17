@@ -1,14 +1,6 @@
-use std::{collections::HashSet, path::PathBuf};
-
 use chrono::NaiveDate;
-use clap::Parser;
-use futures::{StreamExt, TryStreamExt, stream};
-use itertools::Itertools;
-use log::info;
-use rand::seq::SliceRandom;
-use serde::{Deserialize, Serialize};
 
-use crate::config::APP_CONFIG;
+use serde::{Deserialize, Serialize};
 
 pub mod browser;
 pub mod config;
@@ -16,27 +8,7 @@ pub mod store;
 pub mod template;
 pub mod tv;
 pub mod util;
-
-#[derive(Parser, Debug)]
-#[command(name = "stock_themes")]
-#[command(about = "Process csv files with stocks to find the common themes among them")]
-pub struct StockThemesArgs {
-    /// Input files to process
-    #[arg(required = true)]
-    pub files: Vec<PathBuf>,
-
-    /// Number of items to skip
-    #[arg(short = 'n', long, default_value_t = 4)]
-    pub skip_lines: usize,
-
-    /// Comma seperated list of Stocks to skip
-    #[arg(short = 's', long, default_value = "")]
-    pub skip_stocks: String,
-
-    /// Stock store file to save stock info
-    #[arg(long, default_value = "stock_store.toml")]
-    pub stock_store: PathBuf,
-}
+pub mod yf;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Stock {
@@ -81,86 +53,9 @@ pub struct Ticker {
     pub ticker: String,
 }
 
-pub async fn read_stocks(args: &StockThemesArgs) -> anyhow::Result<Vec<String>> {
-    let skips = args
-        .skip_stocks
-        .split(',')
-        .chain(APP_CONFIG.ignored_stocks.iter().map(|s| s.as_str()))
-        .map(str::trim)
-        .filter(|&s| !s.is_empty())
-        .map(str::to_uppercase)
-        .collect::<HashSet<_>>();
-    if !skips.is_empty() {
-        if skips.len() <= 10 {
-            info!("Skipping: [{}]", skips.iter().sorted().join(","));
-        } else {
-            info!("Skipping {} stocks", skips.len());
-        }
-    }
+#[async_trait::async_trait]
+pub trait StockInfoFetcher {
+    async fn fetch(&self, ticker: &str) -> anyhow::Result<Stock>;
 
-    let mut stocks = stream::iter(&args.files)
-        .then(|file| util::parse_stocks(file, args.skip_lines))
-        .try_collect::<Vec<_>>()
-        .await?
-        .into_iter()
-        .flatten()
-        .filter(|s| !skips.contains(s))
-        .unique()
-        .collect_vec();
-    stocks.shuffle(&mut rand::rng());
-    Ok(stocks)
-}
-
-pub fn summarize(stocks: Vec<Stock>) -> Summary {
-    let mut size = 0;
-    let mut sectors = Vec::new();
-
-    let sectors_map = stocks
-        .into_iter()
-        .into_group_map_by(|stock| stock.sector.name.clone());
-    for (sector_name, stocks) in sectors_map {
-        if stocks.is_empty() {
-            continue;
-        }
-
-        let mut sector_summary = SummarySector {
-            name: sector_name,
-            url: stocks[0].sector.url.clone(),
-            size: 0,
-            industries: Vec::new(),
-        };
-
-        let industry_map = stocks
-            .into_iter()
-            .into_group_map_by(|stock| stock.industry.name.clone());
-        for (industry_name, stocks) in industry_map {
-            if stocks.is_empty() {
-                continue;
-            }
-
-            let industry_summary = SummaryIndustry {
-                name: industry_name,
-                url: stocks[0].industry.url.clone(),
-                size: stocks.len(),
-                tickers: stocks
-                    .into_iter()
-                    .map(|s| Ticker {
-                        exchange: s.exchange,
-                        ticker: s.ticker,
-                    })
-                    .collect(),
-            };
-            sector_summary.size += industry_summary.size;
-            sector_summary.industries.push(industry_summary);
-        }
-        sector_summary
-            .industries
-            .sort_by_key(|si| -(si.size as isize));
-        if sector_summary.size > 0 {
-            size += sector_summary.size;
-            sectors.push(sector_summary);
-        }
-    }
-    sectors.sort_by_key(|ss| -(ss.size as isize));
-    Summary { size, sectors }
+    async fn done(&self) {}
 }

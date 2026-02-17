@@ -1,29 +1,34 @@
 use anyhow::Context;
 use chromiumoxide::{
     Browser, Element, Page,
-    cdp::browser_protocol::{input::{
-        DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
-    }, target::CloseTargetParams},
+    cdp::browser_protocol::{
+        input::{DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams},
+        target::CloseTargetParams,
+    },
 };
 use chrono::Local;
 use log::info;
 
 use super::TV_HOME;
 
-use crate::{Group, Stock, tv::Sleepable};
+use crate::{Group, Stock, StockInfoFetcher, tv::Sleepable};
 
 pub struct StockInfoLoader {
+    _browser: Browser,
     page: Page,
 }
 
 impl StockInfoLoader {
-    pub async fn load(browser: &Browser) -> anyhow::Result<Self> {
+    pub async fn load(browser: Browser) -> anyhow::Result<Self> {
         for page in browser.pages().await? {
             if let Some(url) = page.url().await?
                 && url.starts_with(TV_HOME)
             {
                 info!("Reusing the existing page: {url}");
-                return Ok(Self { page });
+                return Ok(Self {
+                    _browser: browser,
+                    page,
+                });
             }
         }
 
@@ -35,7 +40,10 @@ impl StockInfoLoader {
             .sleep()
             .await;
 
-        Ok(Self { page })
+        Ok(Self {
+            _browser: browser,
+            page,
+        })
     }
 
     pub async fn fetch_stock_info(&self, ticker: &str) -> anyhow::Result<Stock> {
@@ -83,8 +91,8 @@ impl StockInfoLoader {
                 }
             }
         }
-        if error.is_some() {
-            return Err(error.unwrap());
+        if let Some(error) = error {
+            return Err(error);
         }
         anyhow::bail!("Failed to fetch stock info for {ticker}")
     }
@@ -174,8 +182,22 @@ impl StockInfoLoader {
         Ok(())
     }
 
-    pub async fn close(self) {
+    pub async fn close(&self) {
         let target_id = self.page.target_id().clone();
-        self.page.execute(CloseTargetParams::new(target_id)).await.ok();
+        self.page
+            .execute(CloseTargetParams::new(target_id))
+            .await
+            .ok();
+    }
+}
+
+#[async_trait::async_trait]
+impl StockInfoFetcher for StockInfoLoader {
+    async fn fetch(&self, ticker: &str) -> anyhow::Result<Stock> {
+        self.fetch_stock_info(ticker).await
+    }
+
+    async fn done(&self) {
+        self.close().await;
     }
 }

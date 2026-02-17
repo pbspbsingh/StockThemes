@@ -20,21 +20,24 @@ panic = "abort"
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 
+async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 axum = "0.8"
+reqwest = { version = "0.13", features = ["json", "cookies", "gzip", "deflate"] }
 chromiumoxide = { version = "0.8", features = ["tokio"] }
 
 anyhow = "1"
-rand = "0.9"
+rand = "0.10"
 itertools = "0.14"
 chrono = { version = "0.4", features = ["serde"] }
-sysinfo = "0.37"
+sysinfo = "0.38"
 
 serde = { version = "1", features = ["derive"] }
-toml = "0.9"
+toml = "1"
 serde_json = "*"
 
 log = "0.4"
 env_logger = "0.11"
 indicatif = "0.18.3"
+

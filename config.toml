@@ -1,9 +1,9 @@
 chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 user_data_dir = "/Users/singhpra/Trading/ChromeDataDir"
 chrome_args = ["--headless=new"]
-kill_chrome_on_exit = false
 
 log_config = "info,headless_chrome=warn,stock_themes=debug"
 
-stock_store_file = "stock_store.toml"
-ignored_stocks = ["SPAI", "GOLD"]
+use_tv_for_stock_info = true
+
+ignored_stocks = []

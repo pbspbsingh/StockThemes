@@ -109,6 +109,9 @@ impl<'a> TopStocksFetcher<'a> {
 
     pub async fn close(self) {
         let target_id = self.page.target_id().clone();
-        self.page.execute(CloseTargetParams::new(target_id)).await.ok();
+        self.page
+            .execute(CloseTargetParams::new(target_id))
+            .await
+            .ok();
     }
 }

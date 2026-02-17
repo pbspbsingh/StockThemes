@@ -16,8 +16,7 @@ pub struct Config {
     pub user_data_dir: PathBuf,
     #[serde(default)]
     pub chrome_args: Vec<String>,
-    pub kill_chrome_on_exit: bool,
-    pub stock_store_file: PathBuf,
+    pub use_tv_for_stock_info: bool,
     #[serde(default)]
     pub ignored_stocks: Vec<String>,
 }

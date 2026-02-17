@@ -96,5 +96,5 @@ async fn start_new_session() -> anyhow::Result<(Browser, Handler)> {
 
     Browser::launch(config)
         .await
-        .with_context(|| format!("Failed to start a new browser session"))
+        .context("Failed to start a new browser session")
 }

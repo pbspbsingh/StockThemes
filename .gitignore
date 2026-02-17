@@ -1,6 +1,6 @@
 .DS_Store
-*.csv
 .idea
 target
 *.csv
-stock_store.toml
+*.json
+*.html
