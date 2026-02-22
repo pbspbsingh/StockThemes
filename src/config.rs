@@ -16,6 +16,8 @@ pub struct Config {
     pub user_data_dir: PathBuf,
     #[serde(default)]
     pub chrome_args: Vec<String>,
+    #[serde(default)]
+    pub launch_chrome_if_needed: bool,
     pub use_tv_for_stock_info: bool,
     #[serde(default)]
     pub ignored_stocks: Vec<String>,

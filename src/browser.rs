@@ -17,7 +17,20 @@ pub async fn init_browser() -> anyhow::Result<Browser> {
         Ok(browser) => browser,
         Err(e) => {
             warn!("Error connecting to existing session: '{e}', starting new session...");
-            start_new_session().await?
+            if APP_CONFIG.launch_chrome_if_needed {
+                start_new_session().await?
+            } else {
+                let cmd = format!(
+                    r#""{}" --user-data-dir={} {}=8888 {}"#,
+                    APP_CONFIG.chrome_path,
+                    APP_CONFIG.user_data_dir.display(),
+                    REMOTE_DEBUG_ARG,
+                    APP_CONFIG.chrome_args.join(" "),
+                );
+                anyhow::bail!(
+                    "Automatic browser launching is not enabled. Use following command to launch it manually:\n{cmd}"
+                );
+            }
         }
     };
 
