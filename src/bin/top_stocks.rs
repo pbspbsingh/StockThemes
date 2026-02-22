@@ -19,7 +19,7 @@ struct TopStocksArgs {
     pub tv_screen_url: String,
 
     /// Time frames from which top stocks to pick from
-    #[arg(short = 't', long, default_value = "1W,1M,3M,6M")]
+    #[arg(short = 't', long, default_value = "1M,3M,6M,1Y")]
     pub time_frames: String,
 
     /// Numbers of top stocks to pick
