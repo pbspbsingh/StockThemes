@@ -4,11 +4,11 @@ use itertools::Itertools;
 use log::info;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use stock_themes::store::Store;
 use stock_themes::summary::Summary;
 use stock_themes::{
-    browser, init_logger, start_http_server, tv::top_stocks_fetcher::TopStocksFetcher,
+    browser, init_logger, start_http_server, time_frames, tv::top_stocks_fetcher::TopStocksFetcher,
 };
-use stock_themes::store::Store;
 
 #[derive(Parser, Debug)]
 #[command(name = "top_stocks")]
@@ -42,13 +42,6 @@ async fn main() -> anyhow::Result<()> {
     let args = TopStocksArgs::parse();
     info!("Screen url: {}", args.tv_screen_url);
 
-    let tf = args
-        .time_frames
-        .split(',')
-        .map(str::trim)
-        .map(|x| x.to_uppercase())
-        .collect_vec();
-
     let browser = browser::init_browser().await?;
 
     let fetcher = TopStocksFetcher::load_screen_url(
@@ -56,12 +49,11 @@ async fn main() -> anyhow::Result<()> {
         &args.tv_screen_url,
         args.top_count,
         !args.fetch_losers,
-        tf.len() * args.top_count,
     )
     .await?;
 
     let mut stocks = HashMap::new();
-    for sort_by in tf {
+    for sort_by in time_frames(&args.time_frames) {
         for stock in fetcher.fetch_stocks(&sort_by).await? {
             stocks.insert(stock.ticker.clone(), stock);
         }
@@ -76,7 +68,10 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    Store::load_store(true).await?.add(&stocks.values().cloned().collect_vec()).await?;
+    Store::load_store(true)
+        .await?
+        .add(&stocks.values().cloned().collect_vec())
+        .await?;
 
     let summary = Summary::summarize(stocks.values().cloned().collect());
     let html = summary.render(vec![]);

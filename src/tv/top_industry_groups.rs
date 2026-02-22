@@ -29,7 +29,7 @@ impl TopIndustryGroups {
     }
 
     pub async fn fetch_top_industry_groups(
-        self,
+        &self,
         sort_by: &str,
         len: usize,
     ) -> anyhow::Result<Vec<String>> {
@@ -70,8 +70,11 @@ impl TopIndustryGroups {
                 break;
             }
         }
+        Ok(result)
+    }
+
+    pub async fn close(&self) {
         self.pb.finish_and_clear();
         self.page.close_me().await;
-        Ok(result)
     }
 }

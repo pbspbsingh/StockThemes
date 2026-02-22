@@ -10,10 +10,17 @@ pub mod top_stocks_fetcher;
 const TV_HOME: &str = "https://www.tradingview.com";
 
 trait Sleepable {
+    async fn nap(&self) -> &Self;
     async fn sleep(&self) -> &Self;
 }
 
 impl Sleepable for Page {
+    async fn nap(&self) -> &Self {
+        let sleep_time = rand::random_range(50..250);
+        time::sleep(Duration::from_millis(sleep_time)).await;
+        self
+    }
+
     async fn sleep(&self) -> &Self {
         let sleep_time = rand::random_range(500..2500);
         time::sleep(Duration::from_millis(sleep_time)).await;

@@ -49,6 +49,10 @@ pub fn init_logger() {
         .init();
 }
 
+pub fn time_frames(input: &str) -> impl Iterator<Item = String> {
+    input.split(',').map(str::trim).map(str::to_uppercase)
+}
+
 pub async fn start_http_server(html: String) -> anyhow::Result<()> {
     let addr = "127.0.0.1:8000";
     let listener = TcpListener::bind(addr)

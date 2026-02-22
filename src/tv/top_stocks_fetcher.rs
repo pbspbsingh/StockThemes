@@ -18,9 +18,8 @@ impl TopStocksFetcher {
         screen_url: &str,
         count: usize,
         descending: bool,
-        pb_size: usize,
     ) -> anyhow::Result<Self> {
-        let pb = ProgressBar::new(pb_size as u64);
+        let pb = ProgressBar::new(count as u64);
         pb.set_style(ProgressStyle::default_bar().template(
             "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len} {msg}",
         )?);
@@ -41,7 +40,91 @@ impl TopStocksFetcher {
         })
     }
 
+    pub async fn load_screen_with_industries(
+        browser: &Browser,
+        base_url: &str,
+        count: usize,
+        industries: &[String],
+    ) -> anyhow::Result<Self> {
+        let pb = ProgressBar::new(industries.len() as u64);
+        pb.set_style(ProgressStyle::default_bar().template(
+            "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len} {msg}",
+        )?);
+        pb.set_message(format!("Loading {base_url}"));
+
+        let page = browser.new_page(base_url).await?;
+        page.wait_for_navigation()
+            .await
+            .with_context(|| format!("Navigating to {base_url} failed"))?
+            .sleep()
+            .await;
+
+        let industry_filter_selector = r#"button[data-qa-id="ui-lib-multiselect-filter-pill screener-pills-checkbox-pill-Industry"]"#;
+        if page.find_element(industry_filter_selector).await.is_err() {
+            pb.set_message("Clicking 'Add Filter' button");
+            page.find_element(r#"button[data-qa-id="screener-add-new-filter"]"#)
+                .await
+                .context("Failed to find AddFilter button")?
+                .click()
+                .await?;
+            page.sleep().await;
+
+            pb.set_message("Searching for industry filter");
+            page.find_element(r#"input[aria-label="Type filter name"]"#)
+                .await
+                .context("Failed to find Add filter input")?
+                .type_str("Industry")
+                .await?;
+            page.sleep().await;
+
+            pb.set_message("Clicking the Industry filter");
+            page.find_element(r#"div[data-qa-id="screener-add-filter-option__Industry"]"#)
+                .await
+                .context("Failed to find Industry button in filter list")?
+                .click()
+                .await?;
+            page.sleep().await;
+        }
+
+        pb.set_message("Clicking on Industry filter");
+        page.find_element(industry_filter_selector)
+            .await
+            .context("Failed to find Industry filter")?
+            .click()
+            .await?;
+        page.sleep().await;
+
+        pb.set_message("Resetting industry filter");
+        page.find_xpath(r#"//div[@id='overlap-manager-root']//button[.//*[contains(text(),'Reset')] or contains(text(),'Reset')]"#)
+            .await
+            .context("Failed to find Reset button in Industry filter pane")?
+            .click()
+            .await?;
+
+        for industry in industries {
+            pb.inc(1);
+            pb.set_message(format!("Selecting {industry}"));
+            page.find_xpath(format!(r#"//div[@id='overlap-manager-root']//div[@role='listbox']//div[contains(@id, '{industry}')]"#))
+                .await
+                .with_context(|| format!("Failed to find industry group '{industry}' in Industry filter dropdown"))?
+                .scroll_into_view()
+                .await?
+                .click()
+                .await?;
+            page.nap().await;
+        }
+        pb.set_length(count as u64);
+        pb.reset();
+        Ok(Self {
+            page,
+            count,
+            descending: true,
+            pb,
+        })
+    }
+
     pub async fn fetch_stocks(&self, sort_by: &str) -> anyhow::Result<Vec<Stock>> {
+        self.pb.reset();
         self.sort_stocks(sort_by).await?;
         self.page.sleep().await;
 
