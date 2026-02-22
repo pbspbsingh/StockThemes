@@ -1,5 +1,5 @@
 use anyhow::Context;
-use axum::{Router, response::Html, routing};
+
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
@@ -7,12 +7,13 @@ use log::{error, info, warn};
 use std::time::Duration;
 use std::{collections::HashMap, path::PathBuf};
 use stock_themes::{
-    Stock, StockInfoFetcher, browser, config::APP_CONFIG, store::Store, template::create_html,
-    tv::stock_info_loader::StockInfoLoader, util,
+    Stock, StockInfoFetcher, browser, config::APP_CONFIG, init_logger, start_http_server,
+    store::Store, tv::stock_info_loader::StockInfoLoader, util,
 };
 
+use stock_themes::summary::Summary;
 use stock_themes::yf::YFinance;
-use tokio::{fs, net::TcpListener, time};
+use tokio::{fs, time};
 
 const HTML_FILE: &str = "stocks_themes.html";
 
@@ -35,9 +36,7 @@ pub struct StockThemesArgs {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> anyhow::Result<()> {
-    env_logger::Builder::new()
-        .parse_filters(&APP_CONFIG.log_config)
-        .init();
+    init_logger();
 
     let args = StockThemesArgs::parse();
     info!(
@@ -52,8 +51,8 @@ async fn main() -> anyhow::Result<()> {
     let stocks = fetch_stock_info(stocks).await?;
     info!("Fetched stock info of {} stocks", stocks.len());
 
-    let summary = util::summarize(stocks);
-    let html = create_html(&summary)?;
+    let summary = Summary::summarize(stocks);
+    let html = summary.render(vec![]);
     fs::write(HTML_FILE, &html)
         .await
         .with_context(|| format!("Failed to write {HTML_FILE}"))?;
@@ -66,12 +65,8 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
-    let use_yf = !APP_CONFIG.use_tv_for_stock_info;
-    let mut store = Store::load_store(if use_yf {
-        "stocks_info_yf.json"
-    } else {
-        "stocks_info_tv.json"
-    })?;
+    let use_tv = APP_CONFIG.use_tv_for_stock_info;
+    let mut store = Store::load_store(use_tv).await?;
     let new_stocks = stocks
         .iter()
         .filter(|&s| store.get(s).is_none())
@@ -79,7 +74,7 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
     info!("New stocks: {}", new_stocks.len());
 
     if !new_stocks.is_empty() {
-        let si_fetcher = if use_yf {
+        let si_fetcher = if !use_tv {
             Box::new(YFinance::new().await?) as Box<dyn StockInfoFetcher + Send + Sync>
         } else {
             let browser = browser::init_browser().await?;
@@ -98,7 +93,7 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
             pb.set_message(format!("[{ticker}]"));
             pb.inc(1);
             let result = si_fetcher.fetch(ticker).await;
-            if use_yf {
+            if !use_tv {
                 time::sleep(Duration::from_millis(rand::random_range(100..300))).await;
             }
             let stock = match result {
@@ -108,7 +103,7 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
                     continue;
                 }
             };
-            store.add(stock)?;
+            store.add(&[stock]).await?;
         }
         if !errors.is_empty() {
             error!("Error while fetching info for {} tickers", errors.len());
@@ -129,15 +124,4 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
         .filter_map(|ticker| store.get(&ticker))
         .cloned()
         .collect())
-}
-
-async fn start_http_server(html: String) -> anyhow::Result<()> {
-    let addr = "127.0.0.1:8000";
-    let listener = TcpListener::bind(addr)
-        .await
-        .with_context(|| format!("Failed to bind at {addr}: e"))?;
-    info!("Running http server at: {addr}");
-    let app = Router::new().route("/", routing::get(async || Html(html)));
-    axum::serve(listener, app).await?;
-    Ok(())
 }

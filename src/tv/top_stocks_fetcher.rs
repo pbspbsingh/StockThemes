@@ -1,32 +1,35 @@
-use anyhow::Ok;
-use chromiumoxide::{Browser, Page, cdp::browser_protocol::target::CloseTargetParams};
-use indicatif::ProgressBar;
+use crate::tv::{Closeable, Sleepable};
+use crate::{Group, Stock};
+use anyhow::{Context, Ok};
+use chromiumoxide::{Browser, Element, Page};
+use chrono::Local;
+use indicatif::{ProgressBar, ProgressStyle};
 
-use crate::tv::Sleepable;
-
-pub struct TopStocksFetcher<'a> {
+pub struct TopStocksFetcher {
     page: Page,
     count: usize,
     descending: bool,
-    pb: &'a ProgressBar,
+    pb: ProgressBar,
 }
 
-impl<'a> TopStocksFetcher<'a> {
-    pub async fn load(
+impl TopStocksFetcher {
+    pub async fn load_screen_url(
         browser: &Browser,
         screen_url: &str,
         count: usize,
         descending: bool,
-        pb: &'a ProgressBar,
+        pb_size: usize,
     ) -> anyhow::Result<Self> {
-        pb.set_message("Opening new tab");
-        let page = browser.new_page("about:blank").await?;
-
+        let pb = ProgressBar::new(pb_size as u64);
+        pb.set_style(ProgressStyle::default_bar().template(
+            "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len} {msg}",
+        )?);
         pb.set_message(format!("Loading {screen_url}"));
-        page.goto(screen_url)
-            .await?
-            .wait_for_navigation()
-            .await?
+
+        let page = browser.new_page(screen_url).await?;
+        page.wait_for_navigation()
+            .await
+            .with_context(|| format!("Navigating to {screen_url} failed"))?
             .sleep()
             .await;
 
@@ -38,7 +41,98 @@ impl<'a> TopStocksFetcher<'a> {
         })
     }
 
-    pub async fn fetch_stocks(&self, sort_by: &str) -> anyhow::Result<Vec<String>> {
+    pub async fn fetch_stocks(&self, sort_by: &str) -> anyhow::Result<Vec<Stock>> {
+        self.sort_stocks(sort_by).await?;
+        self.page.sleep().await;
+
+        let sector_idx = self
+            .add_sector_industry_columns("Sector")
+            .await
+            .context("Failed to add sector column")?;
+        let industry_idx = self
+            .add_sector_industry_columns("Industry")
+            .await
+            .context("Failed to add IndustryGroup column")?;
+
+        self.pb
+            .set_message(format!("[{sort_by}] Quering rows from the table"));
+        let mut result = Vec::new();
+        for row in self
+            .page
+            .sleep()
+            .await
+            .find_elements(r#"table tbody[data-testid="selectable-rows-table-body"] tr.listRow"#)
+            .await
+            .context("Failed to find stock rows")?
+        {
+            let stock = Self::parse_stock(row, sector_idx, industry_idx).await?;
+
+            self.pb.set_message(format!("[{}]", stock.ticker));
+            self.pb.inc(1);
+
+            result.push(stock);
+            if result.len() >= self.count {
+                break;
+            }
+        }
+        Ok(result)
+    }
+
+    async fn parse_stock(
+        row: Element,
+        sector_idx: usize,
+        industry_idx: usize,
+    ) -> anyhow::Result<Stock> {
+        async fn parse_group(cell: &Element) -> anyhow::Result<Group> {
+            let anchor = cell.find_element("a").await?;
+            let name = anchor
+                .inner_text()
+                .await?
+                .context("No inner html found in cell")?
+                .trim()
+                .to_owned();
+            let url = anchor
+                .attribute("href")
+                .await?
+                .context("No link found in cell's anchor")?;
+            Ok(Group { name, url })
+        }
+
+        let row_key = row
+            .attribute("data-rowkey")
+            .await?
+            .context("No data rowkey")?;
+        let (exchange, ticker) = row_key
+            .split_once(':')
+            .map(|(exchange, stock)| (exchange.trim().to_uppercase(), stock.trim().to_uppercase()))
+            .with_context(|| format!("Couldn't extract exchange & ticker from {row_key}"))?;
+
+        let cells = row.find_elements("td").await?;
+        let sector = parse_group(
+            cells
+                .get(sector_idx)
+                .with_context(|| format!("Failed to get sector from column {sector_idx}"))?,
+        )
+        .await
+        .context("Failed to parse sector")?;
+        let industry = parse_group(
+            cells
+                .get(industry_idx)
+                .with_context(|| format!("Failed to get sector from industry {industry_idx}"))?,
+        )
+        .await
+        .context("Failed to parse industry group")?;
+
+        Ok(Stock {
+            ticker,
+            exchange,
+            sector,
+            industry,
+            last_update: Local::now().date_naive(),
+        })
+    }
+
+    async fn sort_stocks(&self, sort_by: &str) -> anyhow::Result<()> {
         self.pb
             .set_message(format!("[{sort_by}] Clicking performance tab"));
         self.page
@@ -77,41 +171,76 @@ impl<'a> TopStocksFetcher<'a> {
             .await?
             .click()
             .await?;
+        Ok(())
+    }
 
-        self.pb
-            .set_message(format!("[{sort_by}] Quering rows from the table"));
-        let rows = self
-            .page
-            .sleep()
-            .await
-            .find_elements(r#"table tbody[data-testid="selectable-rows-table-body"] tr.listRow"#)
+    async fn add_sector_industry_columns(&self, col_name: &str) -> anyhow::Result<usize> {
+        assert!(col_name == "Sector" || col_name == "Industry");
+
+        self.pb.set_message("Clicking Custom tab");
+        self.page
+            .find_xpath(r"//button[@role='tab'][contains(., 'Custom')]")
+            .await?
+            .click()
             .await?;
+        self.page.sleep().await;
 
-        let mut result = Vec::new();
-        for row in rows {
-            let Some(row_key) = row.attribute("data-rowkey").await? else {
-                continue;
-            };
-            let Some(stock) = row_key.split_once(':').map(|(_, stock)| stock.trim()) else {
-                continue;
-            };
+        if self
+            .page
+            .find_element(format!(r#"table thead th[data-field="{col_name}"]"#))
+            .await
+            .is_err()
+        {
+            self.pb
+                .set_message(format!("{col_name} column is not present, adding it."));
+            self.page
+                .find_element("table thead th#columns-plus-btn")
+                .await
+                .context("Couldn't find '+' button in the table header")?
+                .click()
+                .await?;
+            self.page.sleep().await;
 
-            self.pb.set_message(format!("[{stock}]"));
-            self.pb.inc(1);
+            self.pb
+                .set_message(format!("Searching for {col_name} column"));
+            let input_field = self
+                .page
+                .find_element(r#"#overlap-manager-root input[aria-label="Type column name"]"#)
+                .await
+                .context("Couldn't find column input field")?;
+            input_field.type_str(col_name).await?;
+            self.page.sleep().await;
 
-            result.push(stock.to_uppercase());
-            if result.len() >= self.count {
-                break;
+            self.pb.set_message(format!("Adding {col_name} column"));
+            self.page
+                .find_element(
+                    format!(r#"#overlap-manager-root div[data-qa-id="screener-add-filter-option__{col_name}"]"#),
+                )
+                .await
+                .with_context(|| format!("Couldn't find {col_name} column in the add form"))?
+                .click()
+                .await?;
+            self.page.sleep().await;
+        }
+        for (idx, column) in self
+            .page
+            .find_elements(r#"table thead th"#)
+            .await?
+            .iter()
+            .enumerate()
+        {
+            if let Some(data_field) = column.attribute("data-field").await?
+                && data_field == col_name
+            {
+                return Ok(idx);
             }
         }
-        Ok(result)
+
+        anyhow::bail!("Couldn't add {col_name} column");
     }
 
     pub async fn close(self) {
-        let target_id = self.page.target_id().clone();
-        self.page
-            .execute(CloseTargetParams::new(target_id))
-            .await
-            .ok();
+        self.pb.finish_with_message("Done fetching top stocks");
+        self.page.close_me().await;
     }
 }

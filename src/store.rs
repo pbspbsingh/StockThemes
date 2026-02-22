@@ -1,11 +1,11 @@
 use std::{collections::HashMap, path::PathBuf};
 
+use crate::Stock;
 use anyhow::Context;
 use chrono::{Local, TimeDelta};
 use log::error;
 use serde::{Deserialize, Serialize};
-
-use crate::Stock;
+use tokio::fs;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Store {
@@ -14,9 +14,14 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn load_store(store_file: impl Into<PathBuf>) -> anyhow::Result<Store> {
-        let store_file = store_file.into();
-        let Ok(content) = std::fs::read_to_string(&store_file) else {
+    pub async fn load_store(use_tv: bool) -> anyhow::Result<Store> {
+        let store_file = if use_tv {
+            "stocks_info_tv.json"
+        } else {
+            "stocks_info_yf.json"
+        }
+        .into();
+        let Ok(content) = fs::read_to_string(&store_file).await else {
             error!("Stock info file: {store_file:?} not found");
             return Ok(Self {
                 store_file,
@@ -36,14 +41,17 @@ impl Store {
         self.info.get(ticker.as_ref())
     }
 
-    pub fn add(&mut self, stock: Stock) -> anyhow::Result<()> {
-        self.info.insert(stock.ticker.clone(), stock);
-        self.save()
+    pub async fn add(&mut self, stock: &[Stock]) -> anyhow::Result<()> {
+        for stock in stock {
+            self.info.insert(stock.ticker.clone(), stock.clone());
+        }
+        self.save().await
     }
 
-    pub fn save(&mut self) -> anyhow::Result<()> {
+    pub async fn save(&mut self) -> anyhow::Result<()> {
         let content = serde_json::to_string_pretty(&self.info)?;
-        std::fs::write(&self.store_file, content)
+        fs::write(&self.store_file, content)
+            .await
             .with_context(|| format!("Failed to write stock info to {:?}", self.store_file))
     }
 }

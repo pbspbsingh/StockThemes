@@ -1,15 +1,14 @@
 use anyhow::Context;
 use chromiumoxide::{
     Browser, Element, Page,
-    cdp::browser_protocol::{
-        input::{DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams},
-        target::CloseTargetParams,
+    cdp::browser_protocol::input::{
+        DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
     },
 };
 use chrono::Local;
 use log::info;
 
-use super::TV_HOME;
+use super::{Closeable, TV_HOME};
 
 use crate::{Group, Stock, StockInfoFetcher, tv::Sleepable};
 
@@ -181,14 +180,6 @@ impl StockInfoLoader {
             .await?;
         Ok(())
     }
-
-    pub async fn close(&self) {
-        let target_id = self.page.target_id().clone();
-        self.page
-            .execute(CloseTargetParams::new(target_id))
-            .await
-            .ok();
-    }
 }
 
 #[async_trait::async_trait]
@@ -198,6 +189,6 @@ impl StockInfoFetcher for StockInfoLoader {
     }
 
     async fn done(&self) {
-        self.close().await;
+        self.page.close_me().await;
     }
 }

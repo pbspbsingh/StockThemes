@@ -1,11 +1,16 @@
+use crate::config::APP_CONFIG;
+use anyhow::Context;
+use axum::response::Html;
+use axum::{Router, routing};
 use chrono::NaiveDate;
-
+use log::info;
 use serde::{Deserialize, Serialize};
+use tokio::net::TcpListener;
 
 pub mod browser;
 pub mod config;
 pub mod store;
-pub mod template;
+pub mod summary;
 pub mod tv;
 pub mod util;
 pub mod yf;
@@ -26,28 +31,6 @@ pub struct Group {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Summary {
-    pub size: usize,
-    pub sectors: Vec<SummarySector>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SummarySector {
-    pub name: String,
-    pub url: String,
-    pub size: usize,
-    pub industries: Vec<SummaryIndustry>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SummaryIndustry {
-    pub name: String,
-    pub url: String,
-    pub size: usize,
-    pub tickers: Vec<Ticker>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Ticker {
     pub exchange: String,
     pub ticker: String,
@@ -58,4 +41,23 @@ pub trait StockInfoFetcher {
     async fn fetch(&self, ticker: &str) -> anyhow::Result<Stock>;
 
     async fn done(&self) {}
+}
+
+pub fn init_logger() {
+    env_logger::Builder::new()
+        .parse_filters(&APP_CONFIG.log_config)
+        .init();
+}
+
+pub async fn start_http_server(html: String) -> anyhow::Result<()> {
+    let addr = "127.0.0.1:8000";
+    let listener = TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("Failed to bind at {addr}: e"))?;
+
+    info!("Running http server at: {addr}");
+    let app = Router::new().route("/", routing::get(async || Html(html)));
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }

@@ -1,14 +1,14 @@
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-};
-
 use anyhow::Context;
 use clap::Parser;
-use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use log::info;
-use stock_themes::{browser, config::APP_CONFIG, tv::top_stocks_fetcher::TopStocksFetcher};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use stock_themes::summary::Summary;
+use stock_themes::{
+    browser, init_logger, start_http_server, tv::top_stocks_fetcher::TopStocksFetcher,
+};
+use stock_themes::store::Store;
 
 #[derive(Parser, Debug)]
 #[command(name = "top_stocks")]
@@ -37,44 +37,53 @@ struct TopStocksArgs {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> anyhow::Result<()> {
-    env_logger::Builder::new()
-        .parse_filters(&APP_CONFIG.log_config)
-        .init();
+    init_logger();
 
     let args = TopStocksArgs::parse();
     info!("Screen url: {}", args.tv_screen_url);
 
+    let tf = args
+        .time_frames
+        .split(',')
+        .map(str::trim)
+        .map(|x| x.to_uppercase())
+        .collect_vec();
+
     let browser = browser::init_browser().await?;
 
-    let tf = args.time_frames.split(',').map(str::trim).collect_vec();
-    let mut stocks = HashSet::new();
-
-    let pb = ProgressBar::new((tf.len() * args.top_count) as u64);
-    pb.set_style(
-        ProgressStyle::default_bar().template(
-            "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len} {msg}",
-        )?,
-    );
-
-    let fetcher = TopStocksFetcher::load(
+    let fetcher = TopStocksFetcher::load_screen_url(
         &browser,
         &args.tv_screen_url,
         args.top_count,
         !args.fetch_losers,
-        &pb,
+        tf.len() * args.top_count,
     )
     .await?;
+
+    let mut stocks = HashMap::new();
     for sort_by in tf {
-        stocks.extend(fetcher.fetch_stocks(sort_by).await?);
+        for stock in fetcher.fetch_stocks(&sort_by).await? {
+            stocks.insert(stock.ticker.clone(), stock);
+        }
     }
-    pb.finish_with_message("Done fetching top stocks");
     fetcher.close().await;
 
     info!("Total {} unique stocks fetched", stocks.len());
-    save_csv(&args.output_file, &args.tv_screen_url, stocks).await
+    save_csv(
+        &args.output_file,
+        &args.tv_screen_url,
+        stocks.keys().cloned().collect(),
+    )
+    .await?;
+
+    Store::load_store(true).await?.add(&stocks.values().cloned().collect_vec()).await?;
+
+    let summary = Summary::summarize(stocks.values().cloned().collect());
+    let html = summary.render(vec![]);
+    start_http_server(html).await
 }
 
-async fn save_csv(file: &Path, source: &str, stocks: HashSet<String>) -> anyhow::Result<()> {
+async fn save_csv(file: &Path, source: &str, stocks: Vec<String>) -> anyhow::Result<()> {
     use std::fmt::Write;
 
     let mut content = String::new();

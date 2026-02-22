@@ -30,6 +30,6 @@ fn parse_config(file: &Path) -> anyhow::Result<Config> {
     let content =
         std::fs::read_to_string(file).with_context(|| format!("Couldn't read {file:?}"))?;
     let config = toml::from_str(&content)
-        .with_context(|| format!("Couldn't parse into config\n:{content}"))?;
+        .with_context(|| format!("Couldn't parse into config:\n{content}"))?;
     Ok(config)
 }
