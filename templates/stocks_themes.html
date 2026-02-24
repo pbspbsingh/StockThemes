@@ -270,6 +270,17 @@
             align-items: center;
         }
 
+        .preview-header #preview-title a {
+            color: #4a9eff;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .preview-header #preview-title a:hover {
+            color: #6ab0ff;
+            text-decoration: underline;
+        }
+
         .chart-toggle {
             display: flex;
             gap: 2px;
@@ -649,7 +660,14 @@
                 for (const industry of sector.industries) {
                     const ticker = industry.tickers.find(t => t.ticker === tickerSymbol);
                     if (ticker) {
-                        return { sector: sector.name, industry: industry.name, ticker: tickerSymbol };
+                        return {
+                            sector: sector.name,
+                            sectorUrl: sector.url,
+                            industry: industry.name,
+                            industryUrl: industry.url,
+                            ticker: tickerSymbol,
+                            exchange: ticker.exchange
+                        };
                     }
                 }
             }
@@ -776,7 +794,7 @@
             const toggleElement = document.getElementById('chart-toggle');
 
             if (tickerInfo) {
-                titleElement.textContent = `${tickerInfo.sector} / ${tickerInfo.industry} / ${tickerInfo.ticker}`;
+                titleElement.innerHTML = `<a href="${tickerInfo.sectorUrl}" target="_blank">${tickerInfo.sector}</a> \\ <a href="${tickerInfo.industryUrl}" target="_blank">${tickerInfo.industry}</a> \\ <a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank">${tickerInfo.ticker}</a>`;
                 toggleElement.style.display = 'flex';
             } else {
                 titleElement.textContent = 'Preview';
