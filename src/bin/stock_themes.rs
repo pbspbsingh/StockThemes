@@ -75,7 +75,7 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
 
     if !new_stocks.is_empty() {
         let si_fetcher = if !use_tv {
-            Box::new(YFinance::new().await?) as Box<dyn StockInfoFetcher + Send + Sync>
+            Box::new(YFinance::new()) as Box<dyn StockInfoFetcher + Send + Sync>
         } else {
             let browser = browser::init_browser().await?;
             info!("Starting fetching of stock info...");
