@@ -1,14 +1,16 @@
 use anyhow::Context;
 
 use clap::Parser;
+use futures::{stream, StreamExt, TryStreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use log::{error, info, warn};
+use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, path::PathBuf};
 use stock_themes::{
-    Stock, StockInfoFetcher, browser, config::APP_CONFIG, init_logger, start_http_server,
-    store::Store, tv::stock_info_loader::StockInfoLoader, util,
+    browser, config::APP_CONFIG, init_logger, start_http_server, store::Store, tv::stock_info_loader::StockInfoLoader,
+    util, Stock, StockInfoFetcher,
 };
 
 use stock_themes::summary::Summary;
@@ -66,11 +68,15 @@ async fn main() -> anyhow::Result<()> {
 
 async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
     let use_tv = APP_CONFIG.use_tv_for_stock_info;
-    let mut store = Store::load_store(use_tv).await?;
-    let new_stocks = stocks
-        .iter()
-        .filter(|&s| store.get(s).is_none())
-        .collect_vec();
+    let store = Arc::new(Store::load_store(use_tv).await?);
+
+    let new_stocks: Vec<_> = stream::iter(stocks.iter())
+        .filter(|&ticker| {
+            let value = store.clone();
+            async move { value.get_stock(ticker).await.ok().flatten().is_none() }
+        })
+        .collect()
+        .await;
     info!("New stocks: {}", new_stocks.len());
 
     if !new_stocks.is_empty() {
@@ -103,7 +109,7 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
                     continue;
                 }
             };
-            store.add(&[stock]).await?;
+            store.add_stocks(&[stock]).await?;
         }
         if !errors.is_empty() {
             error!("Error while fetching info for {} tickers", errors.len());
@@ -119,9 +125,9 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
         si_fetcher.done().await;
     }
 
-    Ok(stocks
-        .into_iter()
-        .filter_map(|ticker| store.get(&ticker))
-        .cloned()
-        .collect())
+    stream::iter(&stocks)
+        .then(async |ticker| store.get_stock(ticker).await)
+        .try_filter_map(async |opt| Ok(opt))
+        .try_collect()
+        .await
 }
