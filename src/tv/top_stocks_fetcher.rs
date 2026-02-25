@@ -1,9 +1,10 @@
-use crate::tv::{Closeable, Sleepable};
+use crate::tv::{Closeable, Sleepable, TV_HOME};
 use crate::{Group, Stock};
 use anyhow::{Context, Ok};
 use chromiumoxide::{Browser, Element, Page};
 use chrono::Local;
 use indicatif::{ProgressBar, ProgressStyle};
+use url::Url;
 
 pub struct TopStocksFetcher {
     page: Page,
@@ -174,10 +175,13 @@ impl TopStocksFetcher {
                 .context("No inner html found in cell")?
                 .trim()
                 .to_owned();
-            let url = anchor
+            let mut url = anchor
                 .attribute("href")
                 .await?
                 .context("No link found in cell's anchor")?;
+            if Url::parse(&url).is_err() {
+                url = Url::parse(TV_HOME).unwrap().join(&url)?.to_string();
+            }
             Ok(Group { name, url })
         }
 

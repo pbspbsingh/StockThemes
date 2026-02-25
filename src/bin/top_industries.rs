@@ -33,7 +33,7 @@ struct TopInsArgs {
     pub top_count: usize,
 
     /// Time frames from which top stocks to pick from
-    #[arg(short = 't', long, default_value = "1W,1M,3M,6M")]
+    #[arg(short = 't', long, default_value = "1M,3M,6M,1Y")]
     pub time_frames: String,
 }
 
@@ -77,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
 
     Store::load_store(true)
         .await?
-        .add(&stocks.values().cloned().collect_vec())
+        .add_stocks(&stocks.values().cloned().collect_vec())
         .await?;
 
     let summary = Summary::summarize(stocks.values().cloned().collect());
