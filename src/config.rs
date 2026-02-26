@@ -4,12 +4,12 @@ use std::{
 };
 
 use anyhow::Context;
-
-use serde::Deserialize;
+use chrono::NaiveTime;
+use serde::{Deserialize, Serialize};
 
 const CONFIG_FILE: &str = "config.toml";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub log_config: String,
     pub chrome_path: String,
@@ -19,6 +19,7 @@ pub struct Config {
     #[serde(default)]
     pub launch_chrome_if_needed: bool,
     pub use_tv_for_stock_info: bool,
+    pub market_hours: (NaiveTime, NaiveTime),
     #[serde(default)]
     pub ignored_stocks: Vec<String>,
 }
@@ -34,4 +35,25 @@ fn parse_config(file: &Path) -> anyhow::Result<Config> {
     let config = toml::from_str(&content)
         .with_context(|| format!("Couldn't parse into config:\n{content}"))?;
     Ok(config)
+}
+
+#[cfg(test)]
+mod test {
+    use chrono::NaiveTime;
+    use crate::config::Config;
+
+    #[test]
+    fn print_config() {
+        let config = Config {
+            log_config: "".into(),
+            chrome_path: "".into(),
+            user_data_dir: "".into(),
+            chrome_args: Vec::new(),
+            launch_chrome_if_needed: false,
+            use_tv_for_stock_info: true,
+            market_hours: (NaiveTime::from_hms_opt(6, 30, 0).unwrap(), NaiveTime::from_hms_opt(11, 00, 0).unwrap()),
+            ignored_stocks: Vec::new(),
+        };
+        eprintln!("Config:\n:{}", toml::to_string_pretty(&config).unwrap());
+    }
 }

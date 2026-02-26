@@ -4,6 +4,7 @@ chrome_args = ["--headless=new"]
 
 log_config = "info,headless_chrome=warn,stock_themes=debug"
 
+market_hours = ["06:30", "13:00"]
 use_tv_for_stock_info = true
 
 ignored_stocks = []

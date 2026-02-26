@@ -1,4 +1,5 @@
 use anyhow::Context;
+use chrono::{DateTime, Datelike, Local, TimeDelta, Weekday};
 use futures::stream;
 use itertools::Itertools;
 use log::{debug, info};
@@ -82,4 +83,44 @@ async fn parse_stocks(
     );
 
     Ok(result)
+}
+
+pub fn is_upto_date(time: DateTime<Local>) -> bool {
+    let now = Local::now();
+    let (market_open, market_close) = APP_CONFIG.market_hours;
+
+    let is_market_open = || match now.weekday() {
+        Weekday::Sat | Weekday::Sun => false,
+        _ => {
+            let t = now.time();
+            t >= market_open && t < market_close
+        }
+    };
+
+    let last_market_close = || {
+        let mut candidate = now.date_naive();
+
+        loop {
+            match candidate.weekday() {
+                Weekday::Sat | Weekday::Sun => {
+                    candidate -= TimeDelta::days(1);
+                }
+                _ => {
+                    let close_dt = candidate
+                        .and_time(market_close)
+                        .and_local_timezone(Local)
+                        .unwrap();
+                    if close_dt <= now {
+                        break close_dt;
+                    }
+                    candidate -= TimeDelta::days(1);
+                }
+            }
+        }
+    };
+
+    if is_market_open() {
+        return false;
+    }
+    time >= last_market_close()
 }

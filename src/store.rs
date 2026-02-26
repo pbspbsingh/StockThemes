@@ -2,11 +2,12 @@ use crate::{Group, Performance, Stock};
 use anyhow::Context;
 use chrono::{DateTime, Local, TimeDelta};
 use sqlx::sqlite::{SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
-use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
+use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use std::collections::HashMap;
 
-use std::sync::{Arc, LazyLock, Weak};
+use crate::util::is_upto_date;
 use log::warn;
+use std::sync::{Arc, LazyLock, Weak};
 use tokio::sync::Mutex;
 
 const DB_FILE: &str = "database.sqlite";
@@ -168,7 +169,7 @@ impl Store {
     }
 
     pub async fn get_performance(&self, ticker: &str) -> sqlx::Result<Option<Performance>> {
-        sqlx::query_as!(
+        let result = sqlx::query_as!(
             Performance,
             r#"
                 SELECT
@@ -185,11 +186,17 @@ impl Store {
             ticker,
         )
         .fetch_optional(&self.pool)
-        .await
+        .await?;
+        if let Some(perf) = result
+            && is_upto_date(perf.last_updated)
+        {
+            return Ok(Some(perf));
+        }
+        Ok(None)
     }
 
     pub async fn get_all_performances(&self) -> sqlx::Result<Vec<Performance>> {
-        sqlx::query_as!(
+        let result = sqlx::query_as!(
             Performance,
             r#"
                 SELECT
@@ -205,7 +212,11 @@ impl Store {
             "#,
         )
         .fetch_all(&self.pool)
-        .await
+        .await?;
+        Ok(result
+            .into_iter()
+            .filter(|p| is_upto_date(p.last_updated))
+            .collect())
     }
 }
 
