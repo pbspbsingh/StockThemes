@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use crate::config::APP_CONFIG;
 use anyhow::Context;
 use axum::response::Html;
 use axum::{Router, routing};
-use chrono::NaiveDate;
+use chrono::{DateTime, Local, NaiveDate};
 use log::info;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
@@ -34,6 +35,17 @@ pub struct Group {
 pub struct Ticker {
     pub exchange: String,
     pub ticker: String,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct Performance {
+    pub ticker: String,
+    pub perf_1m: f64,
+    pub perf_3m: f64,
+    pub perf_6m: f64,
+    pub perf_1y: f64,
+    pub last_updated: DateTime<Local>,
+    pub extra_info: sqlx::types::Json<HashMap<String, f64>>,
 }
 
 #[async_trait::async_trait]

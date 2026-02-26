@@ -26,7 +26,7 @@ futures = "0.3"
 axum = "0.8"
 reqwest = { version = "0.13", features = ["json", "cookies", "gzip", "deflate"] }
 chromiumoxide = { version = "0.8", features = ["tokio"] }
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "chrono"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "chrono", "json"] }
 
 anyhow = "1"
 rand = "0.10"

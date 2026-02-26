@@ -68,9 +68,9 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    Store::load_store(true)
+    Store::load_store()
         .await?
-        .add_stocks(&stocks.values().cloned().collect_vec())
+        .add_stocks(&stocks.values().cloned().collect_vec(), true)
         .await?;
 
     let summary = Summary::summarize(stocks.values().cloned().collect());

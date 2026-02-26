@@ -1,8 +1,5 @@
--- Migration: 001_create_stocks.sql
--- Creates the unified stocks table with a `source` column to differentiate
--- between TradingView (`tv`) and Yahoo Finance (`yf`) data sources.
-
-CREATE TABLE IF NOT EXISTS stocks (
+CREATE TABLE IF NOT EXISTS stocks
+(
     source        TEXT NOT NULL,
     ticker        TEXT NOT NULL,
     exchange      TEXT NOT NULL,

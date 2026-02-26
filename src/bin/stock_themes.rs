@@ -68,12 +68,12 @@ async fn main() -> anyhow::Result<()> {
 
 async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
     let use_tv = APP_CONFIG.use_tv_for_stock_info;
-    let store = Arc::new(Store::load_store(use_tv).await?);
+    let store = Store::load_store().await?;
 
     let new_stocks: Vec<_> = stream::iter(stocks.iter())
         .filter(|&ticker| {
             let value = store.clone();
-            async move { value.get_stock(ticker).await.ok().flatten().is_none() }
+            async move { value.get_stock(ticker, use_tv).await.ok().flatten().is_none() }
         })
         .collect()
         .await;
@@ -109,7 +109,7 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
                     continue;
                 }
             };
-            store.add_stocks(&[stock]).await?;
+            store.add_stocks(&[stock], use_tv).await?;
         }
         if !errors.is_empty() {
             error!("Error while fetching info for {} tickers", errors.len());
@@ -126,7 +126,7 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
     }
 
     stream::iter(&stocks)
-        .then(async |ticker| store.get_stock(ticker).await)
+        .then(async |ticker| store.get_stock(ticker, use_tv).await)
         .try_filter_map(async |opt| Ok(opt))
         .try_collect()
         .await

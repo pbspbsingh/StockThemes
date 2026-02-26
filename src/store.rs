@@ -1,23 +1,28 @@
-use crate::{Group, Stock, yf::Candle};
+use crate::{Group, Performance, Stock};
 use anyhow::Context;
-use chrono::{DateTime, Local, TimeDelta, Utc};
+use chrono::{DateTime, Local, TimeDelta};
 use sqlx::sqlite::{SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
+use std::collections::HashMap;
+
+use std::sync::{Arc, LazyLock, Weak};
+use log::warn;
+use tokio::sync::Mutex;
 
 const DB_FILE: &str = "database.sqlite";
 
+static INSTANCE: LazyLock<Mutex<Weak<Store>>> = LazyLock::new(|| Mutex::new(Weak::new()));
+
 pub struct Store {
     pool: SqlitePool,
-    source: String,
 }
 
 impl Store {
-    pub async fn load_store(use_tv: bool) -> anyhow::Result<Store> {
-        let source = if use_tv {
-            String::from("TradingView")
-        } else {
-            String::from("YahooFinance")
-        };
+    pub async fn load_store() -> anyhow::Result<Arc<Store>> {
+        let mut weak = INSTANCE.lock().await;
+        if let Some(arc) = weak.upgrade() {
+            return Ok(arc);
+        }
 
         let options = SqliteConnectOptions::new()
             .filename(DB_FILE)
@@ -43,24 +48,38 @@ impl Store {
 
         // Evict stale stock rows for this source (older than 30 days)
         let cutoff = Local::now().date_naive() - TimeDelta::days(30);
-        sqlx::query!("DELETE FROM stocks WHERE last_update < ?", cutoff)
+        sqlx::query!("DELETE FROM stocks WHERE last_update < $1", cutoff)
             .execute(&pool)
             .await
             .context("Failed to evict stale stock rows")?;
 
-        Ok(Store { pool, source })
+        let store = Arc::new(Store { pool });
+        *weak = Arc::downgrade(&store);
+
+        Ok(store)
     }
 
+    fn source(use_tv: bool) -> &'static str {
+        if use_tv {
+            "TradingView"
+        } else {
+            "YahooFinance"
+        }
+    }
     // ── Stock methods ────────────────────────────────────────────────────────
 
-    pub async fn get_stock(&self, ticker: impl AsRef<str>) -> anyhow::Result<Option<Stock>> {
+    pub async fn get_stock(
+        &self,
+        ticker: impl AsRef<str>,
+        use_tv: bool,
+    ) -> anyhow::Result<Option<Stock>> {
         let ticker = ticker.as_ref();
-        let source = self.source.as_str();
+        let source = Self::source(use_tv);
 
         let row = sqlx::query!(
             "SELECT ticker, exchange, sector_name, sector_url, industry_name, industry_url, last_update
              FROM stocks
-             WHERE source = ? AND ticker = ?",
+             WHERE source = $1 AND ticker = $2",
             source,
             ticker,
         )
@@ -83,14 +102,14 @@ impl Store {
         }))
     }
 
-    pub async fn add_stocks(&self, stocks: &[Stock]) -> anyhow::Result<()> {
+    pub async fn add_stocks(&self, stocks: &[Stock], is_tv: bool) -> anyhow::Result<()> {
         let mut tx = self
             .pool
             .begin()
             .await
             .context("Failed to begin transaction")?;
         for stock in stocks {
-            let source = &self.source;
+            let source = Self::source(is_tv);
             sqlx::query!(
                 r"INSERT INTO stocks
                     (source, ticker, exchange, sector_name, sector_url,
@@ -122,126 +141,81 @@ impl Store {
             .context("Failed to commit stock transaction")
     }
 
-    // ── Candle methods ───────────────────────────────────────────────────────
-
-    /// Insert or replace candles for a given ticker.
-    pub async fn add_candles(
-        &self,
-        ticker: impl AsRef<str>,
-        candles: &[Candle],
-    ) -> anyhow::Result<()> {
-        let ticker = ticker.as_ref();
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .context("Failed to begin transaction")?;
-
-        for candle in candles {
-            let volume = candle.volume as i64;
-            sqlx::query!(
-                r"INSERT INTO candles (ticker, timestamp, open, high, low, close, volume)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                 ON CONFLICT(ticker, timestamp) DO UPDATE SET
-                    open   = $3,
-                    high   = $4,
-                    low    = $5,
-                    close  = $6,
-                    volume = $7
-                ",
-                ticker,
-                candle.timestamp,
-                candle.open,
-                candle.high,
-                candle.low,
-                candle.close,
-                volume
+    pub async fn save_performance(&self, perf: &Performance) -> sqlx::Result<()> {
+        sqlx::query!(
+                r#"
+                INSERT INTO performance (ticker, perf_1m, perf_3m, perf_6m, perf_1y, last_updated, extra_info)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT(ticker) DO UPDATE SET
+                    perf_1m      = excluded.perf_1m,
+                    perf_3m      = excluded.perf_3m,
+                    perf_6m      = excluded.perf_6m,
+                    perf_1y      = excluded.perf_1y,
+                    last_updated = excluded.last_updated,
+                    extra_info   = excluded.extra_info
+                "#,
+                perf.ticker,
+                perf.perf_1m,
+                perf.perf_3m,
+                perf.perf_6m,
+                perf.perf_1y,
+                perf.last_updated,
+                perf.extra_info,
             )
-            .execute(&mut *tx)
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to upsert candle for {} at {}",
-                    ticker, candle.timestamp,
-                )
-            })?;
-        }
-
-        tx.commit()
-            .await
-            .context("Failed to commit candle transaction")
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
-    /// Fetch candles for a ticker within [from, to] (inclusive).
-    pub async fn get_candles(
-        &self,
-        ticker: impl AsRef<str>,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-    ) -> anyhow::Result<Vec<Candle>> {
-        let ticker = ticker.as_ref();
-        let from_ts = from.timestamp();
-        let to_ts = to.timestamp();
-
-        let rows = sqlx::query!(
-            "SELECT timestamp, open, high, low, close, volume
-             FROM candles
-             WHERE ticker = ? AND timestamp BETWEEN ? AND ?
-             ORDER BY timestamp ASC",
+    pub async fn get_performance(&self, ticker: &str) -> sqlx::Result<Option<Performance>> {
+        sqlx::query_as!(
+            Performance,
+            r#"
+                SELECT
+                    ticker,
+                    perf_1m,
+                    perf_3m,
+                    perf_6m,
+                    perf_1y,
+                    last_updated as "last_updated: DateTime<Local>",
+                    extra_info as "extra_info: sqlx::types::Json<HashMap<String, f64>>"
+                FROM performance
+                WHERE ticker = $1
+            "#,
             ticker,
-            from_ts,
-            to_ts
+        )
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn get_all_performances(&self) -> sqlx::Result<Vec<Performance>> {
+        sqlx::query_as!(
+            Performance,
+            r#"
+                SELECT
+                    ticker,
+                    perf_1m,
+                    perf_3m,
+                    perf_6m,
+                    perf_1y,
+                    last_updated as "last_updated: DateTime<Local>",
+                    extra_info as "extra_info: sqlx::types::Json<HashMap<String, f64>>"
+                FROM performance
+                ORDER BY ticker
+            "#,
         )
         .fetch_all(&self.pool)
         .await
-        .with_context(|| format!("Failed to fetch candles for {ticker}"))?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| Candle {
-                timestamp: r.timestamp.and_utc(),
-                open: r.open,
-                high: r.high,
-                low: r.low,
-                close: r.close,
-                volume: r.volume as u64,
-            })
-            .collect())
     }
+}
 
-    /// Fetch the most recent `limit` candles for a ticker.
-    pub async fn get_latest_candles(
-        &self,
-        ticker: impl AsRef<str>,
-        limit: i64,
-    ) -> anyhow::Result<Vec<Candle>> {
-        let ticker = ticker.as_ref();
-
-        let mut candles = sqlx::query!(
-            "SELECT timestamp, open, high, low, close, volume
-             FROM candles
-             WHERE ticker = ?
-             ORDER BY timestamp DESC
-             LIMIT ?",
-            ticker,
-            limit
-        )
-        .fetch_all(&self.pool)
-        .await
-        .with_context(|| format!("Failed to fetch latest candles for {ticker}"))?
-        .into_iter()
-        .map(|r| Candle {
-            timestamp: r.timestamp.and_utc(),
-            open: r.open,
-            high: r.high,
-            low: r.low,
-            close: r.close,
-            volume: r.volume as u64,
-        })
-        .collect::<Vec<_>>();
-
-        // Re-sort ascending after the DESC fetch used for LIMIT efficiency
-        candles.sort_unstable_by_key(|c| c.timestamp);
-        Ok(candles)
+impl Drop for Store {
+    fn drop(&mut self) {
+        let pool = self.pool.clone();
+        tokio::spawn(async move {
+            if let Err(e) = sqlx::query!("VACUUM").execute(&pool).await {
+                warn!("Failed to VACUUM on Store drop: {e}");
+            }
+        });
     }
 }
