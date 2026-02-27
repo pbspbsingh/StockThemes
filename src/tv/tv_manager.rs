@@ -1,5 +1,6 @@
 use crate::store::Store;
 use crate::tv::Closeable;
+use crate::tv::stock_info_loader::StockInfoLoader;
 use crate::tv::top_industry_groups::TopIndustryGroups;
 use crate::tv::top_stocks_fetcher::TopStocksFetcher;
 use crate::{Performance, Stock, TickerType, browser};
@@ -58,6 +59,19 @@ impl TvManager {
         Ok(industries)
     }
 
+    pub async fn fetch_stock_info(&mut self, ticker: &str) -> anyhow::Result<Stock> {
+        if let Some(stock) = self.store.get_stock(ticker).await? {
+            return Ok(stock);
+        }
+
+        let si_loader = StockInfoLoader::new(self.get_or_init_page().await?).await?;
+        let stock = si_loader.fetch_stock_info(ticker).await?;
+
+        self.store.add_stocks(&[stock.clone()]).await?;
+
+        Ok(stock)
+    }
+
     pub async fn fetch_top_stocks(
         &mut self,
         screen_url: &str,
@@ -108,7 +122,7 @@ impl TvManager {
         for sort_by in time_frames {
             let (stocks, perfs) = fetcher.fetch_stocks(&sort_by).await?;
 
-            store.add_stocks(&stocks, true).await?;
+            store.add_stocks(&stocks).await?;
             store.save_performances(&perfs).await?;
 
             for stock in stocks {

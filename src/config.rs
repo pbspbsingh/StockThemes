@@ -18,7 +18,6 @@ pub struct Config {
     pub chrome_args: Vec<String>,
     #[serde(default)]
     pub launch_chrome_if_needed: bool,
-    pub use_tv_for_stock_info: bool,
     pub market_hours: (NaiveTime, NaiveTime),
     pub base_ticker: String,
     #[serde(default)]
@@ -51,7 +50,6 @@ mod test {
             user_data_dir: "".into(),
             chrome_args: Vec::new(),
             launch_chrome_if_needed: false,
-            use_tv_for_stock_info: true,
             market_hours: (
                 NaiveTime::from_hms_opt(6, 30, 0).unwrap(),
                 NaiveTime::from_hms_opt(11, 00, 0).unwrap(),

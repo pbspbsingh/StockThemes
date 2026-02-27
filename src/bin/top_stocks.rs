@@ -69,7 +69,6 @@ async fn main() -> anyhow::Result<()> {
             time_frames(&args.time_frames),
         )
         .await?;
-
     drop(tv_manager);
     info!("Total {} unique stocks fetched", stocks.len());
 

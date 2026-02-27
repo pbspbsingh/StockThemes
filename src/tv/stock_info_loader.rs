@@ -1,48 +1,33 @@
 use anyhow::Context;
 use chromiumoxide::{
-    Browser, Element, Page,
+    Element, Page,
     cdp::browser_protocol::input::{
         DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
     },
 };
 use chrono::Local;
-use log::info;
 
-use super::{Closeable, TV_HOME};
+use super::TV_HOME;
 
 use crate::{Group, Stock, StockInfoFetcher, tv::Sleepable};
 
-pub struct StockInfoLoader {
-    _browser: Browser,
-    page: Page,
+pub struct StockInfoLoader<'a> {
+    page: &'a Page,
 }
 
-impl StockInfoLoader {
-    pub async fn load(browser: Browser) -> anyhow::Result<Self> {
-        for page in browser.pages().await? {
-            if let Some(url) = page.url().await?
-                && url.starts_with(TV_HOME)
-            {
-                info!("Reusing the existing page: {url}");
-                return Ok(Self {
-                    _browser: browser,
-                    page,
-                });
-            }
+impl<'a> StockInfoLoader<'a> {
+    pub async fn new(page: &'a Page) -> anyhow::Result<Self> {
+        let url = page.url().await?.unwrap_or_default();
+        let tv_home = format!("{TV_HOME}/markets/usa/");
+        if !(url == tv_home || url.starts_with(&format!("{TV_HOME}/chart/"))) {
+            page.goto(tv_home)
+                .await?
+                .wait_for_navigation()
+                .await?
+                .sleep()
+                .await;
         }
-
-        let page = browser.new_page("about:blank").await?;
-        page.goto(&format!("{TV_HOME}/markets/usa/"))
-            .await?
-            .wait_for_navigation()
-            .await?
-            .sleep()
-            .await;
-
-        Ok(Self {
-            _browser: browser,
-            page,
-        })
+        Ok(Self { page })
     }
 
     pub async fn fetch_stock_info(&self, ticker: &str) -> anyhow::Result<Stock> {
@@ -183,12 +168,8 @@ impl StockInfoLoader {
 }
 
 #[async_trait::async_trait]
-impl StockInfoFetcher for StockInfoLoader {
+impl<'a> StockInfoFetcher for StockInfoLoader<'a> {
     async fn fetch(&self, ticker: &str) -> anyhow::Result<Stock> {
         self.fetch_stock_info(ticker).await
-    }
-
-    async fn done(&self) {
-        self.page.close_me().await;
     }
 }

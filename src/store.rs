@@ -64,29 +64,14 @@ impl Store {
         Ok(store)
     }
 
-    fn source(use_tv: bool) -> &'static str {
-        if use_tv {
-            "TradingView"
-        } else {
-            "YahooFinance"
-        }
-    }
-
     // ── Stock methods ────────────────────────────────────────────────────────
 
-    pub async fn get_stock(
-        &self,
-        ticker: impl AsRef<str>,
-        use_tv: bool,
-    ) -> anyhow::Result<Option<Stock>> {
+    pub async fn get_stock(&self, ticker: impl AsRef<str>) -> anyhow::Result<Option<Stock>> {
         let ticker = ticker.as_ref();
-        let source = Self::source(use_tv);
-
         let row = sqlx::query!(
             "SELECT ticker, exchange, sector_name, sector_url, industry_name, industry_url, last_update
              FROM stocks
-             WHERE source = $1 AND ticker = $2",
-            source,
+             WHERE ticker = $1",
             ticker,
         )
             .fetch_optional(&self.pool)
@@ -108,24 +93,22 @@ impl Store {
         }))
     }
 
-    pub async fn add_stocks(&self, stocks: &[Stock], is_tv: bool) -> sqlx::Result<()> {
-        let source = Self::source(is_tv);
+    pub async fn add_stocks(&self, stocks: &[Stock]) -> sqlx::Result<()> {
         let mut tx = self.pool.begin().await?;
 
         for stock in stocks {
             sqlx::query!(
                 r"INSERT INTO stocks
-                    (source, ticker, exchange, sector_name, sector_url,
+                    (ticker, exchange, sector_name, sector_url,
                      industry_name, industry_url, last_update)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                 ON CONFLICT(source, ticker) DO UPDATE SET
-                    exchange      = $3,
-                    sector_name   = $4,
-                    sector_url    = $5,
-                    industry_name = $6,
-                    industry_url  = $7,
-                    last_update   = $8",
-                source,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 ON CONFLICT(ticker) DO UPDATE SET
+                    exchange      = excluded.exchange,
+                    sector_name   = excluded.sector_name,
+                    sector_url    = excluded.sector_url,
+                    industry_name = excluded.industry_name,
+                    industry_url  = excluded.industry_url,
+                    last_update   = excluded.last_update",
                 stock.ticker,
                 stock.exchange,
                 stock.sector.name,

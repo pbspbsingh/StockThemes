@@ -1,21 +1,21 @@
 use anyhow::Context;
 
 use clap::Parser;
-use futures::{StreamExt, TryStreamExt, stream};
+
 use indicatif::{ProgressBar, ProgressStyle};
-use itertools::Itertools;
-use log::{error, info, warn};
-use std::sync::Arc;
-use std::time::Duration;
-use std::{collections::HashMap, path::PathBuf};
+
+use log::info;
+
+use std::path::PathBuf;
 use stock_themes::{
-    Stock, StockInfoFetcher, browser, config::APP_CONFIG, init_logger, start_http_server,
-    store::Store, tv::stock_info_loader::StockInfoLoader, util,
+    Performance, Stock, config::APP_CONFIG, fetch_stock_perf, init_logger, start_http_server,
+    store::Store, util,
 };
 
 use stock_themes::summary::Summary;
+use stock_themes::tv::tv_manager::TvManager;
 use stock_themes::yf::YFinance;
-use tokio::{fs, time};
+use tokio::fs;
 
 const HTML_FILE: &str = "stocks_themes.html";
 
@@ -41,20 +41,31 @@ async fn main() -> anyhow::Result<()> {
     init_logger();
 
     let args = StockThemesArgs::parse();
-    info!(
-        "Reading {} csv files, skipping {} lines",
-        args.files.len(),
-        args.skip_lines,
-    );
+    info!("args: {args:#?}");
 
-    let stocks = util::read_stocks(&args.files, args.skip_lines, &args.skip_stocks).await?;
-    info!("Total unique stocks: {}", stocks.len());
+    let yf = YFinance::new();
+    let store = Store::load_store().await?;
 
-    let stocks = fetch_stock_info(stocks).await?;
-    info!("Fetched stock info of {} stocks", stocks.len());
+    let base_perf = fetch_stock_perf(store.clone(), &yf, &APP_CONFIG.base_ticker).await?;
+    info!("Fetched baseline: {}", base_perf.ticker);
+
+    let mut tv_manager = TvManager::new(store.clone());
+
+    let sectors = tv_manager.fetch_sectors().await?;
+    info!("Fetched {} sectors", sectors.len());
+
+    let industries = tv_manager.fetch_industries().await?;
+    info!("Fetched {} industry groups", industries.len());
+
+    let tickers = util::read_stocks(&args.files, args.skip_lines, &args.skip_stocks).await?;
+    info!("Total unique stocks: {}", tickers.len());
+
+    let (stocks, stock_perfs) = fetch_stock_info(&mut tv_manager, &yf, tickers).await?;
+    drop(tv_manager);
 
     let summary = Summary::summarize(stocks);
-    let html = summary.render(vec![]);
+    let html = summary.render(sectors, industries, stock_perfs, &base_perf);
+
     fs::write(HTML_FILE, &html)
         .await
         .with_context(|| format!("Failed to write {HTML_FILE}"))?;
@@ -66,75 +77,33 @@ async fn main() -> anyhow::Result<()> {
     start_http_server(html).await
 }
 
-async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
-    let use_tv = APP_CONFIG.use_tv_for_stock_info;
-    let store = Store::load_store().await?;
-
-    let new_stocks: Vec<_> = stream::iter(stocks.iter())
-        .filter(|&ticker| {
-            let value = store.clone();
-            async move {
-                value
-                    .get_stock(ticker, use_tv)
-                    .await
-                    .ok()
-                    .flatten()
-                    .is_none()
-            }
-        })
-        .collect()
-        .await;
-    info!("New stocks: {}", new_stocks.len());
-
-    if !new_stocks.is_empty() {
-        let si_fetcher = if !use_tv {
-            Box::new(YFinance::new()) as Box<dyn StockInfoFetcher + Send + Sync>
-        } else {
-            let browser = browser::init_browser().await?;
-            info!("Starting fetching of stock info...");
-
-            let tv = StockInfoLoader::load(browser).await?;
-            Box::new(tv) as Box<dyn StockInfoFetcher + Send + Sync>
-        };
-
-        let pb = ProgressBar::new(new_stocks.len() as u64);
-        pb.set_style(ProgressStyle::default_bar().template(
+async fn fetch_stock_info(
+    tv_manager: &mut TvManager,
+    yf: &YFinance,
+    tickers: Vec<String>,
+) -> anyhow::Result<(Vec<Stock>, Vec<Performance>)> {
+    let pb = ProgressBar::new(tickers.len() as u64);
+    pb.set_style(
+        ProgressStyle::default_bar().template(
             "{spinner:.green} [{elapsed_precise}] [{bar:60.cyan/blue}] {pos}/{len} {msg}",
-        )?);
-        let mut errors = HashMap::new();
-        for ticker in new_stocks {
-            pb.set_message(format!("[{ticker}]"));
-            pb.inc(1);
-            let result = si_fetcher.fetch(ticker).await;
-            if !use_tv {
-                time::sleep(Duration::from_millis(rand::random_range(100..300))).await;
-            }
-            let stock = match result {
-                Ok(stock) => stock,
-                Err(e) => {
-                    errors.insert(ticker, e);
-                    continue;
-                }
-            };
-            store.add_stocks(&[stock], use_tv).await?;
-        }
-        if !errors.is_empty() {
-            error!("Error while fetching info for {} tickers", errors.len());
-            for (ticker, error) in &errors {
-                warn!("\t{ticker} -> {error}");
-            }
-            anyhow::bail!(
-                "Fetching stock info failed for '{}'",
-                errors.keys().join(",")
-            )
-        }
-        pb.finish_with_message("Done fetching all the tickers!");
-        si_fetcher.done().await;
+        )?,
+    );
+
+    let store = Store::load_store().await?;
+    let mut stocks = Vec::with_capacity(tickers.len());
+    let mut perfs = Vec::with_capacity(tickers.len());
+
+    for ticker in tickers {
+        pb.set_message(format!("[{ticker}] info..."));
+        pb.tick();
+        stocks.push(tv_manager.fetch_stock_info(&ticker).await?);
+
+        pb.set_message(format!("[{ticker}] performance..."));
+        pb.inc(1);
+        perfs.push(fetch_stock_perf(store.clone(), yf, &ticker).await?);
     }
 
-    stream::iter(&stocks)
-        .then(async |ticker| store.get_stock(ticker, use_tv).await)
-        .try_filter_map(async |opt| Ok(opt))
-        .try_collect()
-        .await
+    pb.finish_with_message(format!("Finished processing {} tickers", stocks.len()));
+
+    Ok((stocks, perfs))
 }
