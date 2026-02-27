@@ -1,14 +1,15 @@
 use anyhow::Context;
 use clap::Parser;
-use itertools::Itertools;
+
 use log::info;
-use std::collections::HashMap;
+
 use std::path::{Path, PathBuf};
+use stock_themes::config::APP_CONFIG;
 use stock_themes::store::Store;
 use stock_themes::summary::Summary;
-use stock_themes::{
-    browser, init_logger, start_http_server, time_frames, tv::top_stocks_fetcher::TopStocksFetcher,
-};
+use stock_themes::tv::tv_manager::TvManager;
+use stock_themes::yf::YFinance;
+use stock_themes::{Stock, fetch_stock_perf, init_logger, start_http_server, time_frames};
 
 #[derive(Parser, Debug)]
 #[command(name = "top_stocks")]
@@ -40,45 +41,46 @@ async fn main() -> anyhow::Result<()> {
     init_logger();
 
     let args = TopStocksArgs::parse();
-    info!("Screen url: {}", args.tv_screen_url);
+    info!("Using args: {args:#?}");
 
-    let browser = browser::init_browser().await?;
+    let yf = YFinance::new();
+    let store = Store::load_store().await?;
 
-    let fetcher = TopStocksFetcher::load_screen_url(
-        &browser,
-        &args.tv_screen_url,
-        args.top_count,
-        !args.fetch_losers,
-    )
-    .await?;
+    let base_perf = fetch_stock_perf(store.clone(), &yf, &APP_CONFIG.base_ticker).await?;
+    info!("Fetched baseline: {}", base_perf.ticker);
 
-    let mut stocks = HashMap::new();
-    for sort_by in time_frames(&args.time_frames) {
-        for stock in fetcher.fetch_stocks(&sort_by).await? {
-            stocks.insert(stock.ticker.clone(), stock);
-        }
+    let mut tv_manager = TvManager::new(store.clone());
+
+    let sectors = tv_manager.fetch_sectors().await?;
+    info!("Fetched {} sectors", sectors.len());
+
+    let industries = tv_manager.fetch_industries().await?;
+    info!("Fetched {} industry groups", industries.len());
+
+    if industries.is_empty() {
+        anyhow::bail!("No industry groups found");
     }
-    fetcher.close().await;
 
-    info!("Total {} unique stocks fetched", stocks.len());
-    save_csv(
-        &args.output_file,
-        &args.tv_screen_url,
-        stocks.keys().cloned().collect(),
-    )
-    .await?;
-
-    Store::load_store()
-        .await?
-        .add_stocks(&stocks.values().cloned().collect_vec(), true)
+    let (stocks, stock_perfs) = tv_manager
+        .fetch_top_stocks(
+            &args.tv_screen_url,
+            args.top_count,
+            !args.fetch_losers,
+            time_frames(&args.time_frames),
+        )
         .await?;
 
-    let summary = Summary::summarize(stocks.values().cloned().collect());
-    let html = summary.render(vec![]);
+    drop(tv_manager);
+    info!("Total {} unique stocks fetched", stocks.len());
+
+    save_csv(&args.output_file, &args.tv_screen_url, &stocks).await?;
+
+    let summary = Summary::summarize(stocks);
+    let html = summary.render(sectors, industries, stock_perfs, &base_perf);
     start_http_server(html).await
 }
 
-async fn save_csv(file: &Path, source: &str, stocks: Vec<String>) -> anyhow::Result<()> {
+async fn save_csv(file: &Path, source: &str, stocks: &[Stock]) -> anyhow::Result<()> {
     use std::fmt::Write;
 
     let mut content = String::new();
@@ -87,7 +89,7 @@ async fn save_csv(file: &Path, source: &str, stocks: Vec<String>) -> anyhow::Res
     writeln!(content, "Count: {}", stocks.len())?;
     writeln!(content)?;
     for stock in stocks {
-        writeln!(content, "{stock}")?;
+        writeln!(content, "{}", stock.ticker)?;
     }
     tokio::fs::write(file, content)
         .await

@@ -1,17 +1,15 @@
 use clap::Parser;
 use itertools::Itertools;
 use log::info;
-use std::collections::HashMap;
-use std::sync::Arc;
+
 use stock_themes::config::APP_CONFIG;
 use stock_themes::store::Store;
 use stock_themes::summary::Summary;
-use stock_themes::tv::Closeable;
-use stock_themes::tv::top_industry_groups::TopIndustryGroups;
-use stock_themes::tv::top_stocks_fetcher::TopStocksFetcher;
+
+use stock_themes::tv::tv_manager::TvManager;
 use stock_themes::util::compute_rs;
 use stock_themes::yf::YFinance;
-use stock_themes::{Performance, TickerType, browser, fetch_stock_perf, start_http_server};
+use stock_themes::{Performance, fetch_stock_perf, start_http_server};
 use stock_themes::{init_logger, time_frames};
 
 #[derive(Parser, Debug)]
@@ -48,17 +46,15 @@ async fn main() -> anyhow::Result<()> {
     let yf = YFinance::new();
     let store = Store::load_store().await?;
 
-    let browser = browser::init_browser().await?;
-    let page = browser.new_page("about:blank").await?;
-
     let base_perf = fetch_stock_perf(store.clone(), &yf, &APP_CONFIG.base_ticker).await?;
-    info!("Fetched baseline: {base_perf:?}");
+    info!("Fetched baseline: {}", base_perf.ticker);
 
-    let tig = TopIndustryGroups::new(&page).await?;
-    let sectors = fetch_sectors(store.clone(), &tig).await?;
+    let mut tv_manager = TvManager::new(store.clone());
+
+    let sectors = tv_manager.fetch_sectors().await?;
     info!("Fetched {} sectors", sectors.len());
 
-    let industries = fetch_industries(store.clone(), &tig).await?;
+    let industries = tv_manager.fetch_industries().await?;
     info!("Fetched {} industry groups", industries.len());
     let industries: Vec<Performance> = industries
         .into_iter()
@@ -73,78 +69,23 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("No industry groups found");
     }
 
-    let fetcher = TopStocksFetcher::load_screen_with_industries(
-        &page,
-        &args.base_screen_url,
-        args.top_count,
-        &industries
-            .iter()
-            .map(|p| p.ticker.clone())
-            .take(args.industry_group_count)
-            .collect_vec(),
-    )
-    .await?;
+    let (stocks, stock_perfs) = tv_manager
+        .fetch_top_stocks_with_industries_filter(
+            &args.base_screen_url,
+            args.top_count,
+            &industries
+                .iter()
+                .map(|p| p.ticker.clone())
+                .take(args.industry_group_count)
+                .collect_vec(),
+            time_frames(&args.time_frames),
+        )
+        .await?;
+    drop(tv_manager);
+    info!("Total {} unique stocks fetched", stocks.len());
 
-    let mut stocks_map = HashMap::new();
-    let mut perf_map = HashMap::new();
-
-    for sort_by in time_frames(&args.time_frames) {
-        let (stocks, perfs) = fetcher.fetch_stocks(&sort_by).await?;
-        store.add_stocks(&stocks, true).await?;
-        store.save_performances(&perfs).await?;
-
-        for stock in stocks {
-            stocks_map.insert(stock.ticker.clone(), stock);
-        }
-        for perf in perfs {
-            perf_map.insert(perf.ticker.clone(), perf);
-        }
-    }
-    info!("Total {} unique stocks fetched", stocks_map.len());
-    page.close_me().await;
-
-    let summary = Summary::summarize(stocks_map.into_values());
-    let html = summary.render(
-        create_rs_map(sectors.into_iter(), &base_perf),
-        create_rs_map(industries.into_iter(), &base_perf),
-        create_rs_map(perf_map.into_values(), &base_perf),
-    );
+    let summary = Summary::summarize(stocks);
+    let html = summary.render(sectors, industries, stock_perfs, &base_perf);
 
     start_http_server(html).await
-}
-
-async fn fetch_sectors<'a>(
-    store: Arc<Store>,
-    tig: &TopIndustryGroups<'a>,
-) -> anyhow::Result<Vec<Performance>> {
-    let mut sectors = store.get_performances_by_type(TickerType::Sector).await?;
-    if sectors.is_empty() {
-        sectors = tig.fetch_sectors().await?;
-        store.save_performances(&sectors).await?;
-    }
-    Ok(sectors)
-}
-
-async fn fetch_industries<'a>(
-    store: Arc<Store>,
-    tig: &TopIndustryGroups<'a>,
-) -> anyhow::Result<Vec<Performance>> {
-    let mut industries = store.get_performances_by_type(TickerType::Industry).await?;
-    if industries.is_empty() {
-        industries = tig.fetch_industries().await?;
-        store.save_performances(&industries).await?;
-    }
-    Ok(industries)
-}
-
-fn create_rs_map(
-    perfs: impl Iterator<Item = Performance>,
-    base: &Performance,
-) -> HashMap<String, f64> {
-    perfs
-        .map(|p| {
-            let rs = (compute_rs(&p, base) * 100.0).round() / 100.0;
-            (p.ticker, rs)
-        })
-        .collect()
 }

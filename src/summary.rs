@@ -1,4 +1,5 @@
-use crate::{Stock, Ticker};
+use crate::util::compute_rs;
+use crate::{Performance, Stock, Ticker};
 use askama::Template;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -27,7 +28,7 @@ pub struct SummaryIndustry {
 }
 
 impl Summary {
-    pub fn summarize(stocks: impl Iterator<Item = Stock>) -> Summary {
+    pub fn summarize(stocks: impl IntoIterator<Item = Stock>) -> Summary {
         let mut size = 0;
         let mut sectors = Vec::new();
 
@@ -83,9 +84,10 @@ impl Summary {
 
     pub fn render(
         &self,
-        sector_rs: HashMap<String, f64>,
-        industry_rs: HashMap<String, f64>,
-        stock_rs: HashMap<String, f64>,
+        sectors: impl IntoIterator<Item = Performance>,
+        industries: impl IntoIterator<Item = Performance>,
+        stocks: impl IntoIterator<Item = Performance>,
+        base: &Performance,
     ) -> String {
         #[derive(Template)]
         #[template(path = "./stocks_themes.html")]
@@ -96,13 +98,26 @@ impl Summary {
             stock_rs: HashMap<String, f64>,
         }
 
+        fn create_rs_map(
+            perfs: impl IntoIterator<Item = Performance>,
+            base: &Performance,
+        ) -> HashMap<String, f64> {
+            perfs
+                .into_iter()
+                .map(|p| {
+                    let rs = (compute_rs(&p, base) * 100.0).round() / 100.0;
+                    (p.ticker, rs)
+                })
+                .collect()
+        }
+
         let html = Html {
             summary: self,
-            sector_rs,
-            industry_rs,
-            stock_rs,
+            sector_rs: create_rs_map(sectors, base),
+            industry_rs: create_rs_map(industries, base),
+            stock_rs: create_rs_map(stocks, base),
         };
 
-        html.render().expect("Failed to render ")
+        html.render().expect("Failed to render html")
     }
 }

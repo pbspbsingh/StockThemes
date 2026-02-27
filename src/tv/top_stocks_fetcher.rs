@@ -1,15 +1,14 @@
 use crate::tv::perf_util::parse_performances;
-use crate::tv::{Closeable, Sleepable, TV_HOME};
+use crate::tv::{Sleepable, TV_HOME};
 use crate::{Group, Performance, Stock, TickerType};
 use anyhow::{Context, Ok};
-use chromiumoxide::{Browser, Element, Page};
+use chromiumoxide::{Element, Page};
 use chrono::Local;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::borrow::Cow;
 use url::Url;
 
 pub struct TopStocksFetcher<'a> {
-    page: Cow<'a, Page>,
+    page: &'a Page,
     count: usize,
     descending: bool,
     pb: ProgressBar,
@@ -17,7 +16,7 @@ pub struct TopStocksFetcher<'a> {
 
 impl<'a> TopStocksFetcher<'a> {
     pub async fn load_screen_url(
-        browser: &Browser,
+        page: &'a Page,
         screen_url: &str,
         count: usize,
         descending: bool,
@@ -28,15 +27,16 @@ impl<'a> TopStocksFetcher<'a> {
         )?);
         pb.set_message(format!("Loading {screen_url}"));
 
-        let page = browser.new_page(screen_url).await?;
-        page.wait_for_navigation()
+        page.goto(screen_url)
+            .await?
+            .wait_for_navigation()
             .await
             .with_context(|| format!("Navigating to {screen_url} failed"))?
             .sleep()
             .await;
 
         Ok(Self {
-            page: Cow::Owned(page),
+            page,
             count,
             descending,
             pb,
@@ -120,7 +120,7 @@ impl<'a> TopStocksFetcher<'a> {
         pb.set_length(count as u64);
         pb.reset();
         Ok(Self {
-            page: Cow::Borrowed(page),
+            page,
             count,
             descending: true,
             pb,
@@ -333,12 +333,5 @@ impl<'a> TopStocksFetcher<'a> {
         }
 
         anyhow::bail!("Couldn't add {col_name} column");
-    }
-
-    pub async fn close(self) {
-        self.pb.finish_with_message("Done fetching top stocks");
-        if matches!(self.page, Cow::Owned(_)) {
-            self.page.close_me().await;
-        }
     }
 }
