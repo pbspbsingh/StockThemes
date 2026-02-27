@@ -1,80 +1,98 @@
-use crate::tv::{Closeable, Sleepable};
+use crate::tv::Sleepable;
+use crate::{Performance, TickerType};
 use anyhow::Context;
-use chromiumoxide::{Browser, Page};
+use chromiumoxide::Page;
 use indicatif::{ProgressBar, ProgressStyle};
 
-const INDUSTRY_GROUP_HOME: &str =
-    "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-industry/";
+use crate::tv::perf_util::parse_performances;
 
-pub struct TopIndustryGroups {
-    page: Page,
+const SECTORS_HOME: &str =
+    "https://www.tradingview.com/markets/stocks-usa/sectorandindustry-sector/";
+
+pub struct TopIndustryGroups<'a> {
+    page: &'a Page,
     pb: ProgressBar,
 }
 
-impl TopIndustryGroups {
-    pub async fn new(browser: &Browser) -> anyhow::Result<Self> {
+impl<'a> TopIndustryGroups<'a> {
+    pub async fn new(page: &'a Page) -> anyhow::Result<Self> {
         let pb = ProgressBar::new_spinner();
         pb.set_style(
             ProgressStyle::default_spinner()
                 .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
                 .template("{spinner:.cyan} {msg}")?,
         );
+
         pb.tick();
-        pb.set_message(format!("Loading {INDUSTRY_GROUP_HOME:?}"));
-        let page = browser.new_page(INDUSTRY_GROUP_HOME).await?;
-        page.wait_for_navigation().await?.sleep().await;
+        pb.set_message(format!("Loading {SECTORS_HOME:?}"));
+
+        page.goto(SECTORS_HOME)
+            .await?
+            .wait_for_navigation()
+            .await?
+            .sleep()
+            .await;
+
+        pb.tick();
         pb.set_message("Done loading");
-        pb.tick();
+
         Ok(Self { page, pb })
     }
 
-    pub async fn fetch_top_industry_groups(
-        &self,
-        sort_by: &str,
-        len: usize,
-    ) -> anyhow::Result<Vec<String>> {
-        self.pb.set_message("Clicking 'Performance' tab");
-        self.pb.tick();
-        self.page.find_xpath(r#"//div[@id="market-screener-header-columnset-tabs"]//span[normalize-space()="Performance"]"#).await.context("Couldn't find performance tab")?.click().await?;
-        self.page.sleep().await;
-
-        self.pb
-            .set_message(format!("Sorting industry groups by: {sort_by}"));
-        self.pb.tick();
+    pub async fn fetch_sectors(&self) -> anyhow::Result<Vec<Performance>> {
+        self.set_message("Clicking 'Sector' tab");
         self.page
-            .find_element(format!(r#"th[data-field="Performance|Interval{sort_by}"]"#))
+            .find_xpath("a#sector")
             .await
-            .with_context(|| format!("Couldn't find performance tab for: {sort_by}"))?
+            .context("Couldn't find Sector tab")?
             .click()
             .await?;
         self.page.sleep().await;
 
-        let mut result = vec![];
-        self.pb.set_message("Fetching top industry groups");
-        self.pb.tick();
-        for element in self
-            .page
-            .find_elements(
-                r#"table tbody[data-testid="selectable-rows-table-body"] tr td:first-child a"#,
-            )
-            .await
-            .context("Couldn't read table's body")?
-        {
-            let Some(ig) = element.inner_text().await? else {
-                continue;
-            };
-            self.pb.set_message(format!("Parsed '{ig}'"));
-            self.pb.tick();
-            result.push(ig.trim().to_owned());
-            if result.len() >= len {
-                break;
-            }
-        }
-        Ok(result)
+        self.click_perf_tab().await?;
+
+        parse_performances(&self.page, TickerType::Sector).await
     }
 
-    pub async fn close(&self) {
-        self.pb.finish_and_clear();
-        self.page.close_me().await;
+    pub async fn fetch_industries(&self) -> anyhow::Result<Vec<Performance>> {
+        self.set_message("Clicking 'Industry' tab");
+        self.page
+            .find_xpath("a#industry")
+            .await
+            .context("Couldn't find Industry tab")?
+            .click()
+            .await?;
+        self.page.sleep().await;
+
+        self.click_perf_tab().await?;
+
+        if let Ok(load_more) = self
+            .page
+            .find_element(r#"button[data-overflow-tooltip-text="Load More"]"#)
+            .await
+        {
+            self.set_message("Loading more industries");
+            load_more.click().await?;
+            self.page.sleep().await;
+        }
+
+        parse_performances(&self.page, TickerType::Industry).await
+    }
+
+    fn set_message(&self, msg: impl Into<String>) {
+        self.pb.tick();
+        self.pb.set_message(msg.into());
+    }
+
+    async fn click_perf_tab(&self) -> anyhow::Result<()> {
+        self.set_message("Clicking 'Performance' tab");
+        self.page
+            .find_xpath(r#"//div[@id="market-screener-header-columnset-tabs"]//span[normalize-space()="Performance"]"#)
+            .await
+            .context("Couldn't find performance tab")?
+            .click()
+            .await?;
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        Ok(())
     }
 }

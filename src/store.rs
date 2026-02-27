@@ -1,18 +1,22 @@
-use crate::{Group, Performance, Stock};
+use crate::{Group, Performance, Stock, TickerType};
 use anyhow::Context;
 use chrono::{DateTime, Local, TimeDelta};
 use sqlx::sqlite::{SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use sqlx::{
+    Decode, Encode, Sqlite, SqlitePool, Type, encode::IsNull, error::BoxDynError,
+    sqlite::SqlitePoolOptions,
+};
 use std::collections::HashMap;
 
 use crate::util::is_upto_date;
-use log::warn;
 use std::sync::{Arc, LazyLock, Weak};
 use tokio::sync::Mutex;
 
 const DB_FILE: &str = "database.sqlite";
 
 static INSTANCE: LazyLock<Mutex<Weak<Store>>> = LazyLock::new(|| Mutex::new(Weak::new()));
+
+// ── Store ────────────────────────────────────────────────────────────────────
 
 pub struct Store {
     pool: SqlitePool,
@@ -47,7 +51,7 @@ impl Store {
             .await
             .context("Failed to run database migrations")?;
 
-        // Evict stale stock rows for this source (older than 30 days)
+        // Evict stale stock rows older than 30 days
         let cutoff = Local::now().date_naive() - TimeDelta::days(30);
         sqlx::query!("DELETE FROM stocks WHERE last_update < $1", cutoff)
             .execute(&pool)
@@ -67,6 +71,7 @@ impl Store {
             "YahooFinance"
         }
     }
+
     // ── Stock methods ────────────────────────────────────────────────────────
 
     pub async fn get_stock(
@@ -84,9 +89,9 @@ impl Store {
             source,
             ticker,
         )
-        .fetch_optional(&self.pool)
-        .await
-        .with_context(|| format!("Failed to query stock: {ticker}"))?;
+            .fetch_optional(&self.pool)
+            .await
+            .with_context(|| format!("Failed to query stock: {ticker}"))?;
 
         Ok(row.map(|r| Stock {
             ticker: r.ticker,
@@ -103,14 +108,11 @@ impl Store {
         }))
     }
 
-    pub async fn add_stocks(&self, stocks: &[Stock], is_tv: bool) -> anyhow::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .context("Failed to begin transaction")?;
+    pub async fn add_stocks(&self, stocks: &[Stock], is_tv: bool) -> sqlx::Result<()> {
+        let source = Self::source(is_tv);
+        let mut tx = self.pool.begin().await?;
+
         for stock in stocks {
-            let source = Self::source(is_tv);
             sqlx::query!(
                 r"INSERT INTO stocks
                     (source, ticker, exchange, sector_name, sector_url,
@@ -122,8 +124,7 @@ impl Store {
                     sector_url    = $5,
                     industry_name = $6,
                     industry_url  = $7,
-                    last_update   = $8
-                ",
+                    last_update   = $8",
                 source,
                 stock.ticker,
                 stock.exchange,
@@ -134,59 +135,70 @@ impl Store {
                 stock.last_update,
             )
             .execute(&mut *tx)
-            .await
-            .with_context(|| format!("Failed to upsert stock: {}", stock.ticker))?;
+            .await?;
         }
-        tx.commit()
-            .await
-            .context("Failed to commit stock transaction")
+
+        tx.commit().await
     }
 
-    pub async fn save_performance(&self, perf: &Performance) -> sqlx::Result<()> {
-        sqlx::query!(
+    // ── Performance methods ──────────────────────────────────────────────────
+
+    pub async fn save_performances(&self, perfs: &[Performance]) -> sqlx::Result<()> {
+        let mut tx = self.pool.begin().await?;
+        for perf in perfs {
+            sqlx::query!(
                 r#"
-                INSERT INTO performance (ticker, perf_1m, perf_3m, perf_6m, perf_1y, last_updated, extra_info)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                ON CONFLICT(ticker) DO UPDATE SET
+                INSERT INTO performance (ticker, ticker_type, perf_1m, perf_3m, perf_6m, perf_1y, last_updated, extra_info)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT(ticker, ticker_type) DO UPDATE SET
                     perf_1m      = excluded.perf_1m,
                     perf_3m      = excluded.perf_3m,
                     perf_6m      = excluded.perf_6m,
                     perf_1y      = excluded.perf_1y,
-                    last_updated = excluded.last_updated,
-                    extra_info   = excluded.extra_info
+                    extra_info   = excluded.extra_info,
+                    last_updated = excluded.last_updated
                 "#,
                 perf.ticker,
+                perf.ticker_type,
                 perf.perf_1m,
                 perf.perf_3m,
                 perf.perf_6m,
                 perf.perf_1y,
                 perf.last_updated,
                 perf.extra_info,
-            )
-            .execute(&self.pool)
-            .await?;
-        Ok(())
+                )
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await
     }
 
-    pub async fn get_performance(&self, ticker: &str) -> sqlx::Result<Option<Performance>> {
+    pub async fn get_performance(
+        &self,
+        ticker: &str,
+        ticker_type: TickerType,
+    ) -> sqlx::Result<Option<Performance>> {
         let result = sqlx::query_as!(
             Performance,
             r#"
-                SELECT
-                    ticker,
-                    perf_1m,
-                    perf_3m,
-                    perf_6m,
-                    perf_1y,
-                    last_updated as "last_updated: DateTime<Local>",
-                    extra_info as "extra_info: sqlx::types::Json<HashMap<String, f64>>"
-                FROM performance
-                WHERE ticker = $1
+            SELECT
+                ticker,
+                ticker_type  as "ticker_type: TickerType",
+                perf_1m,
+                perf_3m,
+                perf_6m,
+                perf_1y,
+                last_updated as "last_updated: DateTime<Local>",
+                extra_info   as "extra_info: sqlx::types::Json<HashMap<String, f64>>"
+            FROM performance
+            WHERE ticker = $1 AND ticker_type = $2
             "#,
             ticker,
+            ticker_type,
         )
         .fetch_optional(&self.pool)
         .await?;
+
         if let Some(perf) = result
             && is_upto_date(perf.last_updated)
         {
@@ -199,20 +211,53 @@ impl Store {
         let result = sqlx::query_as!(
             Performance,
             r#"
-                SELECT
-                    ticker,
-                    perf_1m,
-                    perf_3m,
-                    perf_6m,
-                    perf_1y,
-                    last_updated as "last_updated: DateTime<Local>",
-                    extra_info as "extra_info: sqlx::types::Json<HashMap<String, f64>>"
-                FROM performance
-                ORDER BY ticker
+            SELECT
+                ticker,
+                ticker_type  as "ticker_type: TickerType",
+                perf_1m,
+                perf_3m,
+                perf_6m,
+                perf_1y,
+                last_updated as "last_updated: DateTime<Local>",
+                extra_info   as "extra_info: sqlx::types::Json<HashMap<String, f64>>"
+            FROM performance
+            ORDER BY ticker_type, ticker
             "#,
         )
         .fetch_all(&self.pool)
         .await?;
+
+        Ok(result
+            .into_iter()
+            .filter(|p| is_upto_date(p.last_updated))
+            .collect())
+    }
+
+    pub async fn get_performances_by_type(
+        &self,
+        ticker_type: TickerType,
+    ) -> sqlx::Result<Vec<Performance>> {
+        let result = sqlx::query_as!(
+            Performance,
+            r#"
+            SELECT
+                ticker,
+                ticker_type  as "ticker_type: TickerType",
+                perf_1m,
+                perf_3m,
+                perf_6m,
+                perf_1y,
+                last_updated as "last_updated: DateTime<Local>",
+                extra_info   as "extra_info: sqlx::types::Json<HashMap<String, f64>>"
+            FROM performance
+            WHERE ticker_type = $1
+            ORDER BY ticker
+            "#,
+            ticker_type,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
         Ok(result
             .into_iter()
             .filter(|p| is_upto_date(p.last_updated))
@@ -220,13 +265,36 @@ impl Store {
     }
 }
 
-impl Drop for Store {
-    fn drop(&mut self) {
-        let pool = self.pool.clone();
-        tokio::spawn(async move {
-            if let Err(e) = sqlx::query!("VACUUM").execute(&pool).await {
-                warn!("Failed to VACUUM on Store drop: {e}");
-            }
-        });
+// ── TickerType <-> SQLite ────────────────────────────────────────────────────
+
+impl Type<Sqlite> for TickerType {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <str as Type<Sqlite>>::type_info()
+    }
+}
+
+impl Encode<'_, Sqlite> for TickerType {
+    fn encode_by_ref(
+        &self,
+        buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'_>>,
+    ) -> Result<IsNull, BoxDynError> {
+        let s = match self {
+            TickerType::Sector => "Sector",
+            TickerType::Industry => "Industry",
+            TickerType::Stock => "Stock",
+        };
+        Encode::<Sqlite>::encode_by_ref(&s, buf)
+    }
+}
+
+impl<'r> Decode<'r, Sqlite> for TickerType {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
+        let s = <&str as Decode<Sqlite>>::decode(value)?;
+        match s {
+            "Sector" => Ok(TickerType::Sector),
+            "Industry" => Ok(TickerType::Industry),
+            "Stock" => Ok(TickerType::Stock),
+            other => Err(format!("Unknown TickerType: {other}").into()),
+        }
     }
 }

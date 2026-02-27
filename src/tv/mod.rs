@@ -3,6 +3,7 @@ use chromiumoxide::cdp::browser_protocol::target::CloseTargetParams;
 use std::time::Duration;
 use tokio::time;
 
+mod perf_util;
 pub mod stock_info_loader;
 pub mod top_industry_groups;
 pub mod top_stocks_fetcher;
@@ -28,8 +29,8 @@ impl Sleepable for Page {
     }
 }
 
-trait Closeable {
-    async fn close_me(&self);
+pub trait Closeable {
+    fn close_me(&self) -> impl Future<Output = ()> + Send;
 }
 
 impl Closeable for Page {

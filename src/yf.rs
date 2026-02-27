@@ -1,10 +1,10 @@
 use crate::{Group, Stock, StockInfoFetcher};
 use anyhow::Context;
 use chrono::{DateTime, Local, NaiveDate, TimeZone, Utc};
-use futures::{stream, StreamExt};
-use reqwest::{header, Client};
+use itertools::Itertools;
+use reqwest::{Client, header};
 use serde::Deserialize;
-use std::{collections::HashMap, fmt, time::Duration};
+use std::{fmt, time::Duration};
 use tokio::sync::OnceCell;
 
 // ============================================================================
@@ -368,10 +368,10 @@ impl YFinance {
             .into_iter()
             .enumerate()
             .filter_map(|(i, ts)| {
-                let open   = opens.get(i)?.as_ref()?;
-                let high   = highs.get(i)?.as_ref()?;
-                let low    = lows.get(i)?.as_ref()?;
-                let close  = closes.get(i)?.as_ref()?;
+                let open = opens.get(i)?.as_ref()?;
+                let high = highs.get(i)?.as_ref()?;
+                let low = lows.get(i)?.as_ref()?;
+                let close = closes.get(i)?.as_ref()?;
                 let volume = volumes.get(i)?.as_ref()?;
 
                 Some(Candle {
@@ -383,6 +383,7 @@ impl YFinance {
                     volume: *volume,
                 })
             })
+            .sorted_by_key(|candle| candle.timestamp)
             .collect();
 
         // When an explicit interval was requested, strip any candles Yahoo
@@ -396,25 +397,6 @@ impl YFinance {
         };
 
         Ok(candles)
-    }
-
-    /// Fetch candles for multiple symbols concurrently, throttled to
-    /// `max_concurrent` in-flight requests at a time to avoid rate limiting.
-    pub async fn fetch_candles_many(
-        &self,
-        symbols: &[&str],
-        bar: BarSize,
-        time: TimeSpec,
-        max_concurrent: usize,
-    ) -> HashMap<String, anyhow::Result<Vec<Candle>>> {
-        stream::iter(symbols)
-            .map(|&symbol| async move {
-                let result = self.fetch_candles(symbol, bar, time).await;
-                (symbol.to_owned(), result)
-            })
-            .buffer_unordered(max_concurrent)
-            .collect()
-            .await
     }
 
     fn exchange_map(exchange: String) -> &'static str {
@@ -505,7 +487,11 @@ mod test {
             assert!(c.volume > 0);
         }
 
-        eprintln!("AAPL 1mo daily — {} candles, first: {:?}", candles.len(), candles[0]);
+        eprintln!(
+            "AAPL 1mo daily — {} candles, first: {:?}",
+            candles.len(),
+            candles[0]
+        );
         Ok(())
     }
 
@@ -551,7 +537,11 @@ mod test {
             assert!(w[0].timestamp < w[1].timestamp);
         }
 
-        eprintln!("QQQ 1d 5m — {} candles, first: {:?}", candles.len(), candles[0]);
+        eprintln!(
+            "QQQ 1d 5m — {} candles, first: {:?}",
+            candles.len(),
+            candles[0]
+        );
         Ok(())
     }
 
@@ -573,26 +563,11 @@ mod test {
             regular.len(),
         );
 
-        eprintln!("QQQ regular: {} candles, extended: {} candles", regular.len(), extended.len());
-        Ok(())
-    }
-
-    /// Bulk fetch — all three symbols must succeed.
-    #[tokio::test]
-    async fn test_fetch_candles_many() -> anyhow::Result<()> {
-        let yf = YFinance::new();
-        let symbols = ["AAPL", "MSFT", "GOOG"];
-
-        let results = yf
-            .fetch_candles_many(&symbols, BarSize::Daily, TimeSpec::Range(Range::OneMonth), 4)
-            .await;
-
-        for sym in &symbols {
-            let candles = results[*sym].as_ref().expect(&format!("{sym} fetch failed"));
-            assert!(!candles.is_empty(), "{sym} returned no candles");
-            eprintln!("{sym}: {} candles", candles.len());
-        }
-
+        eprintln!(
+            "QQQ regular: {} candles, extended: {} candles",
+            regular.len(),
+            extended.len()
+        );
         Ok(())
     }
 
@@ -612,7 +587,12 @@ mod test {
             )
             .await?;
 
-        assert_eq!(candles.len(), 5, "Expected 5 trading days Mon-Fri, got {}", candles.len());
+        assert_eq!(
+            candles.len(),
+            5,
+            "Expected 5 trading days Mon-Fri, got {}",
+            candles.len()
+        );
         Ok(())
     }
 
@@ -633,7 +613,12 @@ mod test {
             .await?;
 
         // Jan 2024: 23 trading days (31 days - 8 weekend days - MLK Day Jan 15).
-        assert_eq!(candles.len(), 23, "Expected 23 trading days in Jan 2024, got {}", candles.len());
+        assert_eq!(
+            candles.len(),
+            23,
+            "Expected 23 trading days in Jan 2024, got {}",
+            candles.len()
+        );
         Ok(())
     }
 
@@ -645,13 +630,18 @@ mod test {
         let yf = YFinance::new();
         // 2024-03-06 is a plain Wednesday with no early close, before DST (Mar 10).
         let start = Utc.with_ymd_and_hms(2024, 3, 6, 14, 30, 0).unwrap(); // 9:30 ET
-        let end   = Utc.with_ymd_and_hms(2024, 3, 6, 21,  0, 0).unwrap(); // 16:00 ET
+        let end = Utc.with_ymd_and_hms(2024, 3, 6, 21, 0, 0).unwrap(); // 16:00 ET
 
         let candles = yf
             .fetch_candles("SPY", BarSize::Hour1, TimeSpec::Interval(start, end))
             .await?;
 
-        assert_eq!(candles.len(), 7, "Expected 7 hourly bars for a regular session, got {}", candles.len());
+        assert_eq!(
+            candles.len(),
+            7,
+            "Expected 7 hourly bars for a regular session, got {}",
+            candles.len()
+        );
         Ok(())
     }
 
@@ -660,7 +650,7 @@ mod test {
     async fn test_fetch_candles_datetime_period() -> anyhow::Result<()> {
         let yf = YFinance::new();
         let start = Utc.with_ymd_and_hms(2024, 6, 3, 13, 30, 0).unwrap(); // 9:30 AM ET
-        let end   = Utc.with_ymd_and_hms(2024, 6, 7, 20,  0, 0).unwrap(); // 4:00 PM ET
+        let end = Utc.with_ymd_and_hms(2024, 6, 7, 20, 0, 0).unwrap(); // 4:00 PM ET
 
         let candles = yf
             .fetch_candles("TSLA", BarSize::Hour1, TimeSpec::Interval(start, end))
@@ -670,7 +660,10 @@ mod test {
         assert!(candles.first().unwrap().timestamp >= start);
         assert!(candles.last().unwrap().timestamp <= end);
 
-        eprintln!("TSLA hourly over explicit window — {} candles", candles.len());
+        eprintln!(
+            "TSLA hourly over explicit window — {} candles",
+            candles.len()
+        );
         Ok(())
     }
 }

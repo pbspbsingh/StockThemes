@@ -1,19 +1,21 @@
+use crate::tv::perf_util::parse_performances;
 use crate::tv::{Closeable, Sleepable, TV_HOME};
-use crate::{Group, Stock};
+use crate::{Group, Performance, Stock, TickerType};
 use anyhow::{Context, Ok};
 use chromiumoxide::{Browser, Element, Page};
 use chrono::Local;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::borrow::Cow;
 use url::Url;
 
-pub struct TopStocksFetcher {
-    page: Page,
+pub struct TopStocksFetcher<'a> {
+    page: Cow<'a, Page>,
     count: usize,
     descending: bool,
     pb: ProgressBar,
 }
 
-impl TopStocksFetcher {
+impl<'a> TopStocksFetcher<'a> {
     pub async fn load_screen_url(
         browser: &Browser,
         screen_url: &str,
@@ -34,7 +36,7 @@ impl TopStocksFetcher {
             .await;
 
         Ok(Self {
-            page,
+            page: Cow::Owned(page),
             count,
             descending,
             pb,
@@ -42,7 +44,7 @@ impl TopStocksFetcher {
     }
 
     pub async fn load_screen_with_industries(
-        browser: &Browser,
+        page: &'a Page,
         base_url: &str,
         count: usize,
         industries: &[String],
@@ -53,8 +55,9 @@ impl TopStocksFetcher {
         )?);
         pb.set_message(format!("Loading {base_url}"));
 
-        let page = browser.new_page(base_url).await?;
-        page.wait_for_navigation()
+        page.goto(base_url)
+            .await?
+            .wait_for_navigation()
             .await
             .with_context(|| format!("Navigating to {base_url} failed"))?
             .sleep()
@@ -117,14 +120,17 @@ impl TopStocksFetcher {
         pb.set_length(count as u64);
         pb.reset();
         Ok(Self {
-            page,
+            page: Cow::Borrowed(page),
             count,
             descending: true,
             pb,
         })
     }
 
-    pub async fn fetch_stocks(&self, sort_by: &str) -> anyhow::Result<Vec<Stock>> {
+    pub async fn fetch_stocks(
+        &self,
+        sort_by: &str,
+    ) -> anyhow::Result<(Vec<Stock>, Vec<Performance>)> {
         self.pb.reset();
         self.sort_stocks(sort_by).await?;
         self.page.sleep().await;
@@ -159,7 +165,10 @@ impl TopStocksFetcher {
                 break;
             }
         }
-        Ok(result)
+
+        let perfs = parse_performances(&self.page, TickerType::Stock).await?;
+
+        Ok((result, perfs))
     }
 
     async fn parse_stock(
@@ -328,6 +337,8 @@ impl TopStocksFetcher {
 
     pub async fn close(self) {
         self.pb.finish_with_message("Done fetching top stocks");
-        self.page.close_me().await;
+        if matches!(self.page, Cow::Owned(_)) {
+            self.page.close_me().await;
+        }
     }
 }

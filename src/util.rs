@@ -1,8 +1,9 @@
 use anyhow::Context;
-use chrono::{DateTime, Datelike, Local, TimeDelta, Weekday};
+use chrono::{DateTime, Datelike, Local, Months, TimeDelta, Weekday};
 use futures::stream;
 use itertools::Itertools;
 use log::{debug, info};
+use std::collections::HashMap;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -13,7 +14,9 @@ use futures::{StreamExt, TryStreamExt};
 
 use rand::seq::SliceRandom;
 
+use crate::Performance;
 use crate::config::APP_CONFIG;
+use crate::yf::Candle;
 
 pub async fn read_stocks(
     files: &[PathBuf],
@@ -45,6 +48,7 @@ pub async fn read_stocks(
         .unique()
         .collect_vec();
     stocks.shuffle(&mut rand::rng());
+
     Ok(stocks)
 }
 
@@ -79,7 +83,7 @@ async fn parse_stocks(
     info!(
         "Processed {} lines, found {} stocks",
         total_lines,
-        result.len()
+        result.len(),
     );
 
     Ok(result)
@@ -123,4 +127,50 @@ pub fn is_upto_date(time: DateTime<Local>) -> bool {
         return false;
     }
     time >= last_market_close()
+}
+
+pub fn parse_percentage(s: impl AsRef<str>) -> anyhow::Result<f64> {
+    let s = s.as_ref();
+    let normalized = s
+        .trim()
+        .replace('−', "-") // U+2212 mathematical minus → ASCII hyphen
+        .replace('+', "")
+        .replace('%', "")
+        .replace(',', "");
+
+    normalized
+        .parse::<f64>()
+        .with_context(|| format!("Failed to parse percentage: {s:?}"))
+}
+
+pub fn compute_perf(candles: &[Candle]) -> HashMap<String, f64> {
+    if candles.is_empty() {
+        return HashMap::new();
+    }
+
+    let latest = candles.last().unwrap();
+
+    let closest_close = |months_ago: u32| -> f64 {
+        let target = latest.timestamp - Months::new(months_ago);
+        candles
+            .iter()
+            .min_by_key(|c| (c.timestamp - target).num_seconds().abs())
+            .map(|c| (latest.close - c.close) / c.close * 100.0)
+            .unwrap_or(0.0)
+    };
+
+    HashMap::from([
+        ("1M".to_string(), closest_close(1)),
+        ("3M".to_string(), closest_close(3)),
+        ("6M".to_string(), closest_close(6)),
+        ("1Y".to_string(), closest_close(12)),
+    ])
+}
+
+pub fn compute_rs(perf: &Performance, base: &Performance) -> f64 {
+    fn multiplier(p: &Performance) -> f64 {
+        1.0 + (p.perf_1m * 0.3 + p.perf_3m * 0.4 + p.perf_6m * 0.2 + p.perf_1y * 0.1) / 100.0
+    }
+
+    multiplier(perf) / multiplier(base)
 }

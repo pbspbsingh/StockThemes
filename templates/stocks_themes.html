@@ -22,7 +22,7 @@
 
         .container {
             display: grid;
-            grid-template-columns: 210px 265px 150px 3fr;
+            grid-template-columns: 245px 265px 150px 3fr;
             height: 100vh;
             gap: 1px;
             background: #0a0a0a;
@@ -84,49 +84,21 @@
             text-overflow: ellipsis;
         }
 
-        .rank-slot {
-            width: 28px;
-            flex-shrink: 0;
-            display: flex;
-            justify-content: center;
-        }
-
-        .rank {
-            font-size: 10px;
-            font-weight: 700;
-            color: #555;
-            background: #2d2d2d;
-            border: 1px solid #3a3a3a;
-            border-radius: 3px;
-            padding: 1px 4px;
-            text-align: center;
-        }
-
-        .item-size {
-            background: #3a3a3a;
-            padding: 2px 8px;
+        /* RS pill — background/color set dynamically via inline style */
+        .item-rs {
+            padding: 2px 7px;
             border-radius: 12px;
             font-size: 11px;
-            color: #a0a0a0;
             margin-left: 8px;
             flex-shrink: 0;
+            font-weight: 600;
+            letter-spacing: 0.2px;
         }
 
         .preview-column {
             background: #1a1a1a;
-            position: relative;
         }
 
-        .preview-empty {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: #666;
-            font-size: 14px;
-            text-align: center;
-            padding: 20px;
-        }
 
         .sector-summary {
             padding: 30px;
@@ -153,108 +125,6 @@
         .sector-summary .stat-value {
             color: #e0e0e0;
             font-weight: 600;
-        }
-
-        .sector-summary .link-button {
-            display: inline-block;
-            margin-top: 25px;
-            padding: 12px 24px;
-            background: #4a9eff;
-            color: white;
-            text-decoration: none;
-            border-radius: 6px;
-            font-weight: 600;
-            transition: background 0.2s;
-        }
-
-        .sector-summary .link-button:hover {
-            background: #3a8eef;
-        }
-
-        .sector-summary .industries-list,
-        .sector-summary .tickers-list {
-            margin-top: 25px;
-        }
-
-        .sector-summary .industries-list h3,
-        .sector-summary .tickers-list h3 {
-            color: #4a9eff;
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-
-        .sector-summary .industry-item {
-            padding: 8px 0;
-            border-bottom: 1px solid #2a2a2a;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .sector-summary .industry-name {
-            color: #d0d0d0;
-        }
-
-        .sector-summary .industry-name a {
-            color: #4a9eff;
-            text-decoration: none;
-            transition: color 0.2s;
-        }
-
-        .sector-summary .industry-name a:hover {
-            color: #6ab0ff;
-            text-decoration: underline;
-        }
-
-        .sector-summary .industry-size {
-            color: #888;
-        }
-
-        .sector-summary .ticker-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-            gap: 10px;
-            margin-top: 15px;
-        }
-
-        .sector-summary .ticker-link {
-            padding: 8px 12px;
-            background: #2a2a2a;
-            color: #4a9eff;
-            text-decoration: none;
-            border-radius: 4px;
-            text-align: center;
-            transition: all 0.2s;
-            font-weight: 500;
-        }
-
-        .sector-summary .ticker-link:hover {
-            background: #3a3a3a;
-            color: #6ab0ff;
-        }
-
-        .pie-chart-container {
-            margin-top: 30px;
-            text-align: center;
-        }
-
-        .pie-chart-container h3 {
-            color: #4a9eff;
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-
-        .pie-chart-container canvas {
-            max-width: 500px;
-            max-height: 500px;
-            display: block;
-            margin: 0 auto;
-        }
-
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
         }
 
         .no-items {
@@ -305,9 +175,184 @@
             color: #d0d0d0;
         }
 
+        #chart-toggle { display: none; }
+
         .chart-toggle button.active {
             background: #4a9eff;
             color: white;
+        }
+
+        /* Column headers that need flex layout for clear button */
+        .column-header-flex {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Clear selection button inside column headers */
+        .btn-clear {
+            display: none;
+            padding: 1px 7px;
+            font-size: 10px;
+            font-weight: 600;
+            background: #2a2a2a;
+            color: #888;
+            border: 1px solid #3a3a3a;
+            border-radius: 3px;
+            cursor: pointer;
+            line-height: 16px;
+        }
+
+        .btn-clear:hover {
+            color: #d0d0d0;
+        }
+
+        /* Preview pane fills remaining height */
+        #preview {
+            height: 100%;
+        }
+
+        /* Stats bar above tables (Sectors N / Industry Groups N / Total Stocks N) */
+        .stats-bar {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        /* Overview data table */
+        .overview-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        /* Table header cells */
+        .overview-table th {
+            padding: 8px 12px;
+            border-bottom: 2px solid #4a9eff;
+            color: #4a9eff;
+            text-align: left;
+        }
+
+        .overview-table th.col-rs {
+            text-align: center;
+            width: 60px;
+            border-right: 1px solid #2a2a2a;
+        }
+
+        .overview-table th.col-sector {
+            width: 160px;
+            border-right: 1px solid #2a2a2a;
+        }
+
+        .overview-table th.col-industry {
+            width: 300px;
+            border-right: 1px solid #2a2a2a;
+        }
+
+        .overview-table th.col-tickers {
+            /* auto width — fills remaining space */
+        }
+
+        /* Last RS column has no right border */
+        .overview-table th.col-rs-last,
+        .overview-table td.col-rs-last {
+            border-right: none;
+        }
+
+        /* Table data cells */
+        .overview-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #2a2a2a;
+            vertical-align: top;
+        }
+
+        .overview-table td.col-sector {
+            width: 160px;
+            border-right: 1px solid #2a2a2a;
+            color: #d0d0d0;
+        }
+
+        .overview-table td.col-industry {
+            width: 300px;
+            border-right: 1px solid #2a2a2a;
+            color: #d0d0d0;
+        }
+
+        .overview-table td.col-rs {
+            border-right: 1px solid #2a2a2a;
+            text-align: center;
+        }
+
+        .overview-table td.col-tickers {
+            line-height: 1.8;
+        }
+
+        /* Generic table links — hover turns blue */
+        .tbl-link {
+            color: #d0d0d0;
+            text-decoration: none;
+        }
+
+        .tbl-link:hover {
+            color: #4a9eff;
+        }
+
+        .tbl-link-dim {
+            color: #c0c0c0;
+            text-decoration: none;
+        }
+
+        .tbl-link-dim:hover {
+            color: #4a9eff;
+        }
+
+        /* Small muted count "(N)" in table cells */
+        .count {
+            color: #666;
+            font-size: 11px;
+        }
+
+        /* Inline ticker chip in the tickers column */
+        .ticker-chip {
+            display: inline-flex;
+            align-items: center;
+            margin: 2px 4px 2px 0;
+            white-space: nowrap;
+        }
+
+        .ticker-chip-link {
+            color: #c0c0c0;
+            text-decoration: none;
+            font-size: 12px;
+        }
+
+        .ticker-chip-link:hover {
+            color: #4a9eff;
+        }
+
+        .ticker-chip .item-rs {
+            margin-left: 3px;
+        }
+
+        /* TradingView widget containers */
+        .tv-container-split {
+            height: 100%;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tv-pane {
+            width: 100%;
+        }
+
+        .tv-pane-half {
+            height: 50%;
+        }
+
+        .tv-pane-full {
+            height: 100%;
         }
     </style>
 </head>
@@ -315,11 +360,17 @@
 <body>
 <div class="container">
     <div class="column">
-        <div class="column-header">Sectors</div>
+        <div class="column-header column-header-flex">
+            <span>Sectors</span>
+            <button id="clear-sectors" class="btn-clear" onclick="AppState.selectedSectors.clear(); AppState.clearIndustrySelection(); Renderers.renderAll();">✕ clear</button>
+        </div>
         <div id="sectors"></div>
     </div>
     <div class="column">
-        <div class="column-header">Industry Groups</div>
+        <div class="column-header column-header-flex">
+            <span>Industry Groups</span>
+            <button id="clear-industries" class="btn-clear" onclick="AppState.selectedIndustries.clear(); AppState.clearTickerSelection(); Renderers.renderIndustries(); Renderers.renderTickers(); PreviewManager.updatePreview();">✕ clear</button>
+        </div>
         <div id="industries"></div>
     </div>
     <div class="column">
@@ -329,45 +380,49 @@
     <div class="column preview-column">
         <div class="column-header preview-header">
             <span id="preview-title">Preview</span>
-            <div class="chart-toggle" id="chart-toggle" style="display:none;">
+            <div class="chart-toggle" id="chart-toggle">
                 <button data-mode="single">D</button>
                 <button data-mode="split" class="active">D/W</button>
             </div>
         </div>
-        <div id="preview" style="height: 100%;"></div>
+        <div id="preview"></div>
     </div>
 </div>
 
-<script id="sort-order" type="application/json">{{ sort_order|json|safe }}</script>
-<script id="stock-data" type="application/json">{{ summary|json|safe }}</script>
+<!-- DATA Starts -->
+<script id="sector-rs" type="application/json">
+    {{ sector_rs|json|safe }}
+</script>
+<script id="industry-rs" type="application/json">
+    {{ industry_rs|json|safe }}
+</script>
+<script id="stock-rs" type="application/json">
+    {{ stock_rs|json|safe }}
+</script>
+<script id="stock-data" type="application/json">
+    {{ summary|json|safe }}
+</script>
+<!-- DATA Ends -->
 
 <script>
     // ============================================================
     // Data Loader
     // ============================================================
-    const industrySortOrderMap = new Map(JSON.parse(document.getElementById('sort-order').textContent)
-        .map((n, i) => [n.toLowerCase(), i]));
-    const stockData = JSON.parse(document.getElementById('stock-data').textContent);
 
-    // ============================================================
-    // CONFIGURATION
-    // ============================================================
-    const CONFIG = {
-        colors: ['#4a9eff', '#ff6b6b', '#51cf66', '#ffd93d', '#a78bfa', '#ff8787', '#22b8cf', '#ff922b', '#845ef7', '#20c997'],
-        pieChart: {
-            width: 500,
-            height: 500,
-            padding: 80,
-            labelOffset: 45,
-            lineOffset: 25,
-            innerRadiusRatio: 0.85,
-            legendItemHeight: 20
-        },
-        fonts: {
-            label: 'bold 11px -apple-system, sans-serif',
-            legend: '11px -apple-system, sans-serif'
-        }
-    };
+    // Three independent RS lookup maps (lowercase keys for case-insensitive matching)
+    const sectorRS = new Map(
+        Object.entries(JSON.parse(document.getElementById('sector-rs').textContent))
+            .map(([k, v]) => [k.toLowerCase(), v])
+    );
+    const industryRS = new Map(
+        Object.entries(JSON.parse(document.getElementById('industry-rs').textContent))
+            .map(([k, v]) => [k.toLowerCase(), v])
+    );
+    const stockRS = new Map(
+        Object.entries(JSON.parse(document.getElementById('stock-rs').textContent))
+    );
+
+    const stockData = JSON.parse(document.getElementById('stock-data').textContent);
 
     // ============================================================
     // STATE MANAGEMENT
@@ -377,14 +432,15 @@
         selectedIndustries: new Set(),
         selectedTickerIndex: -1,
         currentTickers: [],
+
+        // Sort sectors: RS descending, fallback to stock count descending
         sortedSectors: [...stockData.sectors].sort((a, b) => {
-            const fallbackRank = industrySortOrderMap.size;
-            const score = (sector) => sector.industries.reduce((sum, ind) => {
-                const rank = industrySortOrderMap.get(ind.name.toLowerCase()) ?? fallbackRank;
-                return sum + (1 / (rank + 1)) * ind.size;
-            }, 0);
-            return score(b) - score(a);
+            const aRS = sectorRS.get(a.name.toLowerCase()) ?? 0;
+            const bRS = sectorRS.get(b.name.toLowerCase()) ?? 0;
+            if (aRS !== bRS) return bRS - aRS;
+            return b.size - a.size;
         }),
+
         chartMode: 'split',
         currentTickerSymbol: null,
 
@@ -441,173 +497,78 @@
     };
 
     // ============================================================
-    // PIE CHART UTILITIES
+    // RS COLOR HELPER
     // ============================================================
-    const PieChart = {
-        setupCanvas(canvas) {
-            const dpr = window.devicePixelRatio || 1;
-            const { width, height } = CONFIG.pieChart;
-
-            canvas.width = width * dpr;
-            canvas.height = height * dpr;
-            canvas.style.width = width + 'px';
-            canvas.style.height = height + 'px';
-
-            const context = canvas.getContext('2d');
-            context.scale(dpr, dpr);
-
-            return context;
-        },
-
-        drawSlices(context, data, centerX, centerY, radius) {
-            const total = data.reduce((sum, item) => sum + item.size, 0);
-            let angle = -Math.PI / 2;
-
-            data.forEach((item, index) => {
-                const sliceAngle = (item.size / total) * 2 * Math.PI;
-
-                context.beginPath();
-                context.moveTo(centerX, centerY);
-                context.arc(centerX, centerY, radius, angle, angle + sliceAngle);
-                context.closePath();
-                context.fillStyle = CONFIG.colors[index % CONFIG.colors.length];
-                context.fill();
-                context.strokeStyle = '#1a1a1a';
-                context.lineWidth = 2;
-                context.stroke();
-
-                angle += sliceAngle;
-            });
-        },
-
-        drawLabels(context, data, centerX, centerY, radius) {
-            const total = data.reduce((sum, item) => sum + item.size, 0);
-            const { innerRadiusRatio, lineOffset, labelOffset } = CONFIG.pieChart;
-            let angle = -Math.PI / 2;
-
-            data.forEach((item, index) => {
-                const sliceAngle = (item.size / total) * 2 * Math.PI;
-                const labelAngle = angle + sliceAngle / 2;
-                const percentage = (item.size / total) * 100;
-
-                const innerRadius = radius * innerRadiusRatio;
-                const outerRadius = radius + lineOffset;
-                const labelRadius = radius + labelOffset;
-
-                const innerX = centerX + Math.cos(labelAngle) * innerRadius;
-                const innerY = centerY + Math.sin(labelAngle) * innerRadius;
-                const outerX = centerX + Math.cos(labelAngle) * outerRadius;
-                const outerY = centerY + Math.sin(labelAngle) * outerRadius;
-                const labelX = centerX + Math.cos(labelAngle) * labelRadius;
-                const labelY = centerY + Math.sin(labelAngle) * labelRadius;
-
-                context.beginPath();
-                context.moveTo(innerX, innerY);
-                context.lineTo(outerX, outerY);
-                context.strokeStyle = CONFIG.colors[index % CONFIG.colors.length];
-                context.lineWidth = 1;
-                context.stroke();
-
-                context.fillStyle = '#d0d0d0';
-                context.font = CONFIG.fonts.label;
-                context.textAlign = (labelAngle > Math.PI / 2 || labelAngle < -Math.PI / 2) ? 'right' : 'left';
-                context.textBaseline = 'middle';
-                context.fillText(`${percentage.toFixed(1)}%`, labelX, labelY);
-
-                angle += sliceAngle;
-            });
-        },
-
-        drawLegend(context, data, height) {
-            const { legendItemHeight } = CONFIG.pieChart;
-            let legendY = height - (data.length * legendItemHeight) - 10;
-
-            data.forEach((item, index) => {
-                context.fillStyle = CONFIG.colors[index % CONFIG.colors.length];
-                context.fillRect(10, legendY, 15, 15);
-                context.fillStyle = '#d0d0d0';
-                context.font = CONFIG.fonts.legend;
-                context.textAlign = 'left';
-                context.fillText(item.name, 30, legendY + 10);
-                legendY += legendItemHeight;
-            });
-        },
-
-        draw(canvasId, data) {
-            const canvas = DOM.getElement(canvasId);
-            if (!canvas) return;
-
-            const context = this.setupCanvas(canvas);
-            const { width, height, padding } = CONFIG.pieChart;
-            const centerX = width / 2;
-            const centerY = height / 2;
-            const radius = Math.min(width, height) / 2 - padding;
-
-            this.drawSlices(context, data, centerX, centerY, radius);
-            this.drawLabels(context, data, centerX, centerY, radius);
-            this.drawLegend(context, data, height);
+    function rsColor(rs) {
+        if (rs == null) return { bg: '#2a2a2a', fg: '#888' };
+        let r, g, b;
+        if (rs <= 0.85) {
+            r = 180; g = 30; b = 30;
+        } else if (rs < 1.0) {
+            const t = (rs - 0.85) / 0.15;
+            r = Math.round(180 + t * (220 - 180));
+            g = Math.round(30  + t * (200 - 30));
+            b = 20;
+        } else if (rs <= 1.3) {
+            const t = (rs - 1.0) / 0.3;
+            r = Math.round(220 - t * (220 - 40));
+            g = Math.round(200 + t * (210 - 200));
+            b = Math.round(20  + t * (80  - 20));
+        } else {
+            r = 40; g = 210; b = 80;
         }
-    };
+        return {
+            bg: `rgb(${Math.round(r*0.18)},${Math.round(g*0.18)},${Math.round(b*0.18)})`,
+            fg: `rgb(${r},${g},${b})`
+        };
+    }
 
     // ============================================================
     // HTML TEMPLATES
     // ============================================================
     const Templates = {
-        listItem(name, size) {
-            return `<span class="item-name"><span class="item-name-text">${name}</span></span><span class="item-size">${size}</span>`;
+        // Dynamically colored RS pill
+        rsPill(rs) {
+            if (rs == null) return '';
+            const { bg, fg } = rsColor(rs);
+            return `<span class="item-rs" style="background:${bg};color:${fg};">${rs.toFixed(2)}</span>`;
         },
 
-        industryListItem(name, size, rank) {
-            if (industrySortOrderMap.size === 0) {
-                return `<span class="item-name">
-                            <span class="item-name-text">${name}</span>
-                        </span>
-                        <span class="item-size">${size}</span>`;
-            }
-
-            const rankHtml = rank !== -1 ? `<span class="rank">#${rank   + 1}</span>` : '';
-            return `<span class="item-name">
-                        <span class="rank-slot">${rankHtml}</span>
-                        <span class="item-name-text">${name}</span>
-                    </span>
-                    <span class="item-size">${size}</span>`;
+        // Sidebar row: "Name (count)" + RS pill (used for sectors and industries)
+        listItem(name, count, rs) {
+            return `<span class="item-name"><span class="item-name-text">${name} (${count})</span></span>${this.rsPill(rs)}`;
         },
 
-        tickerItem(ticker) {
-            return `<span class="item-name"><span class="item-name-text">${ticker}</span></span>`;
+        // Ticker row: symbol + RS pill
+        tickerItem(ticker, rs) {
+            return `<span class="item-name"><span class="item-name-text">${ticker}</span></span>${this.rsPill(rs)}`;
         },
 
         stat(label, value) {
             return `<div class="stat"><span class="stat-label">${label}:</span><span class="stat-value">${value}</span></div>`;
-        },
-
-        linkButton(url, text) {
-            return `<a href="${url}" target="_blank" class="link-button">${text} ↗</a>`;
-        },
-
-        industryItem(industry) {
-            return `<div class="industry-item"><span class="industry-name"><a href="${industry.url}" target="_blank">${industry.name}</a></span><span class="industry-size">${industry.size} stocks</span></div>`;
-        },
-
-        tickerLink(ticker) {
-            return `<a href="#" class="ticker-link" data-ticker="${ticker}">${ticker}</a>`;
-        },
-
-        pieChartSection(title, canvasId) {
-            return `<div class="pie-chart-container"><h3>${title}</h3><canvas id="${canvasId}"></canvas></div>`;
-        },
-
-        tableRow(name, size) {
-            return `<tr><td style="padding:12px;border-bottom:1px solid #2a2a2a;color:#d0d0d0;">${name}</td><td style="padding:12px;border-bottom:1px solid #2a2a2a;color:#d0d0d0;text-align:right;">${size}</td></tr>`;
-        },
-
-        dataTable(headers, rows) {
-            const headerHtml = headers.map((h, i) =>
-                `<th style="padding:12px;border-bottom:2px solid #4a9eff;color:#4a9eff;text-align:${i === 0 ? 'left' : 'right'};">${h}</th>`
-            ).join('');
-            return `<table style="width:100%;border-collapse:collapse;"><thead><tr>${headerHtml}</tr></thead><tbody>${rows}</tbody></table>`;
         }
     };
+
+    // ============================================================
+    // SORT HELPERS
+    // ============================================================
+    function sortByIndustryRS(industries) {
+        return [...industries].sort((a, b) => {
+            const aRS = industryRS.get(a.name.toLowerCase()) ?? 0;
+            const bRS = industryRS.get(b.name.toLowerCase()) ?? 0;
+            if (aRS !== bRS) return bRS - aRS;
+            return b.size - a.size;
+        });
+    }
+
+    function sortByStockRS(tickers) {
+        return [...tickers].sort((a, b) => {
+            const aRS = stockRS.get(a.ticker) ?? 0;
+            const bRS = stockRS.get(b.ticker) ?? 0;
+            if (aRS !== bRS) return bRS - aRS;
+            return a.ticker.localeCompare(b.ticker);
+        });
+    }
 
     // ============================================================
     // DATA HELPERS
@@ -625,17 +586,7 @@
                 }
             });
 
-            return industries.sort((a, b) => {
-                const aIdx = industrySortOrderMap.get(a.name.toLowerCase()) ?? -1;
-                const bIdx = industrySortOrderMap.get(b.name.toLowerCase()) ?? -1;
-                const aInOrder = aIdx !== -1;
-                const bInOrder = bIdx !== -1;
-
-                if (aInOrder && bInOrder) return aIdx - bIdx;
-                if (aInOrder) return -1;
-                if (bInOrder) return 1;
-                return b.size - a.size;
-            });
+            return sortByIndustryRS(industries);
         },
 
         getFilteredTickers() {
@@ -652,7 +603,7 @@
                 });
             });
 
-            return tickers.sort((a, b) => a.ticker.localeCompare(b.ticker));
+            return sortByStockRS(tickers);
         },
 
         findTickerInfo(tickerSymbol) {
@@ -672,20 +623,6 @@
                 }
             }
             return null;
-        },
-
-        findSectorByName(name) {
-            return AppState.sortedSectors.find(s => s.name === name);
-        },
-
-        findIndustryByName(name) {
-            for (const sector of AppState.sortedSectors) {
-                const industry = sector.industries.find(i => i.name === name);
-                if (industry) {
-                    return { industry, sectorName: sector.name };
-                }
-            }
-            return null;
         }
     };
 
@@ -697,10 +634,14 @@
             const container = DOM.getElement('sectors');
             DOM.clearElement(container);
 
+            const clearBtn = document.getElementById('clear-sectors');
+            if (clearBtn) clearBtn.style.display = AppState.selectedSectors.size > 0 ? 'inline-block' : 'none';
+
             AppState.sortedSectors.forEach(sector => {
                 const isSelected = AppState.selectedSectors.has(sector.name);
                 const item = DOM.createElement('div', 'item' + (isSelected ? ' selected' : ''));
-                item.innerHTML = Templates.listItem(sector.name, sector.size);
+                const rs = sectorRS.get(sector.name.toLowerCase()) ?? null;
+                item.innerHTML = Templates.listItem(sector.name, sector.size, rs);
 
                 item.addEventListener('click', () => {
                     AppState.toggleSector(sector.name);
@@ -715,6 +656,9 @@
             const container = DOM.getElement('industries');
             DOM.clearElement(container);
 
+            const clearBtn = document.getElementById('clear-industries');
+            if (clearBtn) clearBtn.style.display = AppState.selectedIndustries.size > 0 ? 'inline-block' : 'none';
+
             const industries = DataHelpers.getFilteredIndustries();
 
             if (industries.length === 0) {
@@ -725,8 +669,8 @@
             industries.forEach(industry => {
                 const isSelected = AppState.selectedIndustries.has(industry.name);
                 const item = DOM.createElement('div', 'item' + (isSelected ? ' selected' : ''));
-                const rank = industrySortOrderMap.get(industry.name.toLowerCase()) ?? -1;
-                item.innerHTML = Templates.industryListItem(industry.name, industry.size, rank);
+                const rs = industryRS.get(industry.name.toLowerCase()) ?? null;
+                item.innerHTML = Templates.listItem(industry.name, industry.size, rs);
 
                 item.addEventListener('click', () => {
                     AppState.toggleIndustry(industry.name);
@@ -755,7 +699,8 @@
             tickers.forEach((ticker, index) => {
                 const isSelected = index === AppState.selectedTickerIndex;
                 const item = DOM.createElement('div', 'item' + (isSelected ? ' selected' : ''));
-                item.innerHTML = Templates.tickerItem(ticker.ticker);
+                const rs = stockRS.get(ticker.ticker) ?? null;
+                item.innerHTML = Templates.tickerItem(ticker.ticker, rs);
 
                 item.addEventListener('click', () => {
                     if (index === AppState.selectedTickerIndex) {
@@ -802,137 +747,63 @@
             }
         },
 
-        showOverallSummary() {
+        showOverallSummary(sectorsToShow = AppState.sortedSectors) {
             const container = this.getContainer();
-            const tableRows = AppState.sortedSectors.map(s => Templates.tableRow(s.name, s.size)).join('');
 
-            container.innerHTML = `
-                    <div class="sector-summary">
-                        <h2>Stock Universe Overview</h2>
-                        ${Templates.stat('Total Stocks', stockData.size)}
-                        ${Templates.stat('Sectors', stockData.sectors.length)}
-                        <div style="margin-top:30px;">
-                            <h3 style="color:#4a9eff;margin-bottom:15px;font-size:18px;">Sector Breakdown</h3>
-                            ${Templates.dataTable(['Sector', 'Stocks'], tableRows)}
-                        </div>
-                        ${Templates.pieChartSection('Sector Distribution', 'sectorPieChart')}
-                    </div>
-                `;
+            // Count total industry groups across all sectors
+            const totalIndustries = sectorsToShow.reduce((sum, s) => sum + s.industries.length, 0);
+            const totalStocks = sectorsToShow.reduce((sum, s) => sum + s.size, 0);
 
-            PieChart.draw('sectorPieChart', AppState.sortedSectors);
-        },
+            // Build the flat sector → industry rows, sorted by sector RS then industry RS
+            const overviewRows = sectorsToShow.flatMap(sector => {
+                const sRS = sectorRS.get(sector.name.toLowerCase()) ?? null;
+                const { bg: sBg, fg: sFg } = rsColor(sRS);
+                const sRSHtml = sRS != null
+                    ? `<span class="item-rs" style="background:${sBg};color:${sFg};">${sRS.toFixed(2)}</span>`
+                    : '—';
 
-        showSectorSummary(sector) {
-            const container = this.getContainer();
-            const sortedIndustries = [...sector.industries].sort((a, b) => b.size - a.size);
-            const industriesHtml = sortedIndustries.map(i => Templates.industryItem(i)).join('');
+                return sortByIndustryRS(sector.industries).map((ind, idx) => {
+                    const iRS = industryRS.get(ind.name.toLowerCase()) ?? null;
+                    const { bg: iBg, fg: iFg } = rsColor(iRS);
+                    const iRSHtml = iRS != null
+                        ? `<span class="item-rs" style="background:${iBg};color:${iFg};">${iRS.toFixed(2)}</span>`
+                        : '—';
 
-            container.innerHTML = `
-                    <div class="sector-summary">
-                        <h2>${sector.name}</h2>
-                        ${Templates.stat('Total Companies', sector.size)}
-                        ${Templates.stat('Industry Groups', sector.industries.length)}
-                        ${Templates.linkButton(sector.url, 'View on TradingView')}
-                        <div class="industries-list">
-                            <h3>Industries in this Sector</h3>
-                            ${industriesHtml}
-                        </div>
-                        ${Templates.pieChartSection('Industry Distribution', 'industryPieChart')}
-                    </div>
-                `;
+                    // Only show sector name + RS on first row for that sector
+                    const sectorCell = idx === 0
+                        ? `<td rowspan="${sector.industries.length}" class="col-sector"><a href="${sector.url}" target="_blank" class="tbl-link">${sector.name}</a> <span class="count">(${sector.size})</span></td>
+                           <td rowspan="${sector.industries.length}" class="col-rs">${sRSHtml}</td>`
+                        : '';
 
-            PieChart.draw('industryPieChart', sortedIndustries);
-        },
-
-        showMultipleSectorsSummary(sectors) {
-            const container = this.getContainer();
-            this.updateHeader();
-
-            let allIndustries = [];
-            sectors.forEach(sector => {
-                sector.industries.forEach(industry => {
-                    allIndustries.push({ ...industry, sectorName: sector.name });
+                    return `<tr>
+                        ${sectorCell}
+                        <td class="col-industry"><a href="${ind.url}" target="_blank" class="tbl-link-dim">${ind.name}</a> <span class="count">(${ind.size})</span></td>
+                        <td class="col-rs col-rs-last">${iRSHtml}</td>
+                    </tr>`;
                 });
-            });
-            allIndustries.sort((a, b) => b.size - a.size);
-
-            const industriesHtml = allIndustries.map(i => Templates.industryItem(i)).join('');
-            const sortedSectors = [...sectors].sort((a, b) => b.size - a.size);
+            }).join('');
 
             container.innerHTML = `
-                    <div class="sector-summary">
-                        <div class="industries-list">
-                            <h3>Industry Groups (${allIndustries.length})</h3>
-                            ${industriesHtml}
-                        </div>
-                        <div class="pie-charts-row" style="display:flex;gap:20px;flex-wrap:wrap;margin-top:30px;">
-                            ${Templates.pieChartSection('Sector Distribution', 'multiSectorPieChart')}
-                            ${Templates.pieChartSection('Industry Distribution', 'multiIndustryPieChart')}
-                        </div>
+                <div class="sector-summary">
+                    <h2>Stock Universe Overview</h2>
+                    <div class="stats-bar">
+                        ${Templates.stat('Sectors', AppState.sortedSectors.length)}
+                        ${Templates.stat('Industry Groups', totalIndustries)}
+                        ${Templates.stat('Total Stocks', totalStocks)}
                     </div>
-                `;
-
-            PieChart.draw('multiSectorPieChart', sortedSectors);
-            PieChart.draw('multiIndustryPieChart', allIndustries);
-        },
-
-        showIndustrySummary(industry, sectorName) {
-            const container = this.getContainer();
-            this.updateHeader();
-
-            const sortedTickers = [...industry.tickers].sort((a, b) => a.ticker.localeCompare(b.ticker));
-            const tickersHtml = sortedTickers.map(t => Templates.tickerLink(t.ticker)).join('');
-
-            container.innerHTML = `
-                    <div class="sector-summary">
-                        <h2>${industry.name}</h2>
-                        ${Templates.stat('Sector', sectorName)}
-                        ${Templates.stat('Total Stocks', industry.size)}
-                        ${Templates.linkButton(industry.url, 'View on TradingView')}
-                        <div class="tickers-list">
-                            <h3>Stocks in this Industry</h3>
-                            <div class="ticker-grid">${tickersHtml}</div>
-                        </div>
-                    </div>
-                `;
-
-            this.attachTickerLinkHandlers(container);
-        },
-
-        showMultipleIndustriesSummary(industries) {
-            const container = this.getContainer();
-            this.updateHeader();
-
-            let allTickers = [];
-            industries.forEach(industry => {
-                industry.tickers.forEach(ticker => allTickers.push(ticker));
-            });
-            allTickers.sort((a, b) => a.ticker.localeCompare(b.ticker));
-
-            const tickersHtml = allTickers.map(t => Templates.tickerLink(t.ticker)).join('');
-            const sortedIndustries = [...industries].sort((a, b) => b.size - a.size);
-
-            container.innerHTML = `
-                    <div class="sector-summary">
-                        <div class="tickers-list">
-                            <h3>Stocks (${allTickers.length})</h3>
-                            <div class="ticker-grid">${tickersHtml}</div>
-                        </div>
-                        ${Templates.pieChartSection('Industry Group Distribution', 'multiIndustryGroupPieChart')}
-                    </div>
-                `;
-
-            this.attachTickerLinkHandlers(container);
-            PieChart.draw('multiIndustryGroupPieChart', sortedIndustries);
-        },
-
-        attachTickerLinkHandlers(container) {
-            container.querySelectorAll('.ticker-link').forEach(link => {
-                link.addEventListener('click', event => {
-                    event.preventDefault();
-                    TradingViewWidget.show(event.target.getAttribute('data-ticker'));
-                });
-            });
+                    <table class="overview-table">
+                        <thead>
+                            <tr>
+                                <th class="col-sector">Sector</th>
+                                <th class="col-rs">RS</th>
+                                <th class="col-industry">Industry Group</th>
+                                <th class="col-rs col-rs-last">RS</th>
+                            </tr>
+                        </thead>
+                        <tbody>${overviewRows}</tbody>
+                    </table>
+                </div>
+            `;
         },
 
         updatePreview() {
@@ -947,31 +818,20 @@
             }
 
             if (selectedSectors.size === 1 && selectedIndustries.size === 0) {
-                const sectorName = Array.from(selectedSectors)[0];
-                const sector = DataHelpers.findSectorByName(sectorName);
-                if (sector) {
-                    this.showSectorSummary(sector);
-                    return;
-                }
+                const filteredSectors = sortedSectors.filter(s => selectedSectors.has(s.name));
+                const allIndustries = sortByIndustryRS(filteredSectors.flatMap(s => s.industries));
+                this.showIndustriesOverview(allIndustries);
+                return;
             }
 
             if (selectedSectors.size > 1 && selectedIndustries.size === 0) {
                 const filteredSectors = sortedSectors.filter(s => selectedSectors.has(s.name));
-                this.showMultipleSectorsSummary(filteredSectors);
+                this.showOverallSummary(filteredSectors);
                 return;
             }
 
-            if (selectedIndustries.size === 1) {
-                const industryName = Array.from(selectedIndustries)[0];
-                const result = DataHelpers.findIndustryByName(industryName);
-                if (result) {
-                    this.showIndustrySummary(result.industry, result.sectorName);
-                    return;
-                }
-            }
-
-            if (selectedIndustries.size > 1) {
-                let matchingIndustries = [];
+            if (selectedIndustries.size >= 1) {
+                const matchingIndustries = [];
                 for (const sector of sortedSectors) {
                     sector.industries.forEach(industry => {
                         if (selectedIndustries.has(industry.name)) {
@@ -979,8 +839,59 @@
                         }
                     });
                 }
-                this.showMultipleIndustriesSummary(matchingIndustries);
+                this.showIndustriesOverview(sortByIndustryRS(matchingIndustries));
+                return;
             }
+        },
+
+        showIndustriesOverview(industries) {
+            const container = this.getContainer();
+            const totalStocks = industries.reduce((sum, ind) => sum + ind.size, 0);
+
+            const overviewRows = industries.map(ind => {
+                const iRS = industryRS.get(ind.name.toLowerCase()) ?? null;
+                const { bg: iBg, fg: iFg } = rsColor(iRS);
+                const iRSHtml = iRS != null
+                    ? `<span class="item-rs" style="background:${iBg};color:${iFg};">${iRS.toFixed(2)}</span>`
+                    : '—';
+
+                // Each ticker becomes an inline chip: symbol (RS pill)
+                const tickerChips = sortByStockRS(ind.tickers).map(t => {
+                    const sRS = stockRS.get(t.ticker) ?? null;
+                    const { bg: sBg, fg: sFg } = rsColor(sRS);
+                    const sRSHtml = sRS != null
+                        ? `<span class="item-rs" style="background:${sBg};color:${sFg};">${sRS.toFixed(2)}</span>`
+                        : '';
+                    const tvUrl = `https://www.tradingview.com/symbols/${t.exchange}-${t.ticker}/`;
+                    return `<span class="ticker-chip"><a href="${tvUrl}" target="_blank" class="ticker-chip-link">${t.ticker}</a>${sRSHtml}</span>`;
+                }).join('');
+
+                return `<tr>
+                    <td class="col-industry"><a href="${ind.url}" target="_blank" class="tbl-link">${ind.name}</a> <span class="count">(${ind.size})</span></td>
+                    <td class="col-rs">${iRSHtml}</td>
+                    <td class="col-tickers">${tickerChips}</td>
+                </tr>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="sector-summary">
+                    <h2>Industry Overview</h2>
+                    <div class="stats-bar">
+                        ${Templates.stat('Industry Groups', industries.length)}
+                        ${Templates.stat('Total Stocks', totalStocks)}
+                    </div>
+                    <table class="overview-table">
+                        <thead>
+                            <tr>
+                                <th class="col-industry">Industry Group</th>
+                                <th class="col-rs">RS</th>
+                                <th class="col-tickers">Tickers</th>
+                            </tr>
+                        </thead>
+                        <tbody>${overviewRows}</tbody>
+                    </table>
+                </div>
+            `;
         }
     };
 
@@ -1007,9 +918,9 @@
             const weeklyWidgetId = 'tradingview_weekly_' + timestamp;
 
             container.innerHTML = `
-                    <div class="tradingview-widget-container" style="height:100%;width:100%;display:flex;flex-direction:column;">
-                        <div id="${dailyWidgetId}" style="height:50%;width:100%;"></div>
-                        <div id="${weeklyWidgetId}" style="height:50%;width:100%;"></div>
+                    <div class="tradingview-widget-container tv-container-split">
+                        <div id="${dailyWidgetId}" class="tv-pane tv-pane-half"></div>
+                        <div id="${weeklyWidgetId}" class="tv-pane tv-pane-half"></div>
                     </div>
                 `;
 
@@ -1031,8 +942,8 @@
             const dailyWidgetId = 'tradingview_daily_' + timestamp;
 
             container.innerHTML = `
-                    <div class="tradingview-widget-container" style="height:100%;width:100%;">
-                        <div id="${dailyWidgetId}" style="height:100%;width:100%;"></div>
+                    <div class="tradingview-widget-container tv-pane tv-pane-full">
+                        <div id="${dailyWidgetId}" class="tv-pane tv-pane-full"></div>
                     </div>
                 `;
 

@@ -1,7 +1,7 @@
 use anyhow::Context;
 
 use clap::Parser;
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{StreamExt, TryStreamExt, stream};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use log::{error, info, warn};
@@ -9,8 +9,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, path::PathBuf};
 use stock_themes::{
-    browser, config::APP_CONFIG, init_logger, start_http_server, store::Store, tv::stock_info_loader::StockInfoLoader,
-    util, Stock, StockInfoFetcher,
+    Stock, StockInfoFetcher, browser, config::APP_CONFIG, init_logger, start_http_server,
+    store::Store, tv::stock_info_loader::StockInfoLoader, util,
 };
 
 use stock_themes::summary::Summary;
@@ -73,7 +73,14 @@ async fn fetch_stock_info(stocks: Vec<String>) -> anyhow::Result<Vec<Stock>> {
     let new_stocks: Vec<_> = stream::iter(stocks.iter())
         .filter(|&ticker| {
             let value = store.clone();
-            async move { value.get_stock(ticker, use_tv).await.ok().flatten().is_none() }
+            async move {
+                value
+                    .get_stock(ticker, use_tv)
+                    .await
+                    .ok()
+                    .flatten()
+                    .is_none()
+            }
         })
         .collect()
         .await;

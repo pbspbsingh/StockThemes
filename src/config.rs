@@ -20,6 +20,7 @@ pub struct Config {
     pub launch_chrome_if_needed: bool,
     pub use_tv_for_stock_info: bool,
     pub market_hours: (NaiveTime, NaiveTime),
+    pub base_ticker: String,
     #[serde(default)]
     pub ignored_stocks: Vec<String>,
 }
@@ -39,8 +40,8 @@ fn parse_config(file: &Path) -> anyhow::Result<Config> {
 
 #[cfg(test)]
 mod test {
-    use chrono::NaiveTime;
     use crate::config::Config;
+    use chrono::NaiveTime;
 
     #[test]
     fn print_config() {
@@ -51,7 +52,11 @@ mod test {
             chrome_args: Vec::new(),
             launch_chrome_if_needed: false,
             use_tv_for_stock_info: true,
-            market_hours: (NaiveTime::from_hms_opt(6, 30, 0).unwrap(), NaiveTime::from_hms_opt(11, 00, 0).unwrap()),
+            market_hours: (
+                NaiveTime::from_hms_opt(6, 30, 0).unwrap(),
+                NaiveTime::from_hms_opt(11, 00, 0).unwrap(),
+            ),
+            base_ticker: "QQQ".into(),
             ignored_stocks: Vec::new(),
         };
         eprintln!("Config:\n:{}", toml::to_string_pretty(&config).unwrap());

@@ -2,6 +2,7 @@ use crate::{Stock, Ticker};
 use askama::Template;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Summary {
@@ -26,7 +27,7 @@ pub struct SummaryIndustry {
 }
 
 impl Summary {
-    pub fn summarize(stocks: Vec<Stock>) -> Summary {
+    pub fn summarize(stocks: impl Iterator<Item = Stock>) -> Summary {
         let mut size = 0;
         let mut sectors = Vec::new();
 
@@ -80,18 +81,28 @@ impl Summary {
         Summary { size, sectors }
     }
 
-    pub fn render(&self, sort_order: Vec<String>) -> String {
+    pub fn render(
+        &self,
+        sector_rs: HashMap<String, f64>,
+        industry_rs: HashMap<String, f64>,
+        stock_rs: HashMap<String, f64>,
+    ) -> String {
         #[derive(Template)]
         #[template(path = "./stocks_themes.html")]
         struct Html<'a> {
             summary: &'a Summary,
-            sort_order: Vec<String>,
+            sector_rs: HashMap<String, f64>,
+            industry_rs: HashMap<String, f64>,
+            stock_rs: HashMap<String, f64>,
         }
 
         let html = Html {
             summary: self,
-            sort_order,
+            sector_rs,
+            industry_rs,
+            stock_rs,
         };
+
         html.render().expect("Failed to render ")
     }
 }
