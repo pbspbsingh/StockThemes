@@ -69,6 +69,17 @@
             border-left: 3px solid #4a9eff;
         }
 
+        @keyframes context-pulse {
+            0%, 100% { border-bottom-color: #3a6b3a; }
+            50%       { border-bottom-color: #62c462; }
+        }
+
+        .item.ticker-context {
+            border-bottom: 1px solid #3a6b3a;
+            animation: context-pulse 2s ease-in-out infinite;
+        }
+
+
         .item-name {
             flex: 1;
             font-size: 13px;
@@ -191,7 +202,7 @@
 
         /* Clear selection button inside column headers */
         .btn-clear {
-            display: none;
+            display: inline-block;
             padding: 1px 7px;
             font-size: 10px;
             font-weight: 600;
@@ -201,10 +212,16 @@
             border-radius: 3px;
             cursor: pointer;
             line-height: 16px;
+            transition: color 0.2s, opacity 0.2s;
         }
 
-        .btn-clear:hover {
+        .btn-clear:hover:not(:disabled) {
             color: #d0d0d0;
+        }
+
+        .btn-clear:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
         }
 
         /* Preview pane fills remaining height */
@@ -362,14 +379,14 @@
     <div class="column">
         <div class="column-header column-header-flex">
             <span>Sectors</span>
-            <button id="clear-sectors" class="btn-clear" onclick="AppState.selectedSectors.clear(); AppState.clearIndustrySelection(); Renderers.renderAll();">✕ clear</button>
+            <button id="clear-sectors" class="btn-clear" disabled onclick="AppState.selectedSectors.clear(); AppState.clearIndustrySelection(); Renderers.renderAll();">✕ clear</button>
         </div>
         <div id="sectors"></div>
     </div>
     <div class="column">
         <div class="column-header column-header-flex">
             <span>Industry Groups</span>
-            <button id="clear-industries" class="btn-clear" onclick="AppState.selectedIndustries.clear(); AppState.clearTickerSelection(); Renderers.renderIndustries(); Renderers.renderTickers(); PreviewManager.updatePreview();">✕ clear</button>
+            <button id="clear-industries" class="btn-clear" disabled onclick="AppState.selectedIndustries.clear(); AppState.clearTickerSelection(); Renderers.renderIndustries(); Renderers.renderTickers(); PreviewManager.updatePreview();">✕ clear</button>
         </div>
         <div id="industries"></div>
     </div>
@@ -447,10 +464,12 @@
         clearIndustrySelection() {
             this.selectedIndustries.clear();
             this.selectedTickerIndex = -1;
+            this.currentTickerSymbol = null;
         },
 
         clearTickerSelection() {
             this.selectedTickerIndex = -1;
+            this.currentTickerSymbol = null;
         },
 
         toggleSector(sectorName) {
@@ -635,11 +654,12 @@
             DOM.clearElement(container);
 
             const clearBtn = document.getElementById('clear-sectors');
-            if (clearBtn) clearBtn.style.display = AppState.selectedSectors.size > 0 ? 'inline-block' : 'none';
+            if (clearBtn) clearBtn.disabled = AppState.selectedSectors.size === 0;
 
             AppState.sortedSectors.forEach(sector => {
                 const isSelected = AppState.selectedSectors.has(sector.name);
                 const item = DOM.createElement('div', 'item' + (isSelected ? ' selected' : ''));
+                item.dataset.name = sector.name;
                 const rs = sectorRS.get(sector.name.toLowerCase()) ?? null;
                 item.innerHTML = Templates.listItem(sector.name, sector.size, rs);
 
@@ -650,6 +670,8 @@
 
                 container.appendChild(item);
             });
+
+            this.highlightTickerContext();
         },
 
         renderIndustries() {
@@ -657,7 +679,7 @@
             DOM.clearElement(container);
 
             const clearBtn = document.getElementById('clear-industries');
-            if (clearBtn) clearBtn.style.display = AppState.selectedIndustries.size > 0 ? 'inline-block' : 'none';
+            if (clearBtn) clearBtn.disabled = AppState.selectedIndustries.size === 0;
 
             const industries = DataHelpers.getFilteredIndustries();
 
@@ -669,6 +691,7 @@
             industries.forEach(industry => {
                 const isSelected = AppState.selectedIndustries.has(industry.name);
                 const item = DOM.createElement('div', 'item' + (isSelected ? ' selected' : ''));
+                item.dataset.name = industry.name;
                 const rs = industryRS.get(industry.name.toLowerCase()) ?? null;
                 item.innerHTML = Templates.listItem(industry.name, industry.size, rs);
 
@@ -680,6 +703,23 @@
                 });
 
                 container.appendChild(item);
+            });
+
+            this.highlightTickerContext();
+        },
+
+        highlightTickerContext() {
+            const tickerSymbol = AppState.currentTickerSymbol;
+            const info = tickerSymbol ? DataHelpers.findTickerInfo(tickerSymbol) : null;
+
+            // Sectors column
+            document.querySelectorAll('#sectors .item').forEach(el => {
+                el.classList.toggle('ticker-context', !!(info && el.dataset.name === info.sector));
+            });
+
+            // Industries column
+            document.querySelectorAll('#industries .item').forEach(el => {
+                el.classList.toggle('ticker-context', !!(info && el.dataset.name === info.industry));
             });
         },
 
@@ -705,7 +745,9 @@
                 item.addEventListener('click', () => {
                     if (index === AppState.selectedTickerIndex) {
                         AppState.selectedTickerIndex = -1;
+                        AppState.currentTickerSymbol = null;
                         this.renderTickers();
+                        Renderers.highlightTickerContext();
                         PreviewManager.updatePreview();
                     } else {
                         AppState.selectTicker(index);
@@ -723,6 +765,7 @@
             this.renderIndustries();
             this.renderTickers();
             PreviewManager.updatePreview();
+            this.highlightTickerContext();
         }
     };
 
@@ -905,6 +948,7 @@
             const timestamp = Date.now();
 
             PreviewManager.updateHeader(DataHelpers.findTickerInfo(tickerSymbol));
+            Renderers.highlightTickerContext();
 
             if (AppState.chartMode === 'split') {
                 this.renderSplitView(container, tickerSymbol, timestamp);
