@@ -1,5 +1,6 @@
 use crate::tv::perf_util::parse_performances;
 use crate::tv::{Sleepable, TV_HOME};
+use crate::util::normalize;
 use crate::{Group, Performance, Stock, TickerType};
 use anyhow::{Context, Ok};
 use chromiumoxide::{Element, Page};
@@ -105,20 +106,33 @@ impl<'a> TopStocksFetcher<'a> {
             .click()
             .await?;
 
+        let industry_selects = page.find_xpaths("//div[@id='overlap-manager-root']//div[@role='listbox']//div[starts-with(@data-qa-id, 'ui-lib-multiselect-filter-option')]")
+            .await
+            .context("Failed to find Industry group select checkboxes")?;
+
         for industry in industries {
             pb.inc(1);
             pb.set_message(format!("Selecting {industry}"));
-            page.find_xpath(format!(r#"//div[@id='overlap-manager-root']//div[@role='listbox']//div[contains(@id, '{industry}')]"#))
-                .await
-                .with_context(|| format!("Failed to find industry group '{industry}' in Industry filter dropdown"))?
-                .scroll_into_view()
-                .await?
-                .click()
-                .await?;
+
+            let mut check_box_found = false;
+            for select in &industry_selects {
+                if let Some(id) = select.attribute("data-qa-id").await?
+                    && id.to_lowercase().ends_with(&industry.to_lowercase())
+                {
+                    select.click().await?;
+                    check_box_found = true;
+                    break;
+                }
+            }
+            if !check_box_found {
+                anyhow::bail!("Checkbox for Industry {industry:?} not found");
+            }
             page.nap().await;
         }
+
         pb.set_length(count as u64);
         pb.reset();
+
         Ok(Self {
             page,
             count,
@@ -178,12 +192,13 @@ impl<'a> TopStocksFetcher<'a> {
     ) -> anyhow::Result<Stock> {
         async fn parse_group(cell: &Element) -> anyhow::Result<Group> {
             let anchor = cell.find_element("a").await?;
-            let name = anchor
-                .inner_text()
-                .await?
-                .context("No inner html found in cell")?
-                .trim()
-                .to_owned();
+            let name = normalize(
+                anchor
+                    .inner_text()
+                    .await?
+                    .context("No inner html found in cell")?
+                    .trim(),
+            );
             let mut url = anchor
                 .attribute("href")
                 .await?

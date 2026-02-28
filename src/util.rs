@@ -129,6 +129,41 @@ pub fn is_upto_date(time: DateTime<Local>) -> bool {
     time >= last_market_close()
 }
 
+pub fn normalize(input: &str) -> String {
+    // Step 1: Normalize unicode slash lookalikes to ASCII '/'
+    let normalized = input.replace(['\u{FF0F}', '\u{2044}', '\u{2215}', '\u{29F8}'], "/");
+
+    // Step 2: Normalize all Unicode whitespace to ASCII space
+    let normalized = normalized
+        .chars()
+        .map(|ch| if ch.is_whitespace() { ' ' } else { ch })
+        .collect::<String>();
+
+    // Step 3: Trim and collapse multiple consecutive spaces into one
+    let normalized = normalized
+        .split(' ')
+        .filter(|s| !s.is_empty())
+        .join(" ");
+
+    // Step 4: Title-case, treating ' ' and '/' as word boundaries
+    let mut result = String::with_capacity(normalized.len());
+    let mut capitalize_next = true;
+
+    for ch in normalized.chars() {
+        if ch == ' ' || ch == '/' {
+            result.push(ch);
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.extend(ch.to_uppercase());
+            capitalize_next = false;
+        } else {
+            result.extend(ch.to_lowercase());
+        }
+    }
+
+    result
+}
+
 pub fn parse_percentage(s: impl AsRef<str>) -> anyhow::Result<f64> {
     let s = s.as_ref();
     let normalized = s

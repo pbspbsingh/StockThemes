@@ -1,4 +1,4 @@
-use crate::util::parse_percentage;
+use crate::util::{normalize, parse_percentage};
 use crate::{Performance, TickerType};
 use anyhow::Context;
 use chromiumoxide::{Element, Page};
@@ -34,9 +34,12 @@ async fn parse_perf_info(
         .context("No cells returned")?
         .inner_text()
         .await?
-        .context("No sector name")?;
+        .context("No sector/industry name")?;
     if let Some((ticker, _detail)) = name.split_once('\n') {
         name = ticker.trim().to_owned();
+    }
+    if matches!(ticker_type, TickerType::Sector | TickerType::Industry) {
+        name = normalize(&name);
     }
 
     let mut perf_map = HashMap::new();

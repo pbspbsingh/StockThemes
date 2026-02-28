@@ -10,6 +10,7 @@ use chrono::Local;
 use super::TV_HOME;
 
 use crate::{Group, Stock, StockInfoFetcher, tv::Sleepable};
+use crate::util::normalize;
 
 pub struct StockInfoLoader<'a> {
     page: &'a Page,
@@ -116,8 +117,8 @@ impl<'a> StockInfoLoader<'a> {
             .context("No industry info found")?;
 
         async fn find_group(element: &Element) -> Option<Group> {
-            let name = element.inner_text().await.ok()??.trim().to_owned();
-            let url = element.attribute("href").await.ok()??.trim().to_owned();
+            let name = normalize(element.inner_text().await.ok()??.trim());
+            let url = normalize(element.attribute("href").await.ok()??.trim());
             Some(Group { name, url })
         }
 
