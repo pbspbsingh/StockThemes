@@ -140,10 +140,7 @@ pub fn normalize(input: &str) -> String {
         .collect::<String>();
 
     // Step 3: Trim and collapse multiple consecutive spaces into one
-    let normalized = normalized
-        .split(' ')
-        .filter(|s| !s.is_empty())
-        .join(" ");
+    let normalized = normalized.split(' ').filter(|s| !s.is_empty()).join(" ");
 
     // Step 4: Title-case, treating ' ' and '/' as word boundaries
     let mut result = String::with_capacity(normalized.len());

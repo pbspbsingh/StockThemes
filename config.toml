@@ -8,3 +8,5 @@ market_hours = ["06:30", "13:00"]
 base_ticker = "SPY"
 
 ignored_stocks = []
+
+http_port = 8000

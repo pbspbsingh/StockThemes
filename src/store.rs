@@ -1,6 +1,6 @@
 use crate::{Group, Performance, Stock, TickerType};
 use anyhow::Context;
-use chrono::{DateTime, Local, TimeDelta};
+use chrono::{DateTime, Local, TimeDelta, Utc};
 use sqlx::sqlite::{SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 use sqlx::{
     Decode, Encode, Sqlite, SqlitePool, Type, encode::IsNull, error::BoxDynError,
@@ -9,6 +9,7 @@ use sqlx::{
 use std::collections::HashMap;
 
 use crate::util::is_upto_date;
+use crate::yf::Candle;
 use std::sync::{Arc, LazyLock, Weak};
 use tokio::sync::Mutex;
 
@@ -245,6 +246,70 @@ impl Store {
             .into_iter()
             .filter(|p| is_upto_date(p.last_updated))
             .collect())
+    }
+
+    pub async fn get_candles(&self, ticker: &str) -> sqlx::Result<Vec<Candle>> {
+        let one_year_ago = Utc::now() - TimeDelta::days(2 * 365);
+        let rows = sqlx::query!(
+            r#"
+                SELECT ds as "ds: DateTime<Utc>",
+                       open,
+                       high,
+                       low,
+                       close,
+                       volume,
+                       last_updated as "last_updated: DateTime<Local>"
+                FROM daily_candles
+                WHERE ticker = $1 AND ds >= $2
+                ORDER BY ds ASC
+            "#,
+            ticker,
+            one_year_ago,
+        )
+        .map(|row| Candle {
+            timestamp: row.ds,
+            open: row.open,
+            high: row.high,
+            low: row.low,
+            close: row.close,
+            volume: row.volume as u64,
+            last_updated: row.last_updated,
+        })
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn save_candles(&self, ticker: &str, candles: &[Candle]) -> sqlx::Result<()> {
+        let mut tx = self.pool.begin().await?;
+        for candle in candles {
+            let volume = candle.volume as i64;
+            sqlx::query!(
+                r#"
+                    INSERT INTO daily_candles (ticker, ds, open, high, low, close, volume, last_updated)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    ON CONFLICT(ticker, ds) DO UPDATE SET
+                        open = excluded.open,
+                        high = excluded.high,
+                        low = excluded.low,
+                        close = excluded.close,
+                        volume = excluded.volume,
+                        last_updated = excluded.last_updated
+                "#,
+                ticker,
+                candle.timestamp,
+                candle.open,
+                candle.high,
+                candle.low,
+                candle.close,
+                volume,
+                candle.last_updated,
+            )
+            .execute(&mut *tx) // Execute on the transaction
+            .await?;
+        }
+        tx.commit().await
     }
 }
 

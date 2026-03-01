@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
     let yf = YFinance::new();
     let store = Store::load_store().await?;
 
-    let base_perf = fetch_stock_perf(store.clone(), &yf, &APP_CONFIG.base_ticker).await?;
+    let base_perf = fetch_stock_perf(&store, &yf, &APP_CONFIG.base_ticker).await?;
     info!("Fetched baseline: {base_perf}");
 
     let mut tv_manager = TvManager::new(store.clone());
@@ -100,7 +100,7 @@ async fn fetch_stock_info(
 
         pb.set_message(format!("[{ticker}] performance..."));
         pb.inc(1);
-        perfs.push(fetch_stock_perf(store.clone(), yf, &ticker).await?);
+        perfs.push(fetch_stock_perf(&store, yf, &ticker).await?);
     }
 
     pb.finish_with_message(format!("Finished processing {} tickers", stocks.len()));

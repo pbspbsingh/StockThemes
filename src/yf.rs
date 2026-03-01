@@ -132,6 +132,7 @@ pub struct Candle {
     pub low: f64,
     pub close: f64,
     pub volume: u64,
+    pub last_updated: DateTime<Local>,
 }
 
 // ============================================================================
@@ -327,6 +328,9 @@ impl YFinance {
             ),
         };
 
+        // Random jitter to avoid throttling
+        tokio::time::sleep(Duration::from_millis(rand::random_range(10..=100))).await;
+
         let resp = self
             .client
             .get(&url)
@@ -363,6 +367,7 @@ impl YFinance {
         let lows = quote.low.unwrap_or_default();
         let closes = quote.close.unwrap_or_default();
         let volumes = quote.volume.unwrap_or_default();
+        let last_updated = Local::now();
 
         let candles: Vec<Candle> = timestamps
             .into_iter()
@@ -381,6 +386,7 @@ impl YFinance {
                     low: *low,
                     close: *close,
                     volume: *volume,
+                    last_updated,
                 })
             })
             .sorted_by_key(|candle| candle.timestamp)

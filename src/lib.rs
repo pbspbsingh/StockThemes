@@ -1,21 +1,23 @@
 use crate::config::APP_CONFIG;
 use crate::store::Store;
-use crate::util::compute_perf;
-use crate::yf::{BarSize, Range, TimeSpec, YFinance};
+use crate::util::{compute_perf, is_upto_date};
+use crate::yf::{BarSize, Candle, Range, TimeSpec, YFinance};
 use anyhow::Context;
 use axum::response::Html;
 use axum::{Router, routing};
-use chrono::{DateTime, Local, NaiveDate};
-use log::info;
+use chrono::{DateTime, Local, NaiveDate, TimeDelta, Utc};
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use sqlx::types::Json;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::sync::Arc;
 use tokio::net::TcpListener;
 
 pub mod browser;
 pub mod config;
+mod etf_map;
+mod html_error;
+pub mod rrg_util;
 pub mod store;
 pub mod summary;
 pub mod tv;
@@ -80,8 +82,8 @@ pub fn time_frames(input: &str) -> impl Iterator<Item = String> {
 }
 
 pub async fn start_http_server(html: String) -> anyhow::Result<()> {
-    let addr = "127.0.0.1:8000";
-    let listener = TcpListener::bind(addr)
+    let addr = format!("127.0.0.1:{}", APP_CONFIG.http_port);
+    let listener = TcpListener::bind(&addr)
         .await
         .with_context(|| format!("Failed to bind at {addr}: e"))?;
 
@@ -92,20 +94,59 @@ pub async fn start_http_server(html: String) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub async fn fetch_candles(
+    store: &Store,
+    yf: &YFinance,
+    ticker: &str,
+) -> anyhow::Result<Vec<Candle>> {
+    let mut candles = store.get_candles(ticker).await?;
+    if candles.is_empty() {
+        let candles = yf
+            .fetch_candles(ticker, BarSize::Daily, TimeSpec::Range(Range::TwoYears))
+            .await?;
+        info!("Fetched {} candles for {} from yfinance", candles.len(), ticker);
+        store.save_candles(ticker, &candles).await?;
+        return Ok(candles);
+    }
+
+    if is_upto_date(candles.last().unwrap().last_updated) {
+        debug!("Candles for {ticker} is up to date, no need to fetch it");
+        return Ok(candles);
+    }
+
+    let last_updated = candles.pop().unwrap().last_updated;
+    info!("Last candle of {ticker} is from {last_updated}, hence requires updating");
+
+    let start = candles
+        .last()
+        .map(|c| c.timestamp - TimeDelta::days(1))
+        .unwrap_or_else(|| Utc::now() - TimeDelta::days(2 * 365));
+    let end = Utc::now();
+    let new_candles = yf
+        .fetch_candles(ticker, BarSize::Daily, TimeSpec::Interval(start, end))
+        .await?;
+    info!("Fetched {} new candles for {}", new_candles.len(), ticker);
+
+    candles.extend(new_candles);
+    store.save_candles(ticker, &candles).await?;
+
+    Ok(store.get_candles(ticker).await?)
+}
+
 pub async fn fetch_stock_perf(
-    store: Arc<Store>,
+    store: &Store,
     yf: &YFinance,
     ticker: &str,
 ) -> anyhow::Result<Performance> {
     match store.get_performance(ticker, TickerType::Stock).await? {
         Some(perf) => Ok(perf),
         None => {
-            let candles = yf
-                .fetch_candles(ticker, BarSize::Daily, TimeSpec::Range(Range::OneYear))
-                .await?;
-            let perf = Performance::new(ticker, TickerType::Stock, compute_perf(&candles));
-            store.save_performances(&[perf.clone()]).await?;
-            Ok(perf)
+            let candles = fetch_candles(store, yf, ticker).await?;
+            Ok(Performance::new(
+                ticker,
+                TickerType::Stock,
+                compute_perf(&candles),
+            ))
         }
     }
 }
@@ -131,7 +172,7 @@ impl Performance {
 
 impl Display for Performance {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}={{", self.ticker, )?;
+        write!(f, "{}={{", self.ticker,)?;
         write!(f, "1M={:.2}%,", self.perf_1m)?;
         write!(f, "3M={:.2}%,", self.perf_3m)?;
         write!(f, "6M={:.2}%,", self.perf_6m)?;

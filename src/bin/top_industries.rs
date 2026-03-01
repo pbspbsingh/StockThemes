@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
     let yf = YFinance::new();
     let store = Store::load_store().await?;
 
-    let base_perf = fetch_stock_perf(store.clone(), &yf, &APP_CONFIG.base_ticker).await?;
+    let base_perf = fetch_stock_perf(&store, &yf, &APP_CONFIG.base_ticker).await?;
     info!("Fetched baseline: {base_perf}");
 
     let mut tv_manager = TvManager::new(store.clone());

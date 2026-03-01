@@ -9,8 +9,8 @@ use chrono::Local;
 
 use super::TV_HOME;
 
-use crate::{Group, Stock, StockInfoFetcher, tv::Sleepable};
 use crate::util::normalize;
+use crate::{Group, Stock, StockInfoFetcher, tv::Sleepable};
 
 pub struct StockInfoLoader<'a> {
     page: &'a Page,

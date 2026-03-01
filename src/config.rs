@@ -22,6 +22,7 @@ pub struct Config {
     pub base_ticker: String,
     #[serde(default)]
     pub ignored_stocks: Vec<String>,
+    pub http_port: u16,
 }
 
 pub static APP_CONFIG: LazyLock<Config> = LazyLock::new(|| {
@@ -56,6 +57,7 @@ mod test {
             ),
             base_ticker: "QQQ".into(),
             ignored_stocks: Vec::new(),
+            http_port: 8000,
         };
         eprintln!("Config:\n:{}", toml::to_string_pretty(&config).unwrap());
     }
