@@ -2,5 +2,4 @@
 .idea
 target
 *.csv
-*.json
 database.sqlite*

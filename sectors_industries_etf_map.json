@@ -1,0 +1,267 @@
+{
+  "_meta": {
+    "source": "TradingView FactSet Industries & Economic Sectors — USA",
+    "verified": "2026-02-28",
+    "notes": [
+      "All sector and industry names verified directly from tradingview.com/markets/stocks-usa/sectorandindustry-sector/*/industries/",
+      "Coal: No dedicated US-listed coal ETF exists (KOL was delisted 2020). XLE used as fallback.",
+      "Pharmaceuticals Generic: Only 1 stock on TradingView. GNRX was delisted 2019. XPH used as fallback.",
+      "Textiles: No dedicated ETF. XLB (sector) used as fallback.",
+      "Electronic Production Equipment: No dedicated fab-equipment-only ETF. SMH used (includes AMAT, LRCX, KLAC).",
+      "Forest Products / Construction Materials: No dedicated ETFs. XME / XLB used as fallbacks.",
+      "Communications sector in TradingView FactSet = pure telecom only (3 industries). Media/Entertainment live in Consumer Services."
+    ]
+  },
+  "TradingView_Master_Mapping": [
+    {
+      "sector": "Electronic Technology",
+      "sector_etf": "XLK",
+      "industries": [
+        { "name": "Semiconductors",                  "etf": "SMH",  "note": "NVDA, TSMC, AMD, AVGO" },
+        { "name": "Telecommunications Equipment",    "etf": "XLK",  "note": "Apple dominates this category ($3T+)" },
+        { "name": "Aerospace & Defense",             "etf": "ITA",  "note": "LMT, RTX, NOC, GD — confirmed in Electronic Tech by TradingView" },
+        { "name": "Computer Peripherals",            "etf": "XLK",  "note": null },
+        { "name": "Electronic Components",           "etf": "XLK",  "note": null },
+        { "name": "Computer Processing Hardware",    "etf": "XLK",  "note": null },
+        { "name": "Electronic Equipment/Instruments","etf": "XLK",  "note": null },
+        { "name": "Electronic Production Equipment", "etf": "SMH",  "note": "AMAT, LRCX, KLAC, ASML — semiconductor fab equipment. No dedicated ETF; SMH is closest." },
+        { "name": "Computer Communications",         "etf": "XLK",  "note": "14 small-cap networking companies; no dedicated ETF" }
+      ]
+    },
+    {
+      "sector": "Technology Services",
+      "sector_etf": "VGT",
+      "industries": [
+        { "name": "Internet Software/Services",       "etf": "SKYY", "note": "Cloud computing — AMZN, GOOGL, MSFT, CRM" },
+        { "name": "Packaged Software",                "etf": "IGV",  "note": "MSFT, ORCL, SAP, ADBE, CRM" },
+        { "name": "Information Technology Services",  "etf": "VGT",  "note": "Accenture, IBM, CACI, Leidos" },
+        { "name": "Data Processing Services",         "etf": "VGT",  "note": "ADP, Paychex, Fiserv, Broadridge. FINX (FinTech) is wrong category." }
+      ]
+    },
+    {
+      "sector": "Finance",
+      "sector_etf": "XLF",
+      "industries": [
+        { "name": "Major Banks",                "etf": "KBE",  "note": "JPM, BAC, WFC, C, GS" },
+        { "name": "Regional Banks",             "etf": "KRE",  "note": null },
+        { "name": "Savings Banks",              "etf": "KRE",  "note": null },
+        { "name": "Investment Banks/Brokers",   "etf": "IAI",  "note": "GS, MS, Schwab, Raymond James" },
+        { "name": "Investment Managers",        "etf": "IAI",  "note": "BLK, BX, KKR, Ares" },
+        { "name": "Property/Casualty Insurance","etf": "IAK",  "note": "BRK/B, PGR, CB, TRV, AIG" },
+        { "name": "Life/Health Insurance",      "etf": "IAK",  "note": "MET, PRU, AFL — TradingView calls this 'Life/Health Insurance', not 'Life Insurance'" },
+        { "name": "Multi-Line Insurance",       "etf": "IAK",  "note": null },
+        { "name": "Specialty Insurance",        "etf": "IAK",  "note": null },
+        { "name": "Insurance Brokers/Services", "etf": "IAK",  "note": "AON, MMC, WTW" },
+        { "name": "Real Estate Investment Trusts", "etf": "VNQ", "note": "TradingView Finance includes REITs, unlike GICS" },
+        { "name": "Real Estate Development",    "etf": "VNQ",  "note": null },
+        { "name": "Finance/Rental/Leasing",     "etf": "XLF",  "note": "AXP, SYF, COF, CAT Finance arms" },
+        { "name": "Financial Conglomerates",    "etf": "XLF",  "note": null }
+      ]
+    },
+    {
+      "sector": "Health Technology",
+      "sector_etf": "XLV",
+      "industries": [
+        { "name": "Pharmaceuticals: Major",    "etf": "XPH",  "note": "LLY, JNJ, PFE, MRK, NVO" },
+        { "name": "Biotechnology",             "etf": "IBB",  "note": "AMGN, GILD, REGN, VRTX" },
+        { "name": "Medical Specialties",       "etf": "IHI",  "note": "ABT, MDT, SYK, EW, ISRG" },
+        { "name": "Pharmaceuticals: Other",    "etf": "XPH",  "note": null },
+        { "name": "Pharmaceuticals: Generic",  "etf": "XPH",  "note": "Only 1 stock on TradingView. GNRX was delisted April 2019. XPH is best available proxy." }
+      ]
+    },
+    {
+      "sector": "Health Services",
+      "sector_etf": "IHF",
+      "industries": [
+        { "name": "Managed Health Care",              "etf": "IHF",  "note": "UNH, ELV, CVS, HUM, CI" },
+        { "name": "Hospital/Nursing Management",      "etf": "XHS",  "note": "HCA, THC, UHS" },
+        { "name": "Medical/Nursing Services",         "etf": "IHF",  "note": "Covers home health, diagnostics, labs" },
+        { "name": "Services to the Health Industry",  "etf": "XLV",  "note": "Only 4 stocks; sector ETF fallback" }
+      ]
+    },
+    {
+      "sector": "Consumer Non-Durables",
+      "sector_etf": "XLP",
+      "industries": [
+        { "name": "Household/Personal Care",   "etf": "XLP",  "note": "PG, CL, KMB, EL, CHD" },
+        { "name": "Beverages: Non-Alcoholic",  "etf": "XLP",  "note": "KO, PEP, MNST" },
+        { "name": "Beverages: Alcoholic",      "etf": "XLP",  "note": "BUD, TAP, STZ, DEO" },
+        { "name": "Tobacco",                   "etf": "XLP",  "note": "MO, PM, BTI" },
+        { "name": "Food: Specialty/Candy",     "etf": "FTXG", "note": "First Trust Nasdaq Food & Beverage ETF" },
+        { "name": "Food: Meat/Fish/Dairy",     "etf": "FTXG", "note": "TradingView name is 'Meat/Fish/Dairy', not 'Meat/Dairy/Fish'" },
+        { "name": "Food: Major Diversified",   "etf": "FTXG", "note": "GIS, CPB, HRL, SJM" },
+        { "name": "Apparel/Footwear",          "etf": "XLY",  "note": "TradingView puts NKE, LULU, PVH, HBI in Consumer Non-Durables. XLY best captures these stocks." },
+        { "name": "Packaged Goods: Cosmetics", "etf": "XLP",  "note": null },
+        { "name": "Consumer Sundries",         "etf": "XLP",  "note": null }
+      ]
+    },
+    {
+      "sector": "Consumer Durables",
+      "sector_etf": "XLY",
+      "industries": [
+        { "name": "Motor Vehicles",          "etf": "CARZ", "note": "TSLA, TM, GM, F, BMW — First Trust Global Auto ETF" },
+        { "name": "Homebuilding",            "etf": "ITB",  "note": "DHI, LEN, NVR, PHM — homebuilders" },
+        { "name": "Recreational Products",  "etf": "XLY",  "note": "Polaris, Brunswick, YETI, Callaway — no dedicated ETF" },
+        { "name": "Tools & Hardware",        "etf": "XLI",  "note": "SWK, SNA, Snap-on — TradingView name is 'Tools & Hardware'" },
+        { "name": "Home Furnishings",        "etf": "XLY",  "note": "WHR, MHK, Leggett & Platt" },
+        { "name": "Electronics/Appliances",  "etf": "XLY",  "note": "TradingView name is 'Electronics/Appliances', not 'Consumer Electronics/Appliances'" },
+        { "name": "Automotive Aftermarket",  "etf": "XLY",  "note": "O'Reilly, AutoZone, Genuine Parts — missing from previous version" },
+        { "name": "Other Consumer Specialties","etf": "XLY", "note": null }
+      ]
+    },
+    {
+      "sector": "Energy Minerals",
+      "sector_etf": "XLE",
+      "industries": [
+        { "name": "Integrated Oil",          "etf": "XLE",  "note": "XOM, CVX, BP, Shell" },
+        { "name": "Oil & Gas Production",    "etf": "XOP",  "note": "E&P — EOG, FANG, DVN, OXY" },
+        { "name": "Oil Refining/Marketing",  "etf": "CRAK", "note": "VanEck Oil Refiners ETF — MPC, VLO, PSX" },
+        { "name": "Coal",                    "etf": "XLE",  "note": "No dedicated coal ETF exists (KOL delisted 2020). BTU/ARCH/HCC are individual stocks. XLE is best fallback." }
+      ]
+    },
+    {
+      "sector": "Industrial Services",
+      "sector_etf": "PAVE",
+      "industries": [
+        { "name": "Engineering & Construction",    "etf": "PAVE", "note": "Fluor, Jacobs, Quanta, AECOM" },
+        { "name": "Oil & Gas Pipelines",           "etf": "AMLP", "note": "Alerian MLP ETF — ET, EPD, MPLX, WMB, KMI" },
+        { "name": "Environmental Services",        "etf": "EVX",  "note": "VanEck Environmental Services — WM, RSG, CWST" },
+        { "name": "Contract Drilling",             "etf": "OIH",  "note": "Valaris, Transocean, H&P" },
+        { "name": "Oilfield Services/Equipment",   "etf": "OIH",  "note": "SLB, HAL, BKR, ChampionX" }
+      ]
+    },
+    {
+      "sector": "Process Industries",
+      "sector_etf": "XLB",
+      "industries": [
+        { "name": "Chemicals: Specialty",           "etf": "XLB",  "note": "SHW, FCX, RPM, Ashland" },
+        { "name": "Industrial Specialties",         "etf": "XLI",  "note": "3M, Illinois Tool Works, Graco" },
+        { "name": "Containers/Packaging",           "etf": "XLB",  "note": "AMCR, IP, PKG, Ball, Crown" },
+        { "name": "Agricultural Commodities/Milling","etf": "MOO",  "note": "VanEck Agribusiness ETF — ADM, Bunge, Ingredion. DBA is commodity futures (wrong)." },
+        { "name": "Chemicals: Agricultural",        "etf": "MOO",  "note": "Nutrien, Mosaic, CF Industries. MOO is best available; SOIL ETF status uncertain." },
+        { "name": "Chemicals: Major Diversified",   "etf": "XLB",  "note": "Dow, LyondellBasell, Celanese" },
+        { "name": "Pulp & Paper",                   "etf": "XLB",  "note": "WRK, IP, Clearwater — no dedicated ETF" },
+        { "name": "Textiles",                       "etf": "XLB",  "note": "Only 5 stocks on TradingView. No dedicated ETF. FTXN is Oil & Gas (wrong). XLB is sector fallback." }
+      ]
+    },
+    {
+      "sector": "Producer Manufacturing",
+      "sector_etf": "XLI",
+      "industries": [
+        { "name": "Industrial Machinery",                "etf": "XLI",  "note": "PH, EMR, ROK, ETN, AME" },
+        { "name": "Trucks/Construction/Farm Machinery",  "etf": "XLI",  "note": "CAT, DE, PCAR, CMI — was missing from previous version" },
+        { "name": "Electrical Products",                 "etf": "XLI",  "note": "Eaton, Emerson, Rockwell — was missing from previous version" },
+        { "name": "Auto Parts: OEM",                     "etf": "MADE", "note": "iShares U.S. Manufacturing ETF (launched July 2024) — APTV, BWA, Lear" },
+        { "name": "Building Products",                   "etf": "XLI",  "note": "MAS, FBHS, Builders FirstSource — was missing from previous version" },
+        { "name": "Industrial Conglomerates",            "etf": "XLI",  "note": "GE, MMM, Honeywell, Dover — was missing" },
+        { "name": "Metal Fabrication",                   "etf": "XLI",  "note": "Watts Water, Rexnord — was missing" },
+        { "name": "Miscellaneous Manufacturing",         "etf": "XLI",  "note": "Was missing from previous version" },
+        { "name": "Office Equipment/Supplies",           "etf": "XLI",  "note": "Xerox, HBI — only 4 stocks; was missing" }
+      ]
+    },
+    {
+      "sector": "Non-Energy Minerals",
+      "sector_etf": "XME",
+      "industries": [
+        { "name": "Precious Metals",        "etf": "GDX",  "note": "Gold/silver miners — NEM, AEM, GOLD, WPM" },
+        { "name": "Other Metals/Minerals",  "etf": "XME",  "note": "Rio Tinto, BHP, Freeport, Newmont" },
+        { "name": "Steel",                  "etf": "SLX",  "note": "VanEck Steel ETF — NUE, STLD, CLF, X" },
+        { "name": "Construction Materials", "etf": "XME",  "note": "VMC, MLM, CRH, Summit Materials — was missing from previous version" },
+        { "name": "Aluminum",               "etf": "IYM",  "note": "AA, ARNC — IYM is Materials ETF, no dedicated aluminum-only ETF" },
+        { "name": "Forest Products",        "etf": "XLB",  "note": "WY, PCH, Rayonier — was missing. No dedicated ETF; XLB is fallback." }
+      ]
+    },
+    {
+      "sector": "Communications",
+      "sector_etf": "IYZ",
+      "industries": [
+        { "name": "Wireless Telecommunications", "etf": "IYZ", "note": "T-Mobile, AT&T, Verizon — TradingView Communications is PURE TELECOM only" },
+        { "name": "Major Telecommunications",    "etf": "IYZ", "note": "Lumen, Consolidated Comm, Zayo" },
+        { "name": "Specialty Telecommunications","etf": "IYZ", "note": "Satellite, fiber specialists — Iridium, Cogent, Bandwidth" }
+      ],
+      "_note": "IMPORTANT: TradingView's Communications sector has ONLY these 3 industries. Broadcasting, Movies/Entertainment, Cable/Satellite, Media are in Consumer Services. XLC covers both, but IYZ is more accurate for pure telecom."
+    },
+    {
+      "sector": "Consumer Services",
+      "sector_etf": "XLY",
+      "industries": [
+        { "name": "Restaurants",                  "etf": "EATZ", "note": "AdvisorShares Restaurant ETF — MCD, SBUX, CMG, YUM" },
+        { "name": "Hotels/Resorts/Cruise lines",  "etf": "PEJ",  "note": "Invesco Leisure & Entertainment — MAR, HLT, CCL, NCLH. CRUZ was cruise-only (wrong)." },
+        { "name": "Movies/Entertainment",         "etf": "XLC",  "note": "Netflix, Disney, WBD — TradingView puts this in Consumer Services, NOT Communications" },
+        { "name": "Cable/Satellite TV",           "etf": "XLC",  "note": "Comcast, Charter, DirecTV — in Consumer Services, NOT Communications" },
+        { "name": "Broadcasting",                 "etf": "XLC",  "note": "Fox, Paramount, Nexstar — in Consumer Services, NOT Communications" },
+        { "name": "Casinos/Gaming",               "etf": "BJK",  "note": "VanEck Gaming ETF — MGM, WYNN, CZR, LVS" },
+        { "name": "Other Consumer Services",      "etf": "XLY",  "note": "Airbnb, Booking, Expedia, Match" },
+        { "name": "Publishing: Newspapers",       "etf": "XLY",  "note": "NYT, News Corp — no dedicated ETF" },
+        { "name": "Publishing: Books/Magazines",  "etf": "XLY",  "note": "Scholastic, Meredith — no dedicated ETF" },
+        { "name": "Media Conglomerates",          "etf": "XLY",  "note": "Only 3 stocks — no dedicated ETF" }
+      ]
+    },
+    {
+      "sector": "Commercial Services",
+      "sector_etf": "XLI",
+      "industries": [
+        { "name": "Miscellaneous Commercial Services", "etf": "XLI",  "note": "Shopify, Verisk, Dun & Bradstreet — largest industry ($704B). Previous JSON named this 'Commercial Services'." },
+        { "name": "Financial Publishing/Services",     "etf": "XLF",  "note": "Moody's, S&P Global, MSCI, FactSet" },
+        { "name": "Advertising/Marketing Services",    "etf": "XLC",  "note": "WPP, Omnicom, Publicis, IPG" },
+        { "name": "Commercial Printing/Forms",         "etf": "XLI",  "note": "Quad, Ennis, Vericast" },
+        { "name": "Personnel Services",               "etf": "XLI",  "note": "ManpowerGroup, Robert Half, Kforce" }
+      ]
+    },
+    {
+      "sector": "Distribution Services",
+      "sector_etf": "XLI",
+      "industries": [
+        { "name": "Wholesale Distributors",    "etf": "XLI",  "note": "Fastenal, W.W. Grainger, HD Supply" },
+        { "name": "Medical Distributors",      "etf": "IHF",  "note": "McKesson, AmerisourceBergen, Cardinal Health — was missing from previous version" },
+        { "name": "Food Distributors",         "etf": "XLP",  "note": "Sysco, US Foods, Performance Food — was missing" },
+        { "name": "Electronics Distributors",  "etf": "XLK",  "note": "Arrow, Avnet, TD Synnex — was missing" }
+      ]
+    },
+    {
+      "sector": "Retail Trade",
+      "sector_etf": "XRT",
+      "industries": [
+        { "name": "Internet Retail",              "etf": "ONLN", "note": "ProShares Online Retail — AMZN, JD, Chewy, Etsy" },
+        { "name": "Specialty Stores",             "etf": "XRT",  "note": "COST, TGT, TJX, ULTA, NKE retail" },
+        { "name": "Home Improvement Chains",      "etf": "XHB",  "note": "HD, LOW — XHB includes retail+homebuilders. ITB is pure homebuilders (wrong for this industry)." },
+        { "name": "Apparel/Footwear Retail",      "etf": "XRT",  "note": "GAP, URBN, PVH, Tapestry — was missing from previous version" },
+        { "name": "Department Stores",            "etf": "XRT",  "note": "Macy's, Nordstrom, Kohl's" },
+        { "name": "Drugstore Chains",             "etf": "XLP",  "note": "CVS, Walgreens — only 2 stocks" },
+        { "name": "Discount Stores",              "etf": "XRT",  "note": "Dollar General, Dollar Tree, Five Below — was missing (previous JSON had 'General Merchandise Stores')" },
+        { "name": "Food Retail",                  "etf": "XLP",  "note": "Kroger, Albertsons, Sprouts" },
+        { "name": "Electronics/Appliance Stores", "etf": "XRT",  "note": "Best Buy — only 4 stocks" },
+        { "name": "Catalog/Specialty Distribution","etf": "XRT",  "note": "Only 1 stock — was missing from previous version" }
+      ]
+    },
+    {
+      "sector": "Transportation",
+      "sector_etf": "IYT",
+      "industries": [
+        { "name": "Railroads",         "etf": "IYT",  "note": "UNP, CSX, NSC, CP, CN" },
+        { "name": "Air Freight/Couriers","etf": "IYT", "note": "UPS, FedEx, XPO, GXO, SAIA" },
+        { "name": "Other Transportation","etf": "IYT", "note": "Waste + misc transport" },
+        { "name": "Airlines",          "etf": "JETS", "note": "Invesco Airlines ETF — AAL, DAL, UAL, LUV, SAVE" },
+        { "name": "Trucking",          "etf": "IYT",  "note": "Old Dominion, Knight-Swift, J.B. Hunt" },
+        { "name": "Marine Shipping",   "etf": "BDRY", "note": "Breakwave Dry Bulk Shipping ETF — Matson, Frontline, Danaos" }
+      ]
+    },
+    {
+      "sector": "Utilities",
+      "sector_etf": "XLU",
+      "industries": [
+        { "name": "Electric Utilities",          "etf": "XLU",  "note": "NEE, DUK, SO, D, EXC" },
+        { "name": "Gas Distributors",            "etf": "XLU",  "note": "SRE, ATO, NI, ONE Gas" },
+        { "name": "Water Utilities",             "etf": "CGW",  "note": "Invesco Water Resources — AWK, WTRG, SJW, MSEX" },
+        { "name": "Alternative Power Generation","etf": "TAN",  "note": "Invesco Solar — ENPH, FSLR, SEDG — alt power includes solar/wind" }
+      ]
+    },
+    {
+      "sector": "Miscellaneous",
+      "sector_etf": "SPY",
+      "industries": [
+        { "name": "Investment Trusts/Mutual Funds", "etf": "SPY", "note": "Catch-all for closed-end funds, BDCs, SPACs not fitting other sectors" }
+      ]
+    }
+  ]
+}

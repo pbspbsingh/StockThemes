@@ -70,7 +70,8 @@
             border-left: 3px solid #4a9eff;
         }
         .sector-header.selected-rs {
-            background: #1a3052;
+            background: #1a3a52;
+            border-left: 3px solid #4a9eff;
         }
 
         .sector-chevron {
@@ -80,6 +81,9 @@
             transition: transform 0.2s;
             flex-shrink: 0;
             width: 12px;
+            cursor: pointer;
+            padding: 4px;
+            margin: -4px 2px -4px -4px;
         }
         .sector-header.active .sector-chevron { transform: rotate(90deg); color: #4a9eff; }
 
@@ -132,17 +136,6 @@
             font-size: 10px;
             color: #444;
             flex-shrink: 0;
-        }
-
-        /* RS pill (reused) */
-        .rs-pill {
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.2px;
-            flex-shrink: 0;
-            margin-left: 6px;
         }
 
         /* ── Right panel ─────────────────────────────────────────── */
@@ -255,13 +248,12 @@
         #rrg-loading {
             position: absolute;
             inset: 0;
-            display: flex;
+            display: none;
             align-items: center;
             justify-content: center;
             background: rgba(26,26,26,0.7);
             font-size: 13px;
             color: #666;
-            display: none;
         }
         .spinner {
             width: 18px; height: 18px;
@@ -281,6 +273,14 @@
             border-top: 1px solid #0a0a0a;
             display: flex;
             flex-direction: column;
+            transition: height 0.2s ease;
+            overflow: hidden;
+        }
+        .rs-panel.collapsed {
+            height: 32px;
+        }
+        .rs-panel.collapsed .rs-canvas-wrap {
+            pointer-events: none;
         }
 
         .rs-panel-header {
@@ -291,7 +291,19 @@
             gap: 10px;
             flex-shrink: 0;
             border-bottom: 1px solid #2a2a2a;
+            cursor: pointer;
+            user-select: none;
         }
+        .rs-panel-header:hover { background: #2a2a2a; }
+
+        .rs-toggle {
+            margin-left: 8px;
+            font-size: 10px;
+            color: #555;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        .rs-panel.collapsed .rs-toggle { transform: rotate(180deg); }
 
         .rs-panel-title {
             font-size: 12px;
@@ -383,7 +395,7 @@
                 <span class="ctrl-label">Benchmark</span>
                 <div class="benchmark-tag">vs <span id="benchmark-label">SPY</span></div>
             </div>
-            <div class="selected-info" id="selected-info">Click a sector to explore industries</div>
+            <div class="selected-info" id="selected-info">Click ▶ to expand a sector</div>
         </div>
 
         <!-- RRG Chart -->
@@ -396,8 +408,9 @@
         </div>
 
         <!-- RS History Chart -->
-        <div class="rs-panel">
-            <div class="rs-panel-header">
+        <div class="rs-panel collapsed" id="rs-panel">
+            <div class="rs-panel-header" id="rs-panel-header">
+                <span class="rs-toggle">▲</span>
                 <span class="rs-panel-title" id="rs-title">Relative Strength</span>
                 <div class="rs-legend">
                     <div class="rs-legend-item">
@@ -430,103 +443,106 @@
 <script id="sectors-data" type="application/json">{{ sectors | json | safe }}</script>
 
 <script>
-'use strict';
+    'use strict';
 
-// ════════════════════════════════════════════════════════════
-// CONSTANTS & CONFIG
-// ════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════
+    // CONSTANTS & CONFIG
+    // ════════════════════════════════════════════════════════════
 
-const BENCHMARK = "{{ benchmark }}";
+    const BENCHMARK = "{{ benchmark }}";
 
-// Quadrant definitions (RRG clockwise: Leading → Weakening → Lagging → Recovering)
-const QUADRANTS = {
-    leading:    { label: 'Leading',    color: 'rgba(40,180,80,0.09)',   dot: '#2ecc71', text: '#2ecc71' },
-    weakening:  { label: 'Weakening',  color: 'rgba(243,156,18,0.09)',  dot: '#f39c12', text: '#f39c12' },
-    lagging:    { label: 'Lagging',    color: 'rgba(220,50,50,0.09)',   dot: '#e74c3c', text: '#e74c3c' },
-    recovering: { label: 'Recovering', color: 'rgba(74,158,255,0.09)',  dot: '#4a9eff', text: '#4a9eff' },
-};
+    // Quadrant definitions (RRG clockwise: Leading → Weakening → Lagging → Recovering)
+    const QUADRANTS = {
+        leading:    { label: 'Leading',    color: 'rgba(40,180,80,0.09)',   dot: '#2ecc71', text: '#2ecc71' },
+        weakening:  { label: 'Weakening',  color: 'rgba(243,156,18,0.09)',  dot: '#f39c12', text: '#f39c12' },
+        lagging:    { label: 'Lagging',    color: 'rgba(220,50,50,0.09)',   dot: '#e74c3c', text: '#e74c3c' },
+        recovering: { label: 'Recovering', color: 'rgba(74,158,255,0.09)',  dot: '#4a9eff', text: '#4a9eff' },
+    };
 
-function getQuadrant(rsRatio, rsMomentum) {
-    if (rsRatio >= 100 && rsMomentum >= 100) return 'leading';
-    if (rsRatio >= 100 && rsMomentum <  100) return 'weakening';
-    if (rsRatio <  100 && rsMomentum <  100) return 'lagging';
-    return 'recovering';
-}
+    function getQuadrant(rsRatio, rsMomentum) {
+        if (rsRatio >= 100 && rsMomentum >= 100) return 'leading';
+        if (rsRatio >= 100 && rsMomentum <  100) return 'weakening';
+        if (rsRatio <  100 && rsMomentum <  100) return 'lagging';
+        return 'recovering';
+    }
 
-// ════════════════════════════════════════════════════════════
-// APP STATE
-// ════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════
+    // APP STATE
+    // ════════════════════════════════════════════════════════════
 
-const State = {
-    sectors: JSON.parse(document.getElementById('sectors-data').textContent),
-    benchmark: BENCHMARK,
+    const State = {
+        sectors: JSON.parse(document.getElementById('sectors-data').textContent),
+        benchmark: BENCHMARK,
 
-    // UI
-    expandedSector: null,   // sector name | null
-    selectedItem: null,     // { name, etf, type: 'sector'|'industry' } | null
+        // UI
+        expandedSector: null,   // sector name | null
+        selectedItem: null,     // { name, etf, type: 'sector'|'industry' } | null
 
-    // Controls
-    timeframe: 'weekly',
-    tailLen: 4,
-    historyLen: 52,  // periods of RS history for the bottom chart
-};
+        // Keyboard navigation
+        navIndex: -1,           // index in current buildNavList() flat list
 
-// ════════════════════════════════════════════════════════════
-// API
-// ════════════════════════════════════════════════════════════
+        // Controls
+        timeframe: 'weekly',
+        tailLen: 4,
+        historyLen: 52,  // periods of RS history for the bottom chart
+    };
 
-/**
- * GET /api/rrg/{ticker}?timeframe={daily|weekly}&tail={int}&history={int}
- *
- * Expected response shape:
- * {
- *   "ticker":      "XLK",
- *   "rs_ratio":    102.5,
- *   "rs_momentum": 101.8,
- *   "tail":        [ { "rs_ratio": 100.1, "rs_momentum": 99.5 }, ... ],  // oldest → newest
- *   "rs_history":  [ { "date": "2024-01-05", "value": 102.1 }, ... ]
- * }
- */
-async function fetchRRG(etf) {
-    const { timeframe, tailLen, historyLen } = State;
-    const url = `/api/rrg/${etf}?timeframe=${timeframe}&tail=${tailLen}&history=${historyLen}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${etf}`);
-    return res.json();
-}
+    // ════════════════════════════════════════════════════════════
+    // API
+    // ════════════════════════════════════════════════════════════
 
-async function fetchAll(items) {
-    // items: array of { name, etf }
-    const results = await Promise.allSettled(items.map(item => fetchRRG(item.etf)));
-    const out = [];
-    results.forEach((r, i) => {
-        if (r.status === 'fulfilled') {
-            out.push({ ...items[i], ...r.value });
-        } else {
-            console.warn(`Failed to load ${items[i].etf}:`, r.reason);
-        }
-    });
-    return out;
-}
+    /**
+     * GET /api/rrg/{ticker}?timeframe={daily|weekly}&tail={int}&history={int}
+     *
+     * Expected response shape:
+     * {
+     *   "ticker":      "XLK",
+     *   "rs_ratio":    102.5,
+     *   "rs_momentum": 101.8,
+     *   "tail":        [ { "rs_ratio": 100.1, "rs_momentum": 99.5 }, ... ],  // oldest → newest
+     *   "rs_history":  [ { "date": "2024-01-05", "value": 102.1 }, ... ]
+     * }
+     */
+    async function fetchRRG(etf) {
+        const { timeframe, tailLen, historyLen } = State;
+        const url = `/api/rrg/${etf}?timeframe=${timeframe}&tail=${tailLen}&history=${historyLen}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status} for ${etf}`);
+        return res.json();
+    }
 
-// ════════════════════════════════════════════════════════════
-// LEFT PANEL — Accordion
-// ════════════════════════════════════════════════════════════
+    async function fetchAll(items) {
+        // items: array of { name, etf }
+        const results = await Promise.allSettled(items.map(item => fetchRRG(item.etf)));
+        const out = [];
+        results.forEach((r, i) => {
+            if (r.status === 'fulfilled') {
+                out.push({ ...items[i], ...r.value });
+            } else {
+                console.warn(`Failed to load ${items[i].etf}:`, r.reason);
+            }
+        });
+        return out;
+    }
 
-function renderLeftPanel() {
-    const container = document.getElementById('sector-list');
-    container.innerHTML = '';
+    // ════════════════════════════════════════════════════════════
+    // LEFT PANEL — Accordion
+    // ════════════════════════════════════════════════════════════
 
-    State.sectors.forEach(sectorObj => {
-        const sName    = sectorObj.sector;
-        const sEtf     = sectorObj.sector_etf;
-        const expanded = State.expandedSector === sName;
-        const isSelectedRS = State.selectedItem?.name === sName;
+    function renderLeftPanel() {
+        const container = document.getElementById('sector-list');
+        container.innerHTML = '';
 
-        // Sector header
-        const row = document.createElement('div');
-        row.className = 'sector-row';
-        row.innerHTML = `
+        State.sectors.forEach(sectorObj => {
+            const sName    = sectorObj.sector;
+            const sEtf     = sectorObj.sector_etf;
+            const expanded = State.expandedSector === sName;
+            const isSelectedRS = State.selectedItem?.name === sName;
+
+            // Sector header
+            const row = document.createElement('div');
+            row.className = 'sector-row';
+            row.innerHTML = `
             <div class="sector-header ${expanded ? 'active' : ''} ${isSelectedRS ? 'selected-rs' : ''}" data-sector="${sName}">
                 <span class="sector-chevron">▶</span>
                 <span class="sector-label">${sName}</span>
@@ -534,625 +550,691 @@ function renderLeftPanel() {
             </div>
             <div class="industry-list ${expanded ? 'open' : ''}" data-sector-industries="${sName}">
                 ${sectorObj.industries.map(ind => {
-                    const isSel = State.selectedItem?.name === ind.name;
-                    return `<div class="industry-item ${isSel ? 'selected' : ''}" data-industry="${ind.name}" data-etf="${ind.etf}">
+                const isSel = State.selectedItem?.name === ind.name;
+                return `<div class="industry-item ${isSel ? 'selected' : ''}" data-industry="${ind.name}" data-etf="${ind.etf}">
                         <span class="industry-label">${ind.name}</span>
                         <span class="industry-etf-tag">${ind.etf}</span>
                     </div>`;
-                }).join('')}
+            }).join('')}
             </div>
         `;
 
-        // Sector header click
-        row.querySelector('.sector-header').addEventListener('click', () => {
-            onSectorClick(sName, sEtf);
-        });
-
-        // Industry clicks
-        row.querySelectorAll('.industry-item').forEach(el => {
-            el.addEventListener('click', () => {
-                onIndustryClick(el.dataset.industry, el.dataset.etf);
+            // Sector header click — select only, no expand/collapse
+            row.querySelector('.sector-header').addEventListener('click', (e) => {
+                if (e.target.closest('.sector-chevron')) return;
+                onSectorSelect(sName, sEtf);
             });
+
+            // Chevron click — expand/collapse only
+            row.querySelector('.sector-chevron').addEventListener('click', (e) => {
+                e.stopPropagation();
+                onSectorExpand(sName, sEtf);
+            });
+
+            // Industry clicks
+            row.querySelectorAll('.industry-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    onIndustryClick(el.dataset.industry, el.dataset.etf);
+                });
+            });
+
+            container.appendChild(row);
+        });
+    }
+
+    // Select sector for RS chart without expanding
+    function onSectorSelect(sName, sEtf) {
+        State.selectedItem = { name: sName, etf: sEtf, type: 'sector' };
+        State.navIndex = buildNavList().findIndex(i => i.type === 'sector' && i.name === sName);
+        renderLeftPanel();
+        loadAndRenderRS(sEtf, sName);
+        updateSelectedInfo();
+        animateSelectedDot();
+    }
+
+    // Expand/collapse sector accordion (updates RRG plot)
+    function onSectorExpand(sName, sEtf) {
+        const wasExpanded = State.expandedSector === sName;
+        State.expandedSector = wasExpanded ? null : sName;
+        State.selectedItem = { name: sName, etf: sEtf, type: 'sector' };
+        State.navIndex = buildNavList().findIndex(i => i.type === 'sector' && i.name === sName);
+        renderLeftPanel();
+        loadAndRenderRRG();
+        loadAndRenderRS(sEtf, sName);
+        updateSelectedInfo();
+        animateSelectedDot();
+    }
+
+    // Keep onSectorClick for keyboard nav (expand + select together)
+    function onSectorClick(sName, sEtf) {
+        const wasExpanded = State.expandedSector === sName;
+        State.selectedItem = { name: sName, etf: sEtf, type: 'sector' };
+        State.expandedSector = wasExpanded ? null : sName;
+        renderLeftPanel();
+        loadAndRenderRRG();
+        loadAndRenderRS(sEtf, sName);
+        updateSelectedInfo();
+        animateSelectedDot();
+    }
+
+    function onIndustryClick(iName, iEtf) {
+        State.selectedItem = { name: iName, etf: iEtf, type: 'industry' };
+        State.navIndex = buildNavList().findIndex(i => i.type === 'industry' && i.name === iName);
+        renderLeftPanel();
+        loadAndRenderRS(iEtf, iName);
+        updateSelectedInfo();
+        animateSelectedDot();
+    }
+
+    function updateSelectedInfo() {
+        const el = document.getElementById('selected-info');
+        const { selectedItem, expandedSector } = State;
+
+        if (!selectedItem) {
+            el.innerHTML = 'Click ▶ to expand a sector';
+            return;
+        }
+
+        const typeLabel = selectedItem.type === 'sector'
+            ? `<strong>${selectedItem.name}</strong> — sector · ${selectedItem.etf}`
+            : `<strong>${selectedItem.name}</strong> — industry · ${selectedItem.etf}`;
+        el.innerHTML = typeLabel;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // RRG — Load & Render
+    // ════════════════════════════════════════════════════════════
+
+    async function loadAndRenderRRG() {
+        // Determine what to show
+        let items;
+        if (State.expandedSector) {
+            const sec = State.sectors.find(s => s.sector === State.expandedSector);
+            items = sec ? sec.industries.map(ind => ({ name: ind.name, etf: ind.etf })) : [];
+        } else {
+            items = State.sectors.map(s => ({ name: s.sector, etf: s.sector_etf }));
+        }
+
+        showLoading(true);
+        try {
+            const data = await fetchAll(items);
+            showLoading(false);
+            renderRRG(data);
+        } catch (e) {
+            showLoading(false);
+            console.error('RRG load failed:', e);
+        }
+    }
+
+    function showLoading(on) {
+        document.getElementById('rrg-loading').style.display = on ? 'flex' : 'none';
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // RRG CANVAS RENDERER
+    // ════════════════════════════════════════════════════════════
+
+    let rrgData       = [];   // last rendered data
+    let rrgHoveredIdx = -1;
+
+    // Cached DOM elements
+    const rrgCanvas = document.getElementById('rrg-canvas');
+    const rsCanvas  = document.getElementById('rs-canvas');
+
+    // ── Animation state ─────────────────────────────────────────
+    let rrgAnimProgress = 1;   // 0 → 1 (1 = fully drawn, no ongoing animation)
+    let rrgAnimFrameId  = null;
+    const RRG_ANIM_MS   = 1400; // total duration in ms
+
+    // ── Selected dot — animate only that one dot's tail ──────────
+    let rrgSoloAnimProgress = 1;   // 0 → 1, only for the currently selected dot
+    let rrgSoloAnimId       = null;
+    let rrgSoloEtf          = null; // which ETF is being solo-animated
+
+    function animateSelectedDot() {
+        if (!State.selectedItem) return;
+        const etf = State.selectedItem.etf;
+
+        if (rrgSoloAnimId !== null) {
+            cancelAnimationFrame(rrgSoloAnimId);
+            rrgSoloAnimId = null;
+        }
+
+        rrgSoloEtf          = etf;
+        rrgSoloAnimProgress = 0;
+        const startTime     = performance.now();
+
+        function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+        function frame(now) {
+            const raw = Math.min((now - startTime) / RRG_ANIM_MS, 1);
+            rrgSoloAnimProgress = easeOut(raw);
+            drawRRG();
+            if (raw < 1) {
+                rrgSoloAnimId = requestAnimationFrame(frame);
+            } else {
+                rrgSoloAnimProgress = 1;
+                rrgSoloAnimId       = null;
+                drawRRG();
+            }
+        }
+
+        rrgSoloAnimId = requestAnimationFrame(frame);
+    }
+
+    function renderRRG(data) {
+        rrgData = data;
+
+        // Cancel any ongoing animation and restart
+        if (rrgAnimFrameId !== null) {
+            cancelAnimationFrame(rrgAnimFrameId);
+            rrgAnimFrameId = null;
+        }
+
+        rrgAnimProgress = 0;
+        const startTime = performance.now();
+
+        // Ease-out cubic
+        function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+        function frame(now) {
+            const raw = Math.min((now - startTime) / RRG_ANIM_MS, 1);
+            rrgAnimProgress = easeOut(raw);
+            drawRRG();
+            if (raw < 1) {
+                rrgAnimFrameId = requestAnimationFrame(frame);
+            } else {
+                rrgAnimProgress = 1;
+                rrgAnimFrameId  = null;
+                drawRRG();  // final crisp frame
+            }
+        }
+
+        rrgAnimFrameId = requestAnimationFrame(frame);
+    }
+
+    // Shared viewport computation used by both drawRRG and hitTestRRG.
+    // Returns { xMin, xMax, yMin, yMax, toX, toY } for given plot dimensions.
+    function computeViewport(data, plotW, plotH, M) {
+        const allPoints = data.flatMap(d => [
+            { x: d.rs_ratio, y: d.rs_momentum },
+            ...(d.tail || []).map(t => ({ x: t.rs_ratio, y: t.rs_momentum })),
+        ]);
+        allPoints.push({ x: 100, y: 100 });
+
+        const pad = 1.5;
+        let xMin = Math.min(...allPoints.map(p => p.x)) - pad;
+        let xMax = Math.max(...allPoints.map(p => p.x)) + pad;
+        let yMin = Math.min(...allPoints.map(p => p.y)) - pad;
+        let yMax = Math.max(...allPoints.map(p => p.y)) + pad;
+
+        const xRange = xMax - xMin;
+        const yRange = yMax - yMin;
+        if (xRange > yRange) {
+            const diff = xRange - yRange;
+            yMin -= diff / 2; yMax += diff / 2;
+        } else {
+            const diff = yRange - xRange;
+            xMin -= diff / 2; xMax += diff / 2;
+        }
+
+        const toX = v => M.left + ((v - xMin) / (xMax - xMin)) * plotW;
+        const toY = v => M.top  + ((yMax - v) / (yMax - yMin)) * plotH;
+        return { xMin, xMax, yMin, yMax, toX, toY };
+    }
+
+    function drawRRG() {
+        const canvas = rrgCanvas;
+        const container = canvas.parentElement;
+        const dpr = window.devicePixelRatio || 1;
+        const W   = container.clientWidth;
+        const H   = container.clientHeight;
+        // Only resize backing store when dimensions change (avoids flicker mid-animation)
+        if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+            canvas.width  = Math.round(W * dpr);
+            canvas.height = Math.round(H * dpr);
+            canvas.style.width  = W + 'px';
+            canvas.style.height = H + 'px';
+        }
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);  // reset + apply DPR scale each frame
+
+        // Margins
+        const M = { top: 36, right: 36, bottom: 44, left: 52 };
+        const plotW = W - M.left - M.right;
+        const plotH = H - M.top  - M.bottom;
+
+        if (plotW <= 0 || plotH <= 0) return;
+
+        // ── Viewport (auto-scaled, always includes 100,100) ─────
+        const { xMin, xMax, yMin, yMax, toX, toY } = computeViewport(rrgData, plotW, plotH, M);
+
+        const cx = toX(100);  // axis intersection x
+        const cy = toY(100);  // axis intersection y
+
+        // ── Background ─────────────────────────────────────────
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, W, H);
+
+        // ── Quadrant fills ──────────────────────────────────────
+        // Layout:  Recovering | Leading
+        //          -----------+----------
+        //          Lagging    | Weakening
+        const qFills = [
+            { x: cx,     y: M.top, w: M.left + plotW - cx, h: cy - M.top,          q: QUADRANTS.leading    },  // top-right
+            { x: M.left, y: M.top, w: cx - M.left,         h: cy - M.top,          q: QUADRANTS.recovering },  // top-left
+            { x: M.left, y: cy,    w: cx - M.left,          h: M.top + plotH - cy,  q: QUADRANTS.lagging    },  // bottom-left
+            { x: cx,     y: cy,    w: M.left + plotW - cx,  h: M.top + plotH - cy,  q: QUADRANTS.weakening  },  // bottom-right
+        ];
+        qFills.forEach(({ x, y, w, h, q }) => {
+            ctx.fillStyle = q.color;
+            ctx.fillRect(x, y, w, h);
         });
 
-        container.appendChild(row);
-    });
-}
+        // ── Grid lines ──────────────────────────────────────────
+        ctx.strokeStyle = '#2a2a2a';
+        ctx.lineWidth = 1;
+        const gridStep = computeGridStep(xMax - xMin);
+        const xStart = Math.ceil(xMin / gridStep) * gridStep;
+        const yStart = Math.ceil(yMin / gridStep) * gridStep;
 
-function onSectorClick(sName, sEtf) {
-    const wasExpanded = State.expandedSector === sName;
-
-    // Always select this sector for RS chart
-    State.selectedItem = { name: sName, etf: sEtf, type: 'sector' };
-
-    if (wasExpanded) {
-        // Collapse → go back to all-sectors RRG view
-        State.expandedSector = null;
-    } else {
-        // Expand → show industries in RRG
-        State.expandedSector = sName;
-    }
-
-    renderLeftPanel();
-    loadAndRenderRRG();
-    loadAndRenderRS(sEtf, sName);
-    updateSelectedInfo();
-}
-
-function onIndustryClick(iName, iEtf) {
-    State.selectedItem = { name: iName, etf: iEtf, type: 'industry' };
-    renderLeftPanel();
-    loadAndRenderRS(iEtf, iName);
-    updateSelectedInfo();
-}
-
-function updateSelectedInfo() {
-    const el = document.getElementById('selected-info');
-    const { selectedItem, expandedSector } = State;
-
-    if (!selectedItem) {
-        el.innerHTML = 'Click a sector to explore industries';
-        return;
-    }
-
-    const typeLabel = selectedItem.type === 'sector'
-        ? `<strong>${selectedItem.name}</strong> — sector · ${selectedItem.etf}`
-        : `<strong>${selectedItem.name}</strong> — industry · ${selectedItem.etf}`;
-    el.innerHTML = typeLabel;
-}
-
-// ════════════════════════════════════════════════════════════
-// RRG — Load & Render
-// ════════════════════════════════════════════════════════════
-
-async function loadAndRenderRRG() {
-    // Determine what to show
-    let items;
-    if (State.expandedSector) {
-        const sec = State.sectors.find(s => s.sector === State.expandedSector);
-        items = sec ? sec.industries.map(ind => ({ name: ind.name, etf: ind.etf })) : [];
-    } else {
-        items = State.sectors.map(s => ({ name: s.sector, etf: s.sector_etf }));
-    }
-
-    showLoading(true);
-    try {
-        const data = await fetchAll(items);
-        showLoading(false);
-        renderRRG(data);
-    } catch (e) {
-        showLoading(false);
-        console.error('RRG load failed:', e);
-    }
-}
-
-function showLoading(on) {
-    document.getElementById('rrg-loading').style.display = on ? 'flex' : 'none';
-}
-
-// ════════════════════════════════════════════════════════════
-// RRG CANVAS RENDERER
-// ════════════════════════════════════════════════════════════
-
-let rrgData       = [];   // last rendered data
-let rrgHoveredIdx = -1;
-
-// ── Animation state ─────────────────────────────────────────
-let rrgAnimProgress = 1;   // 0 → 1 (1 = fully drawn, no ongoing animation)
-let rrgAnimFrameId  = null;
-const RRG_ANIM_MS   = 1400; // total duration in ms
-
-function renderRRG(data) {
-    rrgData = data;
-
-    // Cancel any ongoing animation and restart
-    if (rrgAnimFrameId !== null) {
-        cancelAnimationFrame(rrgAnimFrameId);
-        rrgAnimFrameId = null;
-    }
-
-    rrgAnimProgress = 0;
-    const startTime = performance.now();
-
-    // Ease-out cubic
-    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
-
-    function frame(now) {
-        const raw = Math.min((now - startTime) / RRG_ANIM_MS, 1);
-        rrgAnimProgress = easeOut(raw);
-        drawRRG();
-        if (raw < 1) {
-            rrgAnimFrameId = requestAnimationFrame(frame);
-        } else {
-            rrgAnimProgress = 1;
-            rrgAnimFrameId  = null;
-            drawRRG();  // final crisp frame
+        ctx.beginPath();
+        for (let v = xStart; v <= xMax; v += gridStep) {
+            const px = toX(v);
+            ctx.moveTo(px, M.top);
+            ctx.lineTo(px, M.top + plotH);
         }
-    }
+        for (let v = yStart; v <= yMax; v += gridStep) {
+            const py = toY(v);
+            ctx.moveTo(M.left, py);
+            ctx.lineTo(M.left + plotW, py);
+        }
+        ctx.stroke();
 
-    rrgAnimFrameId = requestAnimationFrame(frame);
-}
+        // ── Axis lines at 100,100 ───────────────────────────────
+        ctx.strokeStyle = '#3a3a3a';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(cx, M.top); ctx.lineTo(cx, M.top + plotH);
+        ctx.moveTo(M.left, cy); ctx.lineTo(M.left + plotW, cy);
+        ctx.stroke();
+        ctx.setLineDash([]);
 
-function drawRRG() {
-    const canvas = document.getElementById('rrg-canvas');
-    const container = canvas.parentElement;
-    const dpr = window.devicePixelRatio || 1;
-    const W   = container.clientWidth;
-    const H   = container.clientHeight;
-    // Only resize backing store when dimensions change (avoids flicker mid-animation)
-    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
-        canvas.width  = Math.round(W * dpr);
-        canvas.height = Math.round(H * dpr);
-        canvas.style.width  = W + 'px';
-        canvas.style.height = H + 'px';
-    }
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);  // reset + apply DPR scale each frame
+        // ── Quadrant labels (pinned to plot corners) ────────────
+        ctx.font = '600 10px -apple-system, sans-serif';
+        const qlPad = 8;
+        [
+            // Top-right  → Leading
+            { text: 'LEADING',    ax: 'right', x: M.left + plotW - qlPad, y: M.top + qlPad,           color: QUADRANTS.leading.text    },
+            // Top-left   → Recovering
+            { text: 'RECOVERING', ax: 'left',  x: M.left + qlPad,         y: M.top + qlPad,           color: QUADRANTS.recovering.text },
+            // Bottom-left → Lagging
+            { text: 'LAGGING',    ax: 'left',  x: M.left + qlPad,         y: M.top + plotH - qlPad,   color: QUADRANTS.lagging.text    },
+            // Bottom-right → Weakening
+            { text: 'WEAKENING',  ax: 'right', x: M.left + plotW - qlPad, y: M.top + plotH - qlPad,   color: QUADRANTS.weakening.text  },
+        ].forEach(({ text, ax, x, y, color }) => {
+            ctx.textAlign    = ax;
+            ctx.textBaseline = y < cy ? 'top' : 'bottom';
+            ctx.fillStyle    = color;
+            ctx.globalAlpha  = 0.5;
+            ctx.fillText(text, Math.round(x), Math.round(y));
+            ctx.globalAlpha  = 1;
+        });
 
-    // Margins
-    const M = { top: 36, right: 36, bottom: 44, left: 52 };
-    const plotW = W - M.left - M.right;
-    const plotH = H - M.top  - M.bottom;
+        // ── Axis tick labels ────────────────────────────────────
+        ctx.fillStyle = '#555';
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textBaseline = 'top';
+        for (let v = xStart; v <= xMax; v += gridStep) {
+            const px = Math.round(toX(v));
+            ctx.textAlign = 'center';
+            ctx.fillText(v.toFixed(1), px, Math.round(M.top + plotH + 4));
+        }
+        ctx.textAlign = 'right';
+        for (let v = yStart; v <= yMax; v += gridStep) {
+            const py = Math.round(toY(v));
+            ctx.textBaseline = 'middle';
+            ctx.fillText(v.toFixed(1), Math.round(M.left - 5), py);
+        }
 
-    if (plotW <= 0 || plotH <= 0) return;
-
-    // ── Viewport (auto-scaled, always includes 100,100) ─────
-    const allPoints = rrgData.flatMap(d => [
-        { x: d.rs_ratio, y: d.rs_momentum },
-        ...(d.tail || []).map(t => ({ x: t.rs_ratio, y: t.rs_momentum })),
-    ]);
-    allPoints.push({ x: 100, y: 100 });
-
-    const pad = 1.5;
-    let xMin = Math.min(...allPoints.map(p => p.x)) - pad;
-    let xMax = Math.max(...allPoints.map(p => p.x)) + pad;
-    let yMin = Math.min(...allPoints.map(p => p.y)) - pad;
-    let yMax = Math.max(...allPoints.map(p => p.y)) + pad;
-
-    // Keep square-ish aspect ratio
-    const xRange = xMax - xMin;
-    const yRange = yMax - yMin;
-    if (xRange > yRange) {
-        const diff = xRange - yRange;
-        yMin -= diff / 2;
-        yMax += diff / 2;
-    } else {
-        const diff = yRange - xRange;
-        xMin -= diff / 2;
-        xMax += diff / 2;
-    }
-
-    // Data → canvas transform
-    function toX(v) { return M.left + ((v - xMin) / (xMax - xMin)) * plotW; }
-    function toY(v) { return M.top  + ((yMax - v) / (yMax - yMin)) * plotH; }
-
-    const cx = toX(100);  // axis intersection x
-    const cy = toY(100);  // axis intersection y
-
-    // ── Background ─────────────────────────────────────────
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(0, 0, W, H);
-
-    // ── Quadrant fills ──────────────────────────────────────
-    // Layout:  Recovering | Leading
-    //          -----------+----------
-    //          Lagging    | Weakening
-    const qFills = [
-        { x: cx,     y: M.top, w: M.left + plotW - cx, h: cy - M.top,          q: QUADRANTS.leading    },  // top-right
-        { x: M.left, y: M.top, w: cx - M.left,         h: cy - M.top,          q: QUADRANTS.recovering },  // top-left
-        { x: M.left, y: cy,    w: cx - M.left,          h: M.top + plotH - cy,  q: QUADRANTS.lagging    },  // bottom-left
-        { x: cx,     y: cy,    w: M.left + plotW - cx,  h: M.top + plotH - cy,  q: QUADRANTS.weakening  },  // bottom-right
-    ];
-    qFills.forEach(({ x, y, w, h, q }) => {
-        ctx.fillStyle = q.color;
-        ctx.fillRect(x, y, w, h);
-    });
-
-    // ── Grid lines ──────────────────────────────────────────
-    ctx.strokeStyle = '#2a2a2a';
-    ctx.lineWidth = 1;
-    const gridStep = computeGridStep(xMax - xMin);
-    const xStart = Math.ceil(xMin / gridStep) * gridStep;
-    const yStart = Math.ceil(yMin / gridStep) * gridStep;
-
-    ctx.beginPath();
-    for (let v = xStart; v <= xMax; v += gridStep) {
-        const px = toX(v);
-        ctx.moveTo(px, M.top);
-        ctx.lineTo(px, M.top + plotH);
-    }
-    for (let v = yStart; v <= yMax; v += gridStep) {
-        const py = toY(v);
-        ctx.moveTo(M.left, py);
-        ctx.lineTo(M.left + plotW, py);
-    }
-    ctx.stroke();
-
-    // ── Axis lines at 100,100 ───────────────────────────────
-    ctx.strokeStyle = '#3a3a3a';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(cx, M.top); ctx.lineTo(cx, M.top + plotH);
-    ctx.moveTo(M.left, cy); ctx.lineTo(M.left + plotW, cy);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // ── Quadrant labels (pinned to plot corners) ────────────
-    ctx.font = '600 10px -apple-system, sans-serif';
-    const qlPad = 8;
-    [
-        // Top-right  → Leading
-        { text: 'LEADING',    ax: 'right', x: M.left + plotW - qlPad, y: M.top + qlPad,           color: QUADRANTS.leading.text    },
-        // Top-left   → Recovering
-        { text: 'RECOVERING', ax: 'left',  x: M.left + qlPad,         y: M.top + qlPad,           color: QUADRANTS.recovering.text },
-        // Bottom-left → Lagging
-        { text: 'LAGGING',    ax: 'left',  x: M.left + qlPad,         y: M.top + plotH - qlPad,   color: QUADRANTS.lagging.text    },
-        // Bottom-right → Weakening
-        { text: 'WEAKENING',  ax: 'right', x: M.left + plotW - qlPad, y: M.top + plotH - qlPad,   color: QUADRANTS.weakening.text  },
-    ].forEach(({ text, ax, x, y, color }) => {
-        ctx.textAlign    = ax;
-        ctx.textBaseline = y < cy ? 'top' : 'bottom';
-        ctx.fillStyle    = color;
-        ctx.globalAlpha  = 0.5;
-        ctx.fillText(text, Math.round(x), Math.round(y));
-        ctx.globalAlpha  = 1;
-    });
-
-    // ── Axis tick labels ────────────────────────────────────
-    ctx.fillStyle = '#555';
-    ctx.font = '10px -apple-system, sans-serif';
-    ctx.textBaseline = 'top';
-    for (let v = xStart; v <= xMax; v += gridStep) {
-        const px = Math.round(toX(v));
+        // ── Axis titles ─────────────────────────────────────────
+        ctx.fillStyle = '#555';
+        ctx.font = '11px -apple-system, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(v.toFixed(1), px, Math.round(M.top + plotH + 4));
-    }
-    ctx.textAlign = 'right';
-    for (let v = yStart; v <= yMax; v += gridStep) {
-        const py = Math.round(toY(v));
-        ctx.textBaseline = 'middle';
-        ctx.fillText(v.toFixed(1), Math.round(M.left - 5), py);
-    }
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('RS-Ratio →', Math.round(M.left + plotW / 2), Math.round(H - 2));
+        ctx.save();
+        ctx.translate(Math.round(12), Math.round(M.top + plotH / 2));
+        ctx.rotate(-Math.PI / 2);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText('RS-Momentum →', 0, 0);
+        ctx.restore();
 
-    // ── Axis titles ─────────────────────────────────────────
-    ctx.fillStyle = '#555';
-    ctx.font = '11px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('RS-Ratio →', Math.round(M.left + plotW / 2), Math.round(H - 2));
-    ctx.save();
-    ctx.translate(Math.round(12), Math.round(M.top + plotH / 2));
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('RS-Momentum →', 0, 0);
-    ctx.restore();
-
-    // ── Benchmark marker at 100,100 ─────────────────────────
-    ctx.beginPath();
-    ctx.arc(Math.round(cx), Math.round(cy), 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#444';
-    ctx.fill();
-    ctx.fillStyle = '#666';
-    ctx.font = '10px -apple-system, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(State.benchmark, Math.round(cx + 7), Math.round(cy));
-
-    if (rrgData.length === 0) {
+        // ── Benchmark marker at 100,100 ─────────────────────────
+        ctx.beginPath();
+        ctx.arc(Math.round(cx), Math.round(cy), 4, 0, Math.PI * 2);
         ctx.fillStyle = '#444';
-        ctx.font = '14px -apple-system, sans-serif';
-        ctx.textAlign = 'center';
+        ctx.fill();
+        ctx.fillStyle = '#666';
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText('No data', W / 2, H / 2);
-        return;
-    }
+        ctx.fillText(State.benchmark, Math.round(cx + 7), Math.round(cy));
 
-    // ── Draw tails + dots ───────────────────────────────────
-    // Two-pass: tails first (so dots always render on top)
-    rrgData.forEach((d, idx) => {
-        const tail      = d.tail || [];
-        const quadrant  = getQuadrant(d.rs_ratio, d.rs_momentum);
-        const dotColor  = QUADRANTS[quadrant].dot;
-        const isHovered = idx === rrgHoveredIdx;
-
-        // Full path: tail points + current position (oldest → newest)
-        const fullPath = [
-            ...tail.map(t => ({ x: toX(t.rs_ratio), y: toY(t.rs_momentum) })),
-            { x: toX(d.rs_ratio), y: toY(d.rs_momentum) },
-        ];
-        if (fullPath.length < 1) return;
-
-        // How much of the path to reveal based on animation progress
-        const totalSegs  = fullPath.length - 1;
-        const segsToShow = rrgAnimProgress * totalSegs;
-        const fullSegs   = Math.min(Math.floor(segsToShow), totalSegs);
-        const fracSeg    = segsToShow - fullSegs;  // 0..1 within the current partial segment
-
-        // ── Tail line ──────────────────────────────────────
-        for (let i = 1; i <= fullSegs && i < fullPath.length; i++) {
-            const t     = i / fullPath.length;
-            const alpha = t * (isHovered ? 0.85 : 0.5);
-            const lw    = 1 + t * (isHovered ? 2.5 : 1.5);
-            ctx.beginPath();
-            ctx.strokeStyle = dotColor;
-            ctx.lineWidth   = lw;
-            ctx.globalAlpha = alpha;
-            ctx.lineCap     = 'round';
-            ctx.moveTo(fullPath[i - 1].x, fullPath[i - 1].y);
-            ctx.lineTo(fullPath[i].x,     fullPath[i].y);
-            ctx.stroke();
+        if (rrgData.length === 0) {
+            ctx.fillStyle = '#444';
+            ctx.font = '14px -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('No data', W / 2, H / 2);
+            return;
         }
 
-        // Partial final segment during animation
-        if (fracSeg > 0 && fullSegs < totalSegs) {
-            const p0 = fullPath[fullSegs];
-            const p1 = fullPath[fullSegs + 1];
-            if (p0 && p1) {
-                const ex = p0.x + (p1.x - p0.x) * fracSeg;
-                const ey = p0.y + (p1.y - p0.y) * fracSeg;
-                const t  = fullSegs / fullPath.length;
+        // ── Draw tails + dots ───────────────────────────────────
+        // Two-pass: tails first (so dots always render on top)
+        rrgData.forEach((d, idx) => {
+            const tail      = d.tail || [];
+            const quadrant  = getQuadrant(d.rs_ratio, d.rs_momentum);
+            const dotColor  = QUADRANTS[quadrant].dot;
+            const isHovered = idx === rrgHoveredIdx;
+
+            // Use solo anim progress for the selected dot, main anim for all others
+            const isSolo    = rrgSoloEtf !== null && (d.etf === rrgSoloEtf || d.name === rrgSoloEtf);
+            const animProg  = isSolo ? rrgSoloAnimProgress : rrgAnimProgress;
+            const fullPath = [
+                ...tail.map(t => ({ x: toX(t.rs_ratio), y: toY(t.rs_momentum) })),
+                { x: toX(d.rs_ratio), y: toY(d.rs_momentum) },
+            ];
+            if (fullPath.length < 1) return;
+
+            // How much of the path to reveal based on animation progress
+            const totalSegs  = fullPath.length - 1;
+            const segsToShow = animProg * totalSegs;
+            const fullSegs   = Math.min(Math.floor(segsToShow), totalSegs);
+            const fracSeg    = segsToShow - fullSegs;  // 0..1 within the current partial segment
+
+            // ── Tail line ──────────────────────────────────────
+            for (let i = 1; i <= fullSegs && i < fullPath.length; i++) {
+                const t     = i / fullPath.length;
+                const alpha = t * (isHovered ? 0.85 : 0.5);
+                const lw    = 1 + t * (isHovered ? 2.5 : 1.5);
                 ctx.beginPath();
                 ctx.strokeStyle = dotColor;
-                ctx.lineWidth   = 1 + t * (isHovered ? 2.5 : 1.5);
-                ctx.globalAlpha = t * (isHovered ? 0.85 : 0.5);
+                ctx.lineWidth   = lw;
+                ctx.globalAlpha = alpha;
                 ctx.lineCap     = 'round';
-                ctx.moveTo(p0.x, p0.y);
-                ctx.lineTo(ex, ey);
+                ctx.moveTo(fullPath[i - 1].x, fullPath[i - 1].y);
+                ctx.lineTo(fullPath[i].x,     fullPath[i].y);
                 ctx.stroke();
             }
-        }
-        ctx.globalAlpha = 1;
-    });
 
-    // ── Second pass: compute animated dot positions ─────────
-    const dotPositions = rrgData.map((d) => {
-        const tail     = d.tail || [];
-        const fullPath = [
-            ...tail.map(t => ({ x: toX(t.rs_ratio), y: toY(t.rs_momentum) })),
-            { x: toX(d.rs_ratio), y: toY(d.rs_momentum) },
-        ];
-        const totalSegs  = Math.max(fullPath.length - 1, 0);
-        const segsToShow = rrgAnimProgress * totalSegs;
-        const fullSegs   = Math.min(Math.floor(segsToShow), totalSegs);
-        const fracSeg    = segsToShow - fullSegs;
-
-        let dotX, dotY;
-        if (totalSegs === 0 || rrgAnimProgress <= 0) {
-            dotX = fullPath[0]?.x ?? 0;
-            dotY = fullPath[0]?.y ?? 0;
-        } else if (rrgAnimProgress >= 1 || fullSegs >= totalSegs) {
-            dotX = fullPath[fullPath.length - 1].x;
-            dotY = fullPath[fullPath.length - 1].y;
-        } else {
-            const p0 = fullPath[fullSegs];
-            const p1 = fullPath[Math.min(fullSegs + 1, fullPath.length - 1)];
-            if (p0 && p1) {
-                dotX = p0.x + (p1.x - p0.x) * fracSeg;
-                dotY = p0.y + (p1.y - p0.y) * fracSeg;
-            } else {
-                dotX = fullPath[fullPath.length - 1].x;
-                dotY = fullPath[fullPath.length - 1].y;
-            }
-        }
-        return { dotX, dotY, fullPath, totalSegs, fullSegs, fracSeg };
-    });
-
-    // ── Collision-aware label layout ────────────────────────
-    // Font used for label measurement (non-hovered, which is most labels)
-    const LABEL_FONT    = '500 11px -apple-system, sans-serif';
-    const LABEL_H       = 13;   // approximate line height in px
-    const LABEL_PAD_X   = 5;    // gap between dot edge and label
-    const LEADER_THRESH = 6;    // min vertical displacement before drawing a leader line
-
-    ctx.font = LABEL_FONT;
-
-    // Build initial label slots: preferred anchor position
-    const labels = rrgData.map((d, idx) => {
-        const { dotX, dotY } = dotPositions[idx];
-        const dotR   = idx === rrgHoveredIdx ? 7 : 5;
-        const isLeft = dotX <= cx;
-        const anchor = isLeft ? dotX - dotR - LABEL_PAD_X : dotX + dotR + LABEL_PAD_X;
-        const tw     = ctx.measureText(d.name).width;
-        return {
-            idx,
-            name:    d.name,
-            dotX,   dotY,
-            dotR,
-            anchor,                             // fixed x anchor (left edge if right-of-axis, right edge if left)
-            isLeft,
-            tw,
-            y:       dotY,                      // current (possibly nudged) y centre
-            prefY:   dotY,                      // preferred y (dot centre)
-        };
-    });
-
-    // Iterative vertical push — only push labels on the same horizontal side against each other
-    // (labels on opposite sides of the axis can share the same y without overlapping)
-    const minGap = LABEL_H + 2;
-    ['left', 'right'].forEach(side => {
-        const group = labels.filter(lb => (side === 'left') === lb.isLeft);
-        for (let pass = 0; pass < 30; pass++) {
-            let moved = false;
-            group.sort((a, b) => a.y - b.y);
-            for (let i = 1; i < group.length; i++) {
-                const a = group[i - 1];
-                const b = group[i];
-                const overlap = minGap - (b.y - a.y);
-                if (overlap > 0.5) {
-                    a.y -= overlap / 2;
-                    b.y += overlap / 2;
-                    moved = true;
+            // Partial final segment during animation
+            if (fracSeg > 0 && fullSegs < totalSegs) {
+                const p0 = fullPath[fullSegs];
+                const p1 = fullPath[fullSegs + 1];
+                if (p0 && p1) {
+                    const ex = p0.x + (p1.x - p0.x) * fracSeg;
+                    const ey = p0.y + (p1.y - p0.y) * fracSeg;
+                    const t  = fullSegs / fullPath.length;
+                    ctx.beginPath();
+                    ctx.strokeStyle = dotColor;
+                    ctx.lineWidth   = 1 + t * (isHovered ? 2.5 : 1.5);
+                    ctx.globalAlpha = t * (isHovered ? 0.85 : 0.5);
+                    ctx.lineCap     = 'round';
+                    ctx.moveTo(p0.x, p0.y);
+                    ctx.lineTo(ex, ey);
+                    ctx.stroke();
                 }
             }
-            // Clamp to plot area
-            group.forEach(lb => {
-                lb.y = Math.max(M.top + LABEL_H / 2, Math.min(M.top + plotH - LABEL_H / 2, lb.y));
-            });
-            if (!moved) break;
-        }
-    });
-    // Restore original order for drawing
-    labels.sort((a, b) => a.idx - b.idx);
-
-    // ── Draw dots + arrow heads + labels ────────────────────
-    labels.forEach((lb, idx) => {
-        const d         = rrgData[idx];
-        const quadrant  = getQuadrant(d.rs_ratio, d.rs_momentum);
-        const dotColor  = QUADRANTS[quadrant].dot;
-        const isHovered = idx === rrgHoveredIdx;
-        const { dotX, dotY, fullPath, totalSegs, fullSegs, fracSeg } = dotPositions[idx];
-
-        // Arrow head
-        if (fullSegs >= 1 || (totalSegs > 0 && fracSeg > 0.3)) {
-            const aIdx  = Math.min(fullSegs, fullPath.length - 1);
-            const aPrev = fullPath[Math.max(aIdx - 1, 0)];
-            const angle = Math.atan2(dotY - aPrev.y, dotX - aPrev.x);
-            const aLen  = 6, aAng = 0.45;
-            ctx.beginPath();
-            ctx.strokeStyle = dotColor;
-            ctx.lineWidth   = 1.5;
-            ctx.globalAlpha = 0.75;
-            ctx.lineCap     = 'round';
-            ctx.moveTo(Math.round(dotX), Math.round(dotY));
-            ctx.lineTo(Math.round(dotX - aLen * Math.cos(angle - aAng)), Math.round(dotY - aLen * Math.sin(angle - aAng)));
-            ctx.moveTo(Math.round(dotX), Math.round(dotY));
-            ctx.lineTo(Math.round(dotX - aLen * Math.cos(angle + aAng)), Math.round(dotY - aLen * Math.sin(angle + aAng)));
-            ctx.stroke();
             ctx.globalAlpha = 1;
-        }
+        });
 
-        // Glow + pulse rings
-        if (isHovered) {
+        // ── Second pass: compute animated dot positions ─────────
+        const dotPositions = rrgData.map((d) => {
+            const tail     = d.tail || [];
+            const fullPath = [
+                ...tail.map(t => ({ x: toX(t.rs_ratio), y: toY(t.rs_momentum) })),
+                { x: toX(d.rs_ratio), y: toY(d.rs_momentum) },
+            ];
+            const totalSegs  = Math.max(fullPath.length - 1, 0);
+            const isSolo     = rrgSoloEtf !== null && (d.etf === rrgSoloEtf || d.name === rrgSoloEtf);
+            const animProg   = isSolo ? rrgSoloAnimProgress : rrgAnimProgress;
+            const segsToShow = animProg * totalSegs;
+            const fullSegs   = Math.min(Math.floor(segsToShow), totalSegs);
+            const fracSeg    = segsToShow - fullSegs;
+
+            let dotX, dotY;
+            if (totalSegs === 0 || animProg <= 0) {
+                dotX = fullPath[0]?.x ?? 0;
+                dotY = fullPath[0]?.y ?? 0;
+            } else if (animProg >= 1 || fullSegs >= totalSegs) {
+                dotX = fullPath[fullPath.length - 1].x;
+                dotY = fullPath[fullPath.length - 1].y;
+            } else {
+                const p0 = fullPath[fullSegs];
+                const p1 = fullPath[Math.min(fullSegs + 1, fullPath.length - 1)];
+                if (p0 && p1) {
+                    dotX = p0.x + (p1.x - p0.x) * fracSeg;
+                    dotY = p0.y + (p1.y - p0.y) * fracSeg;
+                } else {
+                    dotX = fullPath[fullPath.length - 1].x;
+                    dotY = fullPath[fullPath.length - 1].y;
+                }
+            }
+            return { dotX, dotY, fullPath, totalSegs, fullSegs, fracSeg };
+        });
+
+        // ── Collision-aware label layout ────────────────────────
+        // Font used for label measurement (non-hovered, which is most labels)
+        const LABEL_FONT    = '500 11px -apple-system, sans-serif';
+        const LABEL_H       = 13;   // approximate line height in px
+        const LABEL_PAD_X   = 5;    // gap between dot edge and label
+        const LEADER_THRESH = 6;    // min vertical displacement before drawing a leader line
+
+        ctx.font = LABEL_FONT;
+
+        // Build initial label slots: preferred anchor position
+        const labels = rrgData.map((d, idx) => {
+            const { dotX, dotY } = dotPositions[idx];
+            const dotR   = idx === rrgHoveredIdx ? 7 : 5;
+            const isLeft = dotX <= cx;
+            const anchor = isLeft ? dotX - dotR - LABEL_PAD_X : dotX + dotR + LABEL_PAD_X;
+            const tw     = ctx.measureText(d.name).width;
+            return {
+                idx,
+                name:    d.name,
+                dotX,   dotY,
+                dotR,
+                anchor,                             // fixed x anchor (left edge if right-of-axis, right edge if left)
+                isLeft,
+                tw,
+                y:       dotY,                      // current (possibly nudged) y centre
+                prefY:   dotY,                      // preferred y (dot centre)
+            };
+        });
+
+        // Iterative vertical push — only push labels on the same horizontal side against each other
+        // (labels on opposite sides of the axis can share the same y without overlapping)
+        const minGap = LABEL_H + 2;
+        ['left', 'right'].forEach(side => {
+            const group = labels.filter(lb => (side === 'left') === lb.isLeft);
+            for (let pass = 0; pass < 30; pass++) {
+                let moved = false;
+                group.sort((a, b) => a.y - b.y);
+                for (let i = 1; i < group.length; i++) {
+                    const a = group[i - 1];
+                    const b = group[i];
+                    const overlap = minGap - (b.y - a.y);
+                    if (overlap > 0.5) {
+                        a.y -= overlap / 2;
+                        b.y += overlap / 2;
+                        moved = true;
+                    }
+                }
+                // Clamp to plot area
+                group.forEach(lb => {
+                    lb.y = Math.max(M.top + LABEL_H / 2, Math.min(M.top + plotH - LABEL_H / 2, lb.y));
+                });
+                if (!moved) break;
+            }
+        });
+        // Restore original order for drawing
+        labels.sort((a, b) => a.idx - b.idx);
+
+        // ── Draw dots + arrow heads + labels ────────────────────
+        labels.forEach((lb, idx) => {
+            const d         = rrgData[idx];
+            const quadrant  = getQuadrant(d.rs_ratio, d.rs_momentum);
+            const dotColor  = QUADRANTS[quadrant].dot;
+            const isHovered = idx === rrgHoveredIdx;
+            const isSolo    = rrgSoloEtf !== null && (d.etf === rrgSoloEtf || d.name === rrgSoloEtf);
+            const animProg  = isSolo ? rrgSoloAnimProgress : rrgAnimProgress;
+            const { dotX, dotY, fullPath, totalSegs, fullSegs, fracSeg } = dotPositions[idx];
+
+            // Arrow head
+            if (fullSegs >= 1 || (totalSegs > 0 && fracSeg > 0.3)) {
+                const aIdx  = Math.min(fullSegs, fullPath.length - 1);
+                const aPrev = fullPath[Math.max(aIdx - 1, 0)];
+                const angle = Math.atan2(dotY - aPrev.y, dotX - aPrev.x);
+                const aLen  = 6, aAng = 0.45;
+                ctx.beginPath();
+                ctx.strokeStyle = dotColor;
+                ctx.lineWidth   = 1.5;
+                ctx.globalAlpha = 0.75;
+                ctx.lineCap     = 'round';
+                ctx.moveTo(Math.round(dotX), Math.round(dotY));
+                ctx.lineTo(Math.round(dotX - aLen * Math.cos(angle - aAng)), Math.round(dotY - aLen * Math.sin(angle - aAng)));
+                ctx.moveTo(Math.round(dotX), Math.round(dotY));
+                ctx.lineTo(Math.round(dotX - aLen * Math.cos(angle + aAng)), Math.round(dotY - aLen * Math.sin(angle + aAng)));
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+
+            // Glow + pulse rings
+            if (isHovered) {
+                ctx.beginPath();
+                ctx.arc(Math.round(dotX), Math.round(dotY), lb.dotR + 5, 0, Math.PI * 2);
+                ctx.fillStyle   = dotColor;
+                ctx.globalAlpha = 0.15;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            // Selected dot — persistent ring so it's always identifiable
+            const isSelected = State.selectedItem &&
+                (d.etf === State.selectedItem.etf || d.name === State.selectedItem.name);
+            if (isSelected) {
+                ctx.beginPath();
+                ctx.arc(Math.round(dotX), Math.round(dotY), lb.dotR + 3.5, 0, Math.PI * 2);
+                ctx.strokeStyle = dotColor;
+                ctx.lineWidth   = 1.5;
+                ctx.globalAlpha = 0.6;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+            if (animProg < 1) {
+                const pulse = 0.5 + 0.5 * Math.sin(animProg * Math.PI * 6);
+                ctx.beginPath();
+                ctx.arc(Math.round(dotX), Math.round(dotY), lb.dotR + 3 + pulse * 4, 0, Math.PI * 2);
+                ctx.strokeStyle = dotColor;
+                ctx.lineWidth   = 1;
+                ctx.globalAlpha = 0.2 * (1 - animProg);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+
+            // Dot
             ctx.beginPath();
-            ctx.arc(Math.round(dotX), Math.round(dotY), lb.dotR + 5, 0, Math.PI * 2);
+            ctx.arc(Math.round(dotX), Math.round(dotY), lb.dotR, 0, Math.PI * 2);
             ctx.fillStyle   = dotColor;
-            ctx.globalAlpha = 0.15;
+            ctx.globalAlpha = isHovered ? 1 : 0.9;
             ctx.fill();
             ctx.globalAlpha = 1;
-        }
-        if (rrgAnimProgress < 1) {
-            const pulse = 0.5 + 0.5 * Math.sin(rrgAnimProgress * Math.PI * 6);
-            ctx.beginPath();
-            ctx.arc(Math.round(dotX), Math.round(dotY), lb.dotR + 3 + pulse * 4, 0, Math.PI * 2);
-            ctx.strokeStyle = dotColor;
-            ctx.lineWidth   = 1;
-            ctx.globalAlpha = 0.2 * (1 - rrgAnimProgress);
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-        }
 
-        // Dot
-        ctx.beginPath();
-        ctx.arc(Math.round(dotX), Math.round(dotY), lb.dotR, 0, Math.PI * 2);
-        ctx.fillStyle   = dotColor;
-        ctx.globalAlpha = isHovered ? 1 : 0.9;
-        ctx.fill();
-        ctx.globalAlpha = 1;
+            // Leader line (only when label was nudged far from its preferred y)
+            const labelY   = Math.round(lb.y);
+            const displaced = Math.abs(lb.y - lb.prefY);
+            if (displaced > LEADER_THRESH) {
+                // Line from dot edge to label anchor
+                const lineX0 = Math.round(lb.isLeft ? dotX - lb.dotR - 2 : dotX + lb.dotR + 2);
+                const lineX1 = Math.round(lb.anchor);
+                ctx.beginPath();
+                ctx.strokeStyle = dotColor;
+                ctx.lineWidth   = 0.75;
+                ctx.globalAlpha = 0.3;
+                ctx.setLineDash([2, 3]);
+                ctx.moveTo(lineX0, Math.round(dotY));
+                ctx.lineTo(lineX1, labelY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.globalAlpha = 1;
+            }
 
-        // Leader line (only when label was nudged far from its preferred y)
-        const labelY   = Math.round(lb.y);
-        const displaced = Math.abs(lb.y - lb.prefY);
-        if (displaced > LEADER_THRESH) {
-            // Line from dot edge to label anchor
-            const lineX0 = Math.round(lb.isLeft ? dotX - lb.dotR - 2 : dotX + lb.dotR + 2);
-            const lineX1 = Math.round(lb.anchor);
-            ctx.beginPath();
-            ctx.strokeStyle = dotColor;
-            ctx.lineWidth   = 0.75;
-            ctx.globalAlpha = 0.3;
-            ctx.setLineDash([2, 3]);
-            ctx.moveTo(lineX0, Math.round(dotY));
-            ctx.lineTo(lineX1, labelY);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.globalAlpha = 1;
-        }
-
-        // Label — pixel-snapped for crispness
-        ctx.font         = isHovered
-            ? '600 12px -apple-system, sans-serif'
-            : LABEL_FONT;
-        ctx.fillStyle    = isHovered ? '#fff' : '#c8c8c8';
-        ctx.textAlign    = lb.isLeft ? 'right' : 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(d.name, Math.round(lb.anchor), labelY);
-    });
-}
-
-function computeGridStep(range) {
-    const rough = range / 5;
-    const mag = Math.pow(10, Math.floor(Math.log10(rough)));
-    const norm = rough / mag;
-    if (norm < 2) return mag;
-    if (norm < 5) return 2 * mag;
-    return 5 * mag;
-}
-
-// ════════════════════════════════════════════════════════════
-// RRG HOVER / TOOLTIP
-// ════════════════════════════════════════════════════════════
-
-function hitTestRRG(mouseX, mouseY) {
-    const canvas = document.getElementById('rrg-canvas');
-    // Use CSS pixel dimensions – all drawing is done in CSS-pixel space
-    const W = canvas.clientWidth, H = canvas.clientHeight;
-    const M = { top: 36, right: 36, bottom: 44, left: 52 };
-    const plotW = W - M.left - M.right, plotH = H - M.top - M.bottom;
-
-    const allPoints = rrgData.flatMap(d => [
-        { x: d.rs_ratio, y: d.rs_momentum },
-        ...(d.tail || []).map(t => ({ x: t.rs_ratio, y: t.rs_momentum })),
-    ]);
-    allPoints.push({ x: 100, y: 100 });
-
-    const pad = 1.5;
-    let xMin = Math.min(...allPoints.map(p => p.x)) - pad;
-    let xMax = Math.max(...allPoints.map(p => p.x)) + pad;
-    let yMin = Math.min(...allPoints.map(p => p.y)) - pad;
-    let yMax = Math.max(...allPoints.map(p => p.y)) + pad;
-
-    const xRange = xMax - xMin, yRange = yMax - yMin;
-    if (xRange > yRange) { const d = xRange - yRange; yMin -= d/2; yMax += d/2; }
-    else                 { const d = yRange - xRange; xMin -= d/2; xMax += d/2; }
-
-    function toX(v) { return M.left + ((v - xMin) / (xMax - xMin)) * plotW; }
-    function toY(v) { return M.top  + ((yMax - v) / (yMax - yMin)) * plotH; }
-
-    let closest = -1, minDist = 16;   // px threshold
-    rrgData.forEach((d, i) => {
-        const dx = mouseX - toX(d.rs_ratio);
-        const dy = mouseY - toY(d.rs_momentum);
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < minDist) { minDist = dist; closest = i; }
-    });
-    return closest;
-}
-
-document.getElementById('rrg-canvas').addEventListener('mousemove', e => {
-    const canvas = e.currentTarget;
-    const rect   = canvas.getBoundingClientRect();
-    // CSS pixel coords — hitTestRRG also works in CSS pixel space
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-
-    const idx = rrgData.length > 0 ? hitTestRRG(mx, my) : -1;
-
-    if (idx !== rrgHoveredIdx) {
-        rrgHoveredIdx = idx;
-        drawRRG();
+            // Label — pixel-snapped for crispness
+            ctx.font         = isHovered
+                ? '600 12px -apple-system, sans-serif'
+                : LABEL_FONT;
+            ctx.fillStyle    = isHovered ? '#fff' : '#c8c8c8';
+            ctx.textAlign    = lb.isLeft ? 'right' : 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(d.name, Math.round(lb.anchor), labelY);
+        });
     }
 
-    // Pointer cursor when over a dot
-    e.currentTarget.style.cursor = idx >= 0 ? 'pointer' : 'default';
+    function computeGridStep(range) {
+        const rough = range / 5;
+        const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+        const norm = rough / mag;
+        if (norm < 2) return mag;
+        if (norm < 5) return 2 * mag;
+        return 5 * mag;
+    }
 
-    const tooltip = document.getElementById('rrg-tooltip');
-    if (idx >= 0) {
-        const d = rrgData[idx];
-        const quad = getQuadrant(d.rs_ratio, d.rs_momentum);
-        const q = QUADRANTS[quad];
-        tooltip.innerHTML = `
+    // ════════════════════════════════════════════════════════════
+    // RRG HOVER / TOOLTIP
+    // ════════════════════════════════════════════════════════════
+
+    function hitTestRRG(mouseX, mouseY) {
+        const M = { top: 36, right: 36, bottom: 44, left: 52 };
+        const plotW = rrgCanvas.clientWidth  - M.left - M.right;
+        const plotH = rrgCanvas.clientHeight - M.top  - M.bottom;
+        const { toX, toY } = computeViewport(rrgData, plotW, plotH, M);
+
+        let closest = -1, minDist = 16;
+        rrgData.forEach((d, i) => {
+            const dx = mouseX - toX(d.rs_ratio);
+            const dy = mouseY - toY(d.rs_momentum);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < minDist) { minDist = dist; closest = i; }
+        });
+        return closest;
+    }
+
+    document.getElementById('rrg-canvas').addEventListener('mousemove', e => {
+        const canvas = e.currentTarget;
+        const rect   = canvas.getBoundingClientRect();
+        // CSS pixel coords — hitTestRRG also works in CSS pixel space
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        const idx = rrgData.length > 0 ? hitTestRRG(mx, my) : -1;
+
+        if (idx !== rrgHoveredIdx) {
+            rrgHoveredIdx = idx;
+            drawRRG();
+        }
+
+        // Pointer cursor when over a dot
+        e.currentTarget.style.cursor = idx >= 0 ? 'pointer' : 'default';
+
+        const tooltip = document.getElementById('rrg-tooltip');
+        if (idx >= 0) {
+            const d = rrgData[idx];
+            const quad = getQuadrant(d.rs_ratio, d.rs_momentum);
+            const q = QUADRANTS[quad];
+            tooltip.innerHTML = `
             <div class="tt-name">${d.name}</div>
             <div class="tt-etf">${d.ticker || d.etf || ''}</div>
             <div class="tt-quad" style="color:${q.text}">${q.label}</div>
@@ -1165,330 +1247,474 @@ document.getElementById('rrg-canvas').addEventListener('mousemove', e => {
                 <span class="tt-val">${d.rs_momentum.toFixed(2)}</span>
             </div>
         `;
-        tooltip.style.display = 'block';
+            tooltip.style.display = 'block';
 
-        // Position: avoid edges
-        const tx = e.offsetX + 16;
-        const ty = e.offsetY + 16;
-        const canvasRect = canvas.parentElement.getBoundingClientRect();
-        const ttW = 180, ttH = 100;
-        tooltip.style.left = (tx + ttW > canvasRect.width  ? tx - ttW - 24 : tx) + 'px';
-        tooltip.style.top  = (ty + ttH > canvasRect.height ? ty - ttH - 8  : ty) + 'px';
-    } else {
-        tooltip.style.display = 'none';
-    }
-});
-
-document.getElementById('rrg-canvas').addEventListener('mouseleave', () => {
-    rrgHoveredIdx = -1;
-    drawRRG();
-    document.getElementById('rrg-tooltip').style.display = 'none';
-});
-
-document.getElementById('rrg-canvas').addEventListener('click', e => {
-    if (rrgData.length === 0) return;
-    const canvas = e.currentTarget;
-    const rect   = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const idx = hitTestRRG(mx, my);
-    if (idx < 0) return;
-
-    const d = rrgData[idx];
-    // d.name = sector/industry name, d.etf = its ETF
-    State.selectedItem = { name: d.name, etf: d.etf, type: State.expandedSector ? 'industry' : 'sector' };
-    renderLeftPanel();
-    updateSelectedInfo();
-    loadAndRenderRS(d.etf, d.name);
-});
-
-// ════════════════════════════════════════════════════════════
-// RS HISTORY CHART (bottom panel)
-// ════════════════════════════════════════════════════════════
-
-let rsChartData = null;  // { name, etf, rs_history: [{date, value}] }
-let rsHoverX    = -1;
-
-async function loadAndRenderRS(etf, name) {
-    document.getElementById('rs-title').textContent = `Relative Strength — ${name}`;
-    document.getElementById('rs-empty').style.display = 'none';
-
-    try {
-        const data = await fetchRRG(etf);
-        rsChartData = { name, etf, rs_history: data.rs_history || [] };
-        drawRS();
-    } catch (e) {
-        console.error('RS load failed:', e);
-    }
-}
-
-function calcMA(arr, period) {
-    return arr.map((_, i) => {
-        const slice = arr.slice(Math.max(0, i - period + 1), i + 1);
-        return slice.reduce((s, v) => s + v, 0) / slice.length;
+            // Position: avoid edges
+            const tx = e.offsetX + 16;
+            const ty = e.offsetY + 16;
+            const canvasRect = canvas.parentElement.getBoundingClientRect();
+            const ttW = 180, ttH = 100;
+            tooltip.style.left = (tx + ttW > canvasRect.width  ? tx - ttW - 24 : tx) + 'px';
+            tooltip.style.top  = (ty + ttH > canvasRect.height ? ty - ttH - 8  : ty) + 'px';
+        } else {
+            tooltip.style.display = 'none';
+        }
     });
-}
 
-function drawRS() {
-    const canvas = document.getElementById('rs-canvas');
-    const container = canvas.parentElement;
-    const dpr = window.devicePixelRatio || 1;
-    const W   = container.clientWidth;
-    const H   = container.clientHeight;
-    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
-        canvas.width  = Math.round(W * dpr);
-        canvas.height = Math.round(H * dpr);
-        canvas.style.width  = W + 'px';
-        canvas.style.height = H + 'px';
-    }
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const history = rsChartData?.rs_history || [];
-
-    ctx.fillStyle = '#1e1e1e';
-    ctx.fillRect(0, 0, W, H);
-
-    if (history.length < 2) {
-        ctx.fillStyle = '#444';
-        ctx.font = '13px -apple-system, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('No data', W/2, H/2);
-        return;
-    }
-
-    const M = { top: 12, right: 50, bottom: 28, left: 12 };
-    const plotW = W - M.left - M.right;
-    const plotH = H - M.top  - M.bottom;
-
-    const values = history.map(d => d.value);
-    const ma20   = calcMA(values, 20);
-
-    const allVals = [...values, ...ma20];
-    const vMin = Math.min(...allVals);
-    const vMax = Math.max(...allVals);
-    const vPad = (vMax - vMin) * 0.08 || 0.5;
-    const yMin = vMin - vPad;
-    const yMax = vMax + vPad;
-
-    function toX(i)  { return M.left + (i / (history.length - 1)) * plotW; }
-    function toY(v)  { return M.top  + ((yMax - v) / (yMax - yMin)) * plotH; }
-
-    // ── Subtle grid ──────────────────────────────────────────
-    const yStepRaw = (yMax - yMin) / 4;
-    const yStep = computeGridStep(yStepRaw * 4) / 4 || yStepRaw;
-    ctx.strokeStyle = '#252525';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const yStart2 = Math.ceil(yMin / yStep) * yStep;
-    for (let v = yStart2; v <= yMax; v += yStep) {
-        const py = toY(v);
-        ctx.moveTo(M.left, py);
-        ctx.lineTo(M.left + plotW, py);
-    }
-    ctx.stroke();
-
-    // ── 100-line ─────────────────────────────────────────────
-    if (yMin <= 100 && 100 <= yMax) {
-        const py100 = toY(100);
-        ctx.strokeStyle = '#3a3a3a';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(M.left, py100);
-        ctx.lineTo(M.left + plotW, py100);
-        ctx.stroke();
-        ctx.setLineDash([]);
-    }
-
-    // ── RS line (dotted) ─────────────────────────────────────
-    ctx.beginPath();
-    ctx.strokeStyle = '#4a9eff';
-    ctx.lineWidth = 1.5;
-    ctx.lineJoin = 'round';
-    ctx.setLineDash([3, 3]);
-    values.forEach((v, i) => {
-        if (i === 0) ctx.moveTo(toX(i), toY(v));
-        else         ctx.lineTo(toX(i), toY(v));
+    document.getElementById('rrg-canvas').addEventListener('mouseleave', () => {
+        rrgHoveredIdx = -1;
+        drawRRG();
+        document.getElementById('rrg-tooltip').style.display = 'none';
     });
-    ctx.stroke();
-    ctx.setLineDash([]);
 
-    // ── 20-period MA (solid red) ──────────────────────────────
-    ctx.beginPath();
-    ctx.strokeStyle = '#e74c3c';
-    ctx.lineWidth = 1.5;
-    ctx.lineJoin = 'round';
-    ma20.forEach((v, i) => {
-        if (i === 0) ctx.moveTo(toX(i), toY(v));
-        else         ctx.lineTo(toX(i), toY(v));
+    document.getElementById('rrg-canvas').addEventListener('click', e => {
+        if (rrgData.length === 0) return;
+        const canvas = e.currentTarget;
+        const rect   = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const idx = hitTestRRG(mx, my);
+        if (idx < 0) return;
+
+        const d = rrgData[idx];
+        State.selectedItem = { name: d.name, etf: d.etf, type: State.expandedSector ? 'industry' : 'sector' };
+        State.navIndex = buildNavList().findIndex(i => i.name === d.name);
+        renderLeftPanel();
+        updateSelectedInfo();
+        loadAndRenderRS(d.etf, d.name);
+        animateSelectedDot();
     });
-    ctx.stroke();
 
-    // ── X-axis date labels ────────────────────────────────────
-    ctx.fillStyle = '#444';
-    ctx.font = '10px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    const labelCount = Math.min(8, history.length);
-    const step = Math.floor((history.length - 1) / (labelCount - 1)) || 1;
-    for (let i = 0; i < history.length; i += step) {
-        const d = history[i].date;
-        const label = d ? d.slice(0, 10) : '';
-        ctx.fillText(label, toX(i), M.top + plotH + 4);
+    // ════════════════════════════════════════════════════════════
+    // RS HISTORY CHART (bottom panel)
+    // ════════════════════════════════════════════════════════════
+
+    let rsChartData = null;  // { name, etf, rs_history: [{date, value}] }
+    let rsMA20      = [];    // MA20 cached at load time, updated with rsChartData
+    let rsHoverX    = -1;
+
+    async function loadAndRenderRS(etf, name) {
+        document.getElementById('rs-title').textContent = `Relative Strength — ${name}`;
+        document.getElementById('rs-empty').style.display = 'none';
+
+        // Reuse data already in rrgData if this ETF was just fetched
+        const cached = rrgData.find(d => d.etf === etf || d.ticker === etf);
+        if (cached?.rs_history?.length) {
+            rsChartData = { name, etf, rs_history: cached.rs_history };
+            rsMA20 = calcMA(cached.rs_history.map(d => d.value), 20);
+            drawRS();
+            return;
+        }
+
+        try {
+            const data = await fetchRRG(etf);
+            rsChartData = { name, etf, rs_history: data.rs_history || [] };
+            rsMA20 = calcMA(rsChartData.rs_history.map(d => d.value), 20);
+            drawRS();
+        } catch (e) {
+            console.error('RS load failed:', e);
+            rsChartData = null;
+            rsMA20 = [];
+            drawRS();  // will show "No data"
+        }
     }
 
-    // ── Y-axis labels (right side) ────────────────────────────
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#555';
-    for (let v = yStart2; v <= yMax; v += yStep) {
-        ctx.fillText(v.toFixed(2), M.left + plotW + 4, toY(v));
-    }
-
-    // ── Hover crosshair ───────────────────────────────────────
-    if (rsHoverX >= 0 && rsHoverX < history.length) {
-        const hx = toX(rsHoverX);
-        ctx.strokeStyle = '#555';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(hx, M.top);
-        ctx.lineTo(hx, M.top + plotH);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Dots
-        [[values, '#4a9eff'], [ma20, '#e74c3c']].forEach(([arr, col]) => {
-            ctx.beginPath();
-            ctx.arc(hx, toY(arr[rsHoverX]), 4, 0, Math.PI * 2);
-            ctx.fillStyle = col;
-            ctx.fill();
+    function calcMA(arr, period) {
+        return arr.map((_, i) => {
+            const slice = arr.slice(Math.max(0, i - period + 1), i + 1);
+            return slice.reduce((s, v) => s + v, 0) / slice.length;
         });
     }
-}
 
-// RS hover
-document.getElementById('rs-canvas').addEventListener('mousemove', e => {
-    if (!rsChartData || !rsChartData.rs_history.length) return;
-    const canvas = e.currentTarget;
-    const rect   = canvas.getBoundingClientRect();
-    const mx     = e.clientX - rect.left;   // CSS pixels, matches drawRS coordinate space
+    function drawRS() {
+        const canvas = rsCanvas;
+        const container = canvas.parentElement;
+        const dpr = window.devicePixelRatio || 1;
+        const W   = container.clientWidth;
+        const H   = container.clientHeight;
+        if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+            canvas.width  = Math.round(W * dpr);
+            canvas.height = Math.round(H * dpr);
+            canvas.style.width  = W + 'px';
+            canvas.style.height = H + 'px';
+        }
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const history = rsChartData?.rs_history || [];
 
-    const M     = { left: 12, right: 50 };
-    const plotW = canvas.clientWidth - M.left - M.right;
-    const n     = rsChartData.rs_history.length;
+        ctx.fillStyle = '#1e1e1e';
+        ctx.fillRect(0, 0, W, H);
 
-    const i = Math.round(((mx - M.left) / plotW) * (n - 1));
-    const idx = Math.max(0, Math.min(n - 1, i));
+        if (history.length < 2) {
+            ctx.fillStyle = '#444';
+            ctx.font = '13px -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('No data', W/2, H/2);
+            return;
+        }
 
-    if (idx !== rsHoverX) {
-        rsHoverX = idx;
-        drawRS();
+        const M = { top: 12, right: 50, bottom: 28, left: 12 };
+        const plotW = W - M.left - M.right;
+        const plotH = H - M.top  - M.bottom;
+
+        const values = history.map(d => d.value);
+        const ma20   = rsMA20.length === history.length ? rsMA20 : calcMA(values, 20);
+
+        const allVals = [...values, ...ma20];
+        const vMin = Math.min(...allVals);
+        const vMax = Math.max(...allVals);
+        const vPad = (vMax - vMin) * 0.08 || 0.5;
+        const yMin = vMin - vPad;
+        const yMax = vMax + vPad;
+
+        function toX(i)  { return M.left + (i / (history.length - 1)) * plotW; }
+        function toY(v)  { return M.top  + ((yMax - v) / (yMax - yMin)) * plotH; }
+
+        // ── Subtle grid ──────────────────────────────────────────
+        const yStepRaw = (yMax - yMin) / 4;
+        const yStep = computeGridStep(yStepRaw * 4) / 4 || yStepRaw;
+        ctx.strokeStyle = '#252525';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const yStart2 = Math.ceil(yMin / yStep) * yStep;
+        for (let v = yStart2; v <= yMax; v += yStep) {
+            const py = toY(v);
+            ctx.moveTo(M.left, py);
+            ctx.lineTo(M.left + plotW, py);
+        }
+        ctx.stroke();
+
+        // ── 100-line ─────────────────────────────────────────────
+        if (yMin <= 100 && 100 <= yMax) {
+            const py100 = toY(100);
+            ctx.strokeStyle = '#3a3a3a';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(M.left, py100);
+            ctx.lineTo(M.left + plotW, py100);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // ── RS line (dotted) ─────────────────────────────────────
+        ctx.beginPath();
+        ctx.strokeStyle = '#4a9eff';
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = 'round';
+        ctx.setLineDash([3, 3]);
+        values.forEach((v, i) => {
+            if (i === 0) ctx.moveTo(toX(i), toY(v));
+            else         ctx.lineTo(toX(i), toY(v));
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // ── 20-period MA (solid red) ──────────────────────────────
+        ctx.beginPath();
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = 'round';
+        ma20.forEach((v, i) => {
+            if (i === 0) ctx.moveTo(toX(i), toY(v));
+            else         ctx.lineTo(toX(i), toY(v));
+        });
+        ctx.stroke();
+
+        // ── X-axis date labels ────────────────────────────────────
+        ctx.fillStyle = '#444';
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const labelCount = Math.min(8, history.length);
+        const step = Math.floor((history.length - 1) / (labelCount - 1)) || 1;
+        for (let i = 0; i < history.length; i += step) {
+            const d = history[i].date;
+            const label = d ? d.slice(0, 10) : '';
+            ctx.fillText(label, toX(i), M.top + plotH + 4);
+        }
+
+        // ── Y-axis labels (right side) ────────────────────────────
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#555';
+        for (let v = yStart2; v <= yMax; v += yStep) {
+            ctx.fillText(v.toFixed(2), M.left + plotW + 4, toY(v));
+        }
+
+        // ── Hover crosshair ───────────────────────────────────────
+        if (rsHoverX >= 0 && rsHoverX < history.length) {
+            const hx = toX(rsHoverX);
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(hx, M.top);
+            ctx.lineTo(hx, M.top + plotH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Dots
+            [[values, '#4a9eff'], [ma20, '#e74c3c']].forEach(([arr, col]) => {
+                ctx.beginPath();
+                ctx.arc(hx, toY(arr[rsHoverX]), 4, 0, Math.PI * 2);
+                ctx.fillStyle = col;
+                ctx.fill();
+            });
+        }
     }
 
-    // Tooltip
-    const hist = rsChartData.rs_history;
-    const tooltip = document.getElementById('rs-tooltip');
-    const ma20    = calcMA(hist.map(d => d.value), 20);
+    // RS hover
+    document.getElementById('rs-canvas').addEventListener('mousemove', e => {
+        if (!rsChartData || !rsChartData.rs_history.length) return;
+        const canvas = e.currentTarget;
+        const rect   = canvas.getBoundingClientRect();
+        const mx     = e.clientX - rect.left;   // CSS pixels, matches drawRS coordinate space
 
-    tooltip.innerHTML = `
+        const M     = { left: 12, right: 50 };
+        const plotW = canvas.clientWidth - M.left - M.right;
+        const n     = rsChartData.rs_history.length;
+
+        const i = Math.round(((mx - M.left) / plotW) * (n - 1));
+        const idx = Math.max(0, Math.min(n - 1, i));
+
+        if (idx !== rsHoverX) {
+            rsHoverX = idx;
+            drawRS();
+        }
+
+        // Tooltip
+        const hist    = rsChartData.rs_history;
+        const tooltip = document.getElementById('rs-tooltip');
+
+        tooltip.innerHTML = `
         <strong>${hist[idx].date?.slice(0, 10) || ''}</strong><br>
         RS&nbsp;&nbsp;<span style="color:#4a9eff;font-weight:600">${hist[idx].value.toFixed(3)}</span>
-        &nbsp;MA20&nbsp;<span style="color:#e74c3c;font-weight:600">${ma20[idx].toFixed(3)}</span>
+        &nbsp;MA20&nbsp;<span style="color:#e74c3c;font-weight:600">${rsMA20[idx]?.toFixed(3) ?? '—'}</span>
     `;
-    tooltip.style.display = 'block';
-    const tx = e.offsetX + 12;
-    const ty = e.offsetY - 40;
-    tooltip.style.left = Math.max(0, tx) + 'px';
-    tooltip.style.top  = Math.max(0, ty) + 'px';
-});
+        tooltip.style.display = 'block';
+        const tx = e.offsetX + 12;
+        const ty = e.offsetY - 40;
+        tooltip.style.left = Math.max(0, tx) + 'px';
+        tooltip.style.top  = Math.max(0, ty) + 'px';
+    });
 
-document.getElementById('rs-canvas').addEventListener('mouseleave', () => {
-    rsHoverX = -1;
-    drawRS();
-    document.getElementById('rs-tooltip').style.display = 'none';
-});
+    document.getElementById('rs-canvas').addEventListener('mouseleave', () => {
+        rsHoverX = -1;
+        drawRS();
+        document.getElementById('rs-tooltip').style.display = 'none';
+    });
 
-// ════════════════════════════════════════════════════════════
-// CONTROLS
-// ════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════
+    // KEYBOARD NAVIGATION
+    // ════════════════════════════════════════════════════════════
 
-const TAIL_OPTIONS = {
-    weekly: [ [2,'2w',false],   [4, '4w', true], [12,'12w',false], [26,'26w',false] ],
-    daily:  [ [10,'10d',false], [20,'20d',true], [50,'50d',false], [100,'100d',false] ],
-};
-
-function renderTailButtons(tf) {
-    const group   = document.getElementById('tail-group');
-    const options = TAIL_OPTIONS[tf] ?? TAIL_OPTIONS.weekly;
-    group.innerHTML = '';
-
-    let defaultVal = null;
-    options.forEach(([val, label, isDefault]) => {
-        const btn = document.createElement('button');
-        btn.textContent   = label;
-        btn.dataset.tail  = val;
-        if (isDefault) {
-            btn.classList.add('active');
-            defaultVal = val;
-        }
-        btn.addEventListener('click', () => {
-            if (+btn.dataset.tail === State.tailLen) return;
-            State.tailLen = +btn.dataset.tail;
-            group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            loadAndRenderRRG();
+    /**
+     * Build the current flat list of navigable items based on which sector
+     * is expanded.  Sectors are always visible; industries appear inline
+     * immediately after their parent sector when it is expanded.
+     */
+    function buildNavList() {
+        const list = [];
+        State.sectors.forEach(sec => {
+            list.push({ type: 'sector', name: sec.sector, etf: sec.sector_etf });
+            if (State.expandedSector === sec.sector) {
+                sec.industries.forEach(ind => {
+                    list.push({ type: 'industry', name: ind.name, etf: ind.etf, sectorName: sec.sector });
+                });
+            }
         });
-        group.appendChild(btn);
+        return list;
+    }
+
+    /** Apply focus to navList[State.navIndex] — update selection, RS chart, scroll. */
+    function applyNavFocus(navList) {
+        if (State.navIndex < 0 || State.navIndex >= navList.length) return;
+        const item = navList[State.navIndex];
+
+        State.selectedItem = { name: item.name, etf: item.etf, type: item.type };
+
+        renderLeftPanel();
+        scrollKbFocusIntoView();
+        loadAndRenderRS(item.etf, item.name);
+        updateSelectedInfo();
+        animateSelectedDot();
+    }
+
+    /** Scroll the kb-focused item into view inside the sector-list. */
+    function scrollKbFocusIntoView() {
+        const el = document.querySelector('.sector-header.selected-rs, .industry-item.selected');
+        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    document.addEventListener('keydown', e => {
+        // Don't hijack when user is interacting with a control
+        if (e.target.matches('input, textarea, select, button')) return;
+        // Ignore modifier combos
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+        const navList = buildNavList();
+        if (navList.length === 0) return;
+
+        switch (e.key) {
+            case 'ArrowDown': {
+                e.preventDefault();
+                State.navIndex = State.navIndex < navList.length - 1
+                    ? State.navIndex + 1
+                    : 0;  // wrap to top
+                applyNavFocus(navList);
+                break;
+            }
+            case 'ArrowUp': {
+                e.preventDefault();
+                State.navIndex = State.navIndex > 0
+                    ? State.navIndex - 1
+                    : navList.length - 1;  // wrap to bottom
+                applyNavFocus(navList);
+                break;
+            }
+            case 'Enter':
+            case ' ':
+            case 'ArrowRight': {
+                e.preventDefault();
+                if (State.navIndex < 0) { State.navIndex = 0; applyNavFocus(navList); break; }
+                const item = navList[State.navIndex];
+                if (item.type === 'sector') {
+                    onSectorClick(item.name, item.etf);
+                    const newList = buildNavList();
+                    State.navIndex = newList.findIndex(i => i.name === item.name && i.type === 'sector');
+                    scrollKbFocusIntoView();
+                } else {
+                    onIndustryClick(item.name, item.etf);
+                }
+                break;
+            }
+            case 'ArrowLeft': {
+                e.preventDefault();
+                if (!State.expandedSector) break;
+                // Find the sector in the current list before collapsing
+                const sectorName = State.expandedSector;
+                const sectorIdx  = navList.findIndex(i => i.type === 'sector' && i.name === sectorName);
+                State.expandedSector = null;
+                renderLeftPanel();
+                loadAndRenderRRG();
+                // Move focus to the sector that was just collapsed
+                const newList = buildNavList();
+                State.navIndex = sectorIdx >= 0
+                    ? newList.findIndex(i => i.type === 'sector' && i.name === sectorName)
+                    : 0;
+                applyNavFocus(newList);
+                break;
+            }
+        }
     });
 
-    // Set state to the default for this TF
-    if (defaultVal !== null) State.tailLen = defaultVal;
-}
+    // ════════════════════════════════════════════════════════════
+    // CONTROLS
+    // ════════════════════════════════════════════════════════════
 
-function initControls() {
-    document.getElementById('benchmark-label').textContent = State.benchmark;
+    const TAIL_OPTIONS = {
+        weekly: [ [2,'2w',false],   [4, '4w', true], [12,'12w',false], [26,'26w',false] ],
+        daily:  [ [10,'10d',false], [20,'20d',true], [50,'50d',false], [100,'100d',false] ],
+    };
 
-    // Render initial tail buttons for the default timeframe
-    renderTailButtons(State.timeframe);
+    function renderTailButtons(tf) {
+        const group   = document.getElementById('tail-group');
+        const options = TAIL_OPTIONS[tf] ?? TAIL_OPTIONS.weekly;
+        group.innerHTML = '';
 
-    // Timeframe
-    document.getElementById('tf-group').addEventListener('click', e => {
-        const btn = e.target.closest('button');
-        if (!btn) return;
-        State.timeframe = btn.dataset.tf;
-        document.querySelectorAll('#tf-group button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        // Swap tail buttons to match new timeframe and reset to its default
+        let defaultVal = null;
+        options.forEach(([val, label, isDefault]) => {
+            const btn = document.createElement('button');
+            btn.textContent   = label;
+            btn.dataset.tail  = val;
+            if (isDefault) {
+                btn.classList.add('active');
+                defaultVal = val;
+            }
+            btn.addEventListener('click', () => {
+                if (+btn.dataset.tail === State.tailLen) return;
+                State.tailLen = +btn.dataset.tail;
+                group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                loadAndRenderRRG();
+            });
+            group.appendChild(btn);
+        });
+
+        // Set state to the default for this TF
+        if (defaultVal !== null) State.tailLen = defaultVal;
+    }
+
+    function initControls() {
+        document.getElementById('benchmark-label').textContent = State.benchmark;
+
+        // Render initial tail buttons for the default timeframe
         renderTailButtons(State.timeframe);
-        loadAndRenderRRG();
-        if (State.selectedItem) loadAndRenderRS(State.selectedItem.etf, State.selectedItem.name);
+
+        // Timeframe
+        document.getElementById('tf-group').addEventListener('click', e => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            State.timeframe = btn.dataset.tf;
+            document.querySelectorAll('#tf-group button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            // Swap tail buttons to match new timeframe and reset to its default
+            renderTailButtons(State.timeframe);
+            loadAndRenderRRG();
+            if (State.selectedItem) loadAndRenderRS(State.selectedItem.etf, State.selectedItem.name);
+        });
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // RS PANEL TOGGLE
+    // ════════════════════════════════════════════════════════════
+
+    const RS_PANEL_KEY = 'rrg_rs_panel_collapsed';
+
+    function initRSPanel() {
+        const panel = document.getElementById('rs-panel');
+        // Restore saved state — default is collapsed (stored as "1"), expanded as "0"
+        const saved = localStorage.getItem(RS_PANEL_KEY);
+        if (saved === '0') {
+            panel.classList.remove('collapsed');
+        }
+        // else: already collapsed by default
+    }
+
+    document.getElementById('rs-panel-header').addEventListener('click', () => {
+        const panel = document.getElementById('rs-panel');
+        panel.classList.toggle('collapsed');
+        localStorage.setItem(RS_PANEL_KEY, panel.classList.contains('collapsed') ? '1' : '0');
+        if (!panel.classList.contains('collapsed')) {
+            requestAnimationFrame(() => drawRS());
+        }
     });
-}
 
-// ════════════════════════════════════════════════════════════
-// RESIZE HANDLING
-// ════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════
+    // RESIZE HANDLING
+    // ════════════════════════════════════════════════════════════
 
-const resizeObserver = new ResizeObserver(() => {
-    drawRRG();
-    if (rsChartData) drawRS();
-});
-resizeObserver.observe(document.getElementById('rrg-canvas').parentElement);
-resizeObserver.observe(document.getElementById('rs-canvas').parentElement);
+    const resizeObserver = new ResizeObserver(() => {
+        drawRRG();
+        if (rsChartData) drawRS();
+    });
+    resizeObserver.observe(rrgCanvas.parentElement);
+    resizeObserver.observe(rsCanvas.parentElement);
 
-// ════════════════════════════════════════════════════════════
-// INIT
-// ════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════
+    // INIT
+    // ════════════════════════════════════════════════════════════
 
-function init() {
-    renderLeftPanel();
-    initControls();
-    loadAndRenderRRG();  // initial: all sectors
-}
+    function init() {
+        renderLeftPanel();
+        initControls();
+        initRSPanel();
+        loadAndRenderRRG();  // initial: all sectors
+    }
 
-init();
+    init();
 </script>
 </body>
 </html>
