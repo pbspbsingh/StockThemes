@@ -5,14 +5,13 @@ use crate::{Group, Performance, Stock, TickerType};
 use anyhow::{Context, Ok};
 use chromiumoxide::{Element, Page};
 use chrono::Local;
-use indicatif::{ProgressBar, ProgressStyle};
+use log::{debug, info};
 use url::Url;
 
 pub struct TopStocksFetcher<'a> {
     page: &'a Page,
     count: usize,
     descending: bool,
-    pb: ProgressBar,
 }
 
 impl<'a> TopStocksFetcher<'a> {
@@ -22,11 +21,7 @@ impl<'a> TopStocksFetcher<'a> {
         count: usize,
         descending: bool,
     ) -> anyhow::Result<Self> {
-        let pb = ProgressBar::new(count as u64);
-        pb.set_style(ProgressStyle::default_bar().template(
-            "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len} {msg}",
-        )?);
-        pb.set_message(format!("Loading {screen_url}"));
+        info!("Loading screen URL: {screen_url} (top {count})");
 
         page.goto(screen_url)
             .await?
@@ -40,7 +35,6 @@ impl<'a> TopStocksFetcher<'a> {
             page,
             count,
             descending,
-            pb,
         })
     }
 
@@ -50,11 +44,10 @@ impl<'a> TopStocksFetcher<'a> {
         count: usize,
         industries: &[String],
     ) -> anyhow::Result<Self> {
-        let pb = ProgressBar::new(industries.len() as u64);
-        pb.set_style(ProgressStyle::default_bar().template(
-            "{spinner:.green} [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}/{len} {msg}",
-        )?);
-        pb.set_message(format!("Loading {base_url}"));
+        info!(
+            "Loading screen with {} industries (top {count}): {base_url}",
+            industries.len()
+        );
 
         page.goto(base_url)
             .await?
@@ -66,7 +59,7 @@ impl<'a> TopStocksFetcher<'a> {
 
         let industry_filter_selector = r#"button[data-qa-id="ui-lib-multiselect-filter-pill screener-pills-checkbox-pill-Industry"]"#;
         if page.find_element(industry_filter_selector).await.is_err() {
-            pb.set_message("Clicking 'Add Filter' button");
+            debug!("Clicking 'Add Filter' button");
             page.find_element(r#"button[data-qa-id="screener-add-new-filter"]"#)
                 .await
                 .context("Failed to find AddFilter button")?
@@ -74,7 +67,7 @@ impl<'a> TopStocksFetcher<'a> {
                 .await?;
             page.sleep().await;
 
-            pb.set_message("Searching for industry filter");
+            debug!("Searching for industry filter");
             page.find_element(r#"input[aria-label="Type filter name"]"#)
                 .await
                 .context("Failed to find Add filter input")?
@@ -82,7 +75,7 @@ impl<'a> TopStocksFetcher<'a> {
                 .await?;
             page.sleep().await;
 
-            pb.set_message("Clicking the Industry filter");
+            debug!("Clicking the Industry filter");
             page.find_element(r#"div[data-qa-id="screener-add-filter-option__Industry"]"#)
                 .await
                 .context("Failed to find Industry button in filter list")?
@@ -91,7 +84,7 @@ impl<'a> TopStocksFetcher<'a> {
             page.sleep().await;
         }
 
-        pb.set_message("Clicking on Industry filter");
+        debug!("Clicking on Industry filter");
         page.find_element(industry_filter_selector)
             .await
             .context("Failed to find Industry filter")?
@@ -99,7 +92,7 @@ impl<'a> TopStocksFetcher<'a> {
             .await?;
         page.sleep().await;
 
-        pb.set_message("Resetting industry filter");
+        debug!("Resetting industry filter");
         page.find_xpath(r#"//div[@id='overlap-manager-root']//button[.//*[contains(text(),'Reset')] or contains(text(),'Reset')]"#)
             .await
             .context("Failed to find Reset button in Industry filter pane")?
@@ -110,9 +103,9 @@ impl<'a> TopStocksFetcher<'a> {
             .await
             .context("Failed to find Industry group select checkboxes")?;
 
-        for industry in industries {
-            pb.inc(1);
-            pb.set_message(format!("Selecting {industry}"));
+        let total = industries.len();
+        for (i, industry) in industries.iter().enumerate() {
+            info!("[{}/{}] Selecting industry: {industry}", i + 1, total);
 
             let mut check_box_found = false;
             for select in &industry_selects {
@@ -130,14 +123,12 @@ impl<'a> TopStocksFetcher<'a> {
             page.nap().await;
         }
 
-        pb.set_length(count as u64);
-        pb.reset();
+        info!("All {total} industries selected, fetching top {count} stocks");
 
         Ok(Self {
             page,
             count,
             descending: true,
-            pb,
         })
     }
 
@@ -145,7 +136,6 @@ impl<'a> TopStocksFetcher<'a> {
         &self,
         sort_by: &str,
     ) -> anyhow::Result<(Vec<Stock>, Vec<Performance>)> {
-        self.pb.reset();
         self.sort_stocks(sort_by).await?;
         self.page.sleep().await;
 
@@ -158,8 +148,7 @@ impl<'a> TopStocksFetcher<'a> {
             .await
             .context("Failed to add IndustryGroup column")?;
 
-        self.pb
-            .set_message(format!("[{sort_by}] Quering rows from the table"));
+        info!("[{sort_by}] Querying rows from the table");
         let mut result = Vec::new();
         for row in self
             .page
@@ -171,8 +160,7 @@ impl<'a> TopStocksFetcher<'a> {
         {
             let stock = Self::parse_stock(row, sector_idx, industry_idx).await?;
 
-            self.pb.set_message(format!("[{}]", stock.ticker));
-            self.pb.inc(1);
+            debug!("[{sort_by}] Parsed stock: {}", stock.ticker);
 
             result.push(stock);
             if result.len() >= self.count {
@@ -180,6 +168,11 @@ impl<'a> TopStocksFetcher<'a> {
             }
         }
 
+        info!(
+            "[{sort_by}] Fetched {}/{} stocks",
+            result.len(),
+            self.count
+        );
         let perfs = parse_performances(&self.page, TickerType::Stock).await?;
 
         Ok((result, perfs))
@@ -244,16 +237,21 @@ impl<'a> TopStocksFetcher<'a> {
     }
 
     async fn sort_stocks(&self, sort_by: &str) -> anyhow::Result<()> {
-        self.pb
-            .set_message(format!("[{sort_by}] Clicking performance tab"));
+        let direction = if self.descending {
+            "descending"
+        } else {
+            "ascending"
+        };
+        info!("[{sort_by}] Sorting table ({direction})");
+
+        debug!("[{sort_by}] Clicking performance tab");
         self.page
             .find_xpath(r"//button[@role='tab'][contains(., 'Performance')]")
             .await?
             .click()
             .await?;
 
-        self.pb
-            .set_message(format!("[{sort_by}] Sorting table by colum"));
+        debug!("[{sort_by}] Clicking sort column header");
         self.page
             .sleep()
             .await
@@ -265,15 +263,9 @@ impl<'a> TopStocksFetcher<'a> {
             .click()
             .await?;
 
-        self.pb
-            .set_message(format!("[{sort_by}] Clicking sort by popup button"));
+        debug!("[{sort_by}] Selecting sort direction: {direction}");
         let sort_selector = format!(
-            r#"//div[@data-qa-id="column-menu"]//div[@data-qa-id="column-menu-item"]//div[.//*[contains(., 'Sort {}')]]"#,
-            if self.descending {
-                "descending"
-            } else {
-                "ascending"
-            }
+            r#"//div[@data-qa-id="column-menu"]//div[@data-qa-id="column-menu-item"]//div[.//*[contains(., 'Sort {direction}')]]"#,
         );
         self.page
             .sleep()
@@ -288,7 +280,7 @@ impl<'a> TopStocksFetcher<'a> {
     async fn add_sector_industry_columns(&self, col_name: &str) -> anyhow::Result<usize> {
         assert!(col_name == "Sector" || col_name == "Industry");
 
-        self.pb.set_message("Clicking Custom tab");
+        debug!("Clicking Custom tab");
         self.page
             .find_xpath(r"//button[@role='tab'][contains(., 'Custom')]")
             .await?
@@ -302,8 +294,7 @@ impl<'a> TopStocksFetcher<'a> {
             .await
             .is_err()
         {
-            self.pb
-                .set_message(format!("{col_name} column is not present, adding it."));
+            info!("{col_name} column not present, adding it");
             self.page
                 .find_element("table thead th#columns-plus-btn")
                 .await
@@ -312,8 +303,7 @@ impl<'a> TopStocksFetcher<'a> {
                 .await?;
             self.page.sleep().await;
 
-            self.pb
-                .set_message(format!("Searching for {col_name} column"));
+            debug!("Searching for {col_name} column");
             let input_field = self
                 .page
                 .find_element(r#"#overlap-manager-root input[aria-label="Type column name"]"#)
@@ -322,7 +312,7 @@ impl<'a> TopStocksFetcher<'a> {
             input_field.type_str(col_name).await?;
             self.page.sleep().await;
 
-            self.pb.set_message(format!("Adding {col_name} column"));
+            debug!("Adding {col_name} column");
             self.page
                 .find_element(
                     format!(r#"#overlap-manager-root div[data-qa-id="screener-add-filter-option__{col_name}"]"#),

@@ -2,9 +2,7 @@ use anyhow::Context;
 
 use clap::Parser;
 
-use indicatif::{ProgressBar, ProgressStyle};
-
-use log::info;
+use log::{info, warn};
 
 use std::path::PathBuf;
 use stock_themes::{
@@ -82,28 +80,44 @@ async fn fetch_stock_info(
     yf: &YFinance,
     tickers: Vec<String>,
 ) -> anyhow::Result<(Vec<Stock>, Vec<Performance>)> {
-    let pb = ProgressBar::new(tickers.len() as u64);
-    pb.set_style(
-        ProgressStyle::default_bar().template(
-            "{spinner:.green} [{elapsed_precise}] [{bar:60.cyan/blue}] {pos}/{len} {msg}",
-        )?,
-    );
-
+    let total = tickers.len();
     let store = Store::load_store().await?;
-    let mut stocks = Vec::with_capacity(tickers.len());
-    let mut perfs = Vec::with_capacity(tickers.len());
 
-    for ticker in tickers {
-        pb.set_message(format!("[{ticker}] info..."));
-        pb.tick();
-        stocks.push(tv_manager.fetch_stock_info(&ticker).await?);
+    let mut stocks = Vec::with_capacity(total);
+    let mut perfs = Vec::with_capacity(total);
 
-        pb.set_message(format!("[{ticker}] performance..."));
-        pb.inc(1);
-        perfs.push(fetch_stock_perf(&store, yf, &ticker).await?);
+    let mut failed = Vec::new();
+    let mut last_error = None;
+
+    let mut fetch_fn = async |ticker: &str| -> anyhow::Result<(Stock, Performance)> {
+        Ok((
+            tv_manager.fetch_stock_info(&ticker).await?,
+            fetch_stock_perf(&store, yf, &ticker).await?,
+        ))
+    };
+
+    for (i, ticker) in tickers.into_iter().enumerate() {
+        info!("[{}/{}] Fetching info for {ticker}", i + 1, total);
+        let (stock, perf) = match fetch_fn(&ticker).await {
+            Ok(sp) => sp,
+            Err(e) => {
+                warn!(
+                    "[{}/{total}] Failed to fetch stock/performance for {ticker}: {e}",
+                    i + 1
+                );
+                last_error = Some(e);
+                failed.push(ticker);
+                continue;
+            }
+        };
+        stocks.push(stock);
+        perfs.push(perf);
     }
-
-    pb.finish_with_message(format!("Finished processing {} tickers", stocks.len()));
+    if let Some(e) = last_error {
+        warn!("Failed to fetch stock/performance for: '{}'", failed.join(","));
+        return Err(e);
+    }
+    info!("Finished processing {} tickers", stocks.len());
 
     Ok((stocks, perfs))
 }

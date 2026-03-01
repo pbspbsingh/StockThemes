@@ -2,7 +2,7 @@ use crate::tv::Sleepable;
 use crate::{Performance, TickerType};
 use anyhow::Context;
 use chromiumoxide::Page;
-use indicatif::{ProgressBar, ProgressStyle};
+use log::info;
 
 use crate::tv::perf_util::parse_performances;
 
@@ -11,20 +11,11 @@ const SECTORS_HOME: &str =
 
 pub struct TopIndustryGroups<'a> {
     page: &'a Page,
-    pb: ProgressBar,
 }
 
 impl<'a> TopIndustryGroups<'a> {
     pub async fn new(page: &'a Page) -> anyhow::Result<Self> {
-        let pb = ProgressBar::new_spinner();
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-                .template("{spinner:.cyan} {msg}")?,
-        );
-
-        pb.tick();
-        pb.set_message(format!("Loading {SECTORS_HOME:?}"));
+        info!("Loading sectors & industries from {SECTORS_HOME}");
 
         page.goto(SECTORS_HOME)
             .await?
@@ -33,14 +24,13 @@ impl<'a> TopIndustryGroups<'a> {
             .sleep()
             .await;
 
-        pb.tick();
-        pb.set_message("Done loading");
+        info!("Sectors page loaded");
 
-        Ok(Self { page, pb })
+        Ok(Self { page })
     }
 
     pub async fn fetch_sectors(&self) -> anyhow::Result<Vec<Performance>> {
-        self.set_message("Clicking 'Sector' tab");
+        info!("Clicking 'Sector' tab");
         self.page
             .find_xpath("a#sector")
             .await
@@ -55,7 +45,7 @@ impl<'a> TopIndustryGroups<'a> {
     }
 
     pub async fn fetch_industries(&self) -> anyhow::Result<Vec<Performance>> {
-        self.set_message("Clicking 'Industry' tab");
+        info!("Clicking 'Industry' tab");
         self.page
             .find_xpath("a#industry")
             .await
@@ -71,7 +61,7 @@ impl<'a> TopIndustryGroups<'a> {
             .find_element(r#"button[data-overflow-tooltip-text="Load More"]"#)
             .await
         {
-            self.set_message("Loading more industries");
+            info!("Loading more industries");
             load_more.click().await?;
             self.page.sleep().await;
         }
@@ -79,13 +69,8 @@ impl<'a> TopIndustryGroups<'a> {
         parse_performances(&self.page, TickerType::Industry).await
     }
 
-    fn set_message(&self, msg: impl Into<String>) {
-        self.pb.tick();
-        self.pb.set_message(msg.into());
-    }
-
     async fn click_perf_tab(&self) -> anyhow::Result<()> {
-        self.set_message("Clicking 'Performance' tab");
+        info!("Clicking 'Performance' tab");
         self.page
             .find_xpath(r#"//div[@id="market-screener-header-columnset-tabs"]//span[normalize-space()="Performance"]"#)
             .await
