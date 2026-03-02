@@ -6,7 +6,6 @@ use sqlx::{
     Decode, Encode, Sqlite, SqlitePool, Type, encode::IsNull, error::BoxDynError,
     sqlite::SqlitePoolOptions,
 };
-use std::collections::HashMap;
 
 use crate::util::is_upto_date;
 use crate::yf::Candle;
@@ -132,14 +131,13 @@ impl Store {
         for perf in perfs {
             sqlx::query!(
                 r#"
-                INSERT INTO performance (ticker, ticker_type, perf_1m, perf_3m, perf_6m, perf_1y, last_updated, extra_info)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                INSERT INTO performance (ticker, ticker_type, perf_1m, perf_3m, perf_6m, perf_1y, last_updated)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 ON CONFLICT(ticker, ticker_type) DO UPDATE SET
                     perf_1m      = excluded.perf_1m,
                     perf_3m      = excluded.perf_3m,
                     perf_6m      = excluded.perf_6m,
                     perf_1y      = excluded.perf_1y,
-                    extra_info   = excluded.extra_info,
                     last_updated = excluded.last_updated
                 "#,
                 perf.ticker,
@@ -149,7 +147,6 @@ impl Store {
                 perf.perf_6m,
                 perf.perf_1y,
                 perf.last_updated,
-                perf.extra_info,
                 )
                 .execute(&mut *tx)
                 .await?;
@@ -172,8 +169,7 @@ impl Store {
                 perf_3m,
                 perf_6m,
                 perf_1y,
-                last_updated as "last_updated: DateTime<Local>",
-                extra_info   as "extra_info: sqlx::types::Json<HashMap<String, f64>>"
+                last_updated as "last_updated: DateTime<Local>"
             FROM performance
             WHERE ticker = $1 AND ticker_type = $2
             "#,
@@ -202,8 +198,7 @@ impl Store {
                 perf_3m,
                 perf_6m,
                 perf_1y,
-                last_updated as "last_updated: DateTime<Local>",
-                extra_info   as "extra_info: sqlx::types::Json<HashMap<String, f64>>"
+                last_updated as "last_updated: DateTime<Local>"
             FROM performance
             ORDER BY ticker_type, ticker
             "#,
@@ -231,8 +226,7 @@ impl Store {
                 perf_3m,
                 perf_6m,
                 perf_1y,
-                last_updated as "last_updated: DateTime<Local>",
-                extra_info   as "extra_info: sqlx::types::Json<HashMap<String, f64>>"
+                last_updated as "last_updated: DateTime<Local>"
             FROM performance
             WHERE ticker_type = $1
             ORDER BY ticker

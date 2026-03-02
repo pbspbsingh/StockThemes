@@ -8,7 +8,6 @@ use axum::{Router, routing};
 use chrono::{DateTime, Local, NaiveDate, TimeDelta, Utc};
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
-use sqlx::types::Json;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use tokio::net::TcpListener;
@@ -60,7 +59,6 @@ pub struct Performance {
     pub perf_3m: f64,
     pub perf_6m: f64,
     pub perf_1y: f64,
-    pub extra_info: Json<HashMap<String, f64>>,
     pub last_updated: DateTime<Local>,
 }
 
@@ -168,7 +166,6 @@ impl Performance {
             perf_3m: perf_map.get("3M").copied().unwrap_or_default(),
             perf_6m: perf_map.get("6M").copied().unwrap_or_default(),
             perf_1y: perf_map.get("1Y").copied().unwrap_or_default(),
-            extra_info: Json(perf_map),
             last_updated: Local::now(),
         }
     }
