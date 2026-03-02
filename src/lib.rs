@@ -6,7 +6,7 @@ use anyhow::Context;
 use axum::response::Html;
 use axum::{Router, routing};
 use chrono::{DateTime, Local, NaiveDate, TimeDelta, Utc};
-use log::{debug, info};
+use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 use sqlx::types::Json;
 use std::collections::HashMap;
@@ -81,14 +81,17 @@ pub fn time_frames(input: &str) -> impl Iterator<Item = String> {
     input.split(',').map(str::trim).map(str::to_uppercase)
 }
 
-pub async fn start_http_server(html: String) -> anyhow::Result<()> {
+pub async fn start_http_server(home: String) -> anyhow::Result<()> {
     let addr = format!("127.0.0.1:{}", APP_CONFIG.http_port);
     let listener = TcpListener::bind(&addr)
         .await
-        .with_context(|| format!("Failed to bind at {addr}: e"))?;
+        .with_context(|| format!("Failed to bind at {addr}"))?;
 
     info!("Running http server at: {addr}");
-    let app = Router::new().route("/", routing::get(async || Html(html)));
+    let app = Router::new()
+        .route("/", routing::get(async || Html(home)))
+        .route("/rrg.html", routing::get(rrg_util::rrg_home))
+        .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler));
     axum::serve(listener, app).await?;
 
     Ok(())
@@ -114,12 +117,12 @@ pub async fn fetch_candles(
     }
 
     if is_upto_date(candles.last().unwrap().last_updated) {
-        debug!("Candles for {ticker} is up to date, no need to fetch it");
+        trace!("Candles for {ticker} is up to date, no need to fetch it");
         return Ok(candles);
     }
 
     let last_updated = candles.pop().unwrap().last_updated;
-    info!("Last candle of {ticker} is from {last_updated}, hence requires updating");
+    debug!("Last candle of {ticker} was updated {last_updated}, hence requires updating");
 
     let start = candles
         .last()

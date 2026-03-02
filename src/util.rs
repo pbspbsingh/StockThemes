@@ -93,6 +93,10 @@ pub fn is_upto_date(time: DateTime<Local>) -> bool {
     let now = Local::now();
     let (market_open, market_close) = APP_CONFIG.market_hours;
 
+    if now - time <= TimeDelta::minutes(30) {
+        return true;
+    }
+
     let is_market_open = || match now.weekday() {
         Weekday::Sat | Weekday::Sun => false,
         _ => {

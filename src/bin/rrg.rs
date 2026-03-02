@@ -17,6 +17,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Running http server at: {addr}");
     let app = Router::new()
         .route("/", routing::get(rrg_util::rrg_home))
+        .route("/rrg.html", routing::get(rrg_util::rrg_home))
         .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler));
     axum::serve(listener, app).await?;
 

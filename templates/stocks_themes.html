@@ -193,6 +193,28 @@
             color: white;
         }
 
+        .rrg-link {
+            padding: 5px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1;
+            color: #d0d0d0;
+            text-decoration: none;
+            border-radius: 3px;
+            background: #2a2a2a;
+            border: 1px solid #555;
+            transition: all 0.2s;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .rrg-link:hover {
+            color: #fff;
+            background: #333;
+            border-color: #4a9eff;
+        }
+
         /* Column headers that need flex layout for clear button */
         .column-header-flex {
             display: flex;
@@ -379,14 +401,14 @@
     <div class="column">
         <div class="column-header column-header-flex">
             <span>Sectors</span>
-            <button id="clear-sectors" class="btn-clear" disabled onclick="AppState.selectedSectors.clear(); AppState.clearIndustrySelection(); Renderers.renderAll();">✕ clear</button>
+            <button id="clear-sectors" class="btn-clear" disabled title="Clear sector selection" onclick="AppState.selectedSectors.clear(); AppState.clearIndustrySelection(); Renderers.renderAll();">✕ clear</button>
         </div>
         <div id="sectors"></div>
     </div>
     <div class="column">
         <div class="column-header column-header-flex">
             <span>Industry Groups</span>
-            <button id="clear-industries" class="btn-clear" disabled onclick="AppState.selectedIndustries.clear(); AppState.clearTickerSelection(); Renderers.renderIndustries(); Renderers.renderTickers(); PreviewManager.updatePreview();">✕ clear</button>
+            <button id="clear-industries" class="btn-clear" disabled title="Clear industry selection" onclick="AppState.selectedIndustries.clear(); AppState.clearTickerSelection(); Renderers.renderIndustries(); Renderers.renderTickers(); PreviewManager.updatePreview();">✕ clear</button>
         </div>
         <div id="industries"></div>
     </div>
@@ -397,9 +419,12 @@
     <div class="column preview-column">
         <div class="column-header preview-header">
             <span id="preview-title">Preview</span>
-            <div class="chart-toggle" id="chart-toggle">
-                <button data-mode="single">D</button>
-                <button data-mode="split" class="active">D/W</button>
+            <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+                <div class="chart-toggle" id="chart-toggle">
+                    <button data-mode="single" title="Daily chart">D</button>
+                    <button data-mode="split" class="active" title="Daily and Weekly split view">D/W</button>
+                </div>
+                <a href="/rrg.html" class="rrg-link" title="Relative Rotation Graph" target="_blank">RRG</a>
             </div>
         </div>
         <div id="preview"></div>
@@ -661,6 +686,7 @@
                 const item = DOM.createElement('div', 'item' + (isSelected ? ' selected' : ''));
                 item.dataset.name = sector.name;
                 const rs = sectorRS.get(sector.name.toLowerCase()) ?? null;
+                item.title = `${sector.name} — ${sector.size} stocks${rs != null ? ` · RS: ${rs.toFixed(2)}` : ''}`;
                 item.innerHTML = Templates.listItem(sector.name, sector.size, rs);
 
                 item.addEventListener('click', () => {
@@ -693,6 +719,7 @@
                 const item = DOM.createElement('div', 'item' + (isSelected ? ' selected' : ''));
                 item.dataset.name = industry.name;
                 const rs = industryRS.get(industry.name.toLowerCase()) ?? null;
+                item.title = `${industry.name} — ${industry.size} stocks${rs != null ? ` · RS: ${rs.toFixed(2)}` : ''}`;
                 item.innerHTML = Templates.listItem(industry.name, industry.size, rs);
 
                 item.addEventListener('click', () => {
@@ -740,6 +767,7 @@
                 const isSelected = index === AppState.selectedTickerIndex;
                 const item = DOM.createElement('div', 'item' + (isSelected ? ' selected' : ''));
                 const rs = stockRS.get(ticker.ticker) ?? null;
+                item.title = `${ticker.ticker}${rs != null ? ` · RS: ${rs.toFixed(2)}` : ''} — click to preview`;
                 item.innerHTML = Templates.tickerItem(ticker.ticker, rs);
 
                 item.addEventListener('click', () => {

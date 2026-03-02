@@ -466,6 +466,11 @@
         return 'recovering';
     }
 
+    const HISTORY_LEN = {
+        weekly: 52,
+        daily:  200,
+    };
+
     // ════════════════════════════════════════════════════════════
     // APP STATE
     // ════════════════════════════════════════════════════════════
@@ -484,7 +489,7 @@
         // Controls
         timeframe: 'weekly',
         tailLen: 4,
-        historyLen: 52,  // periods of RS history for the bottom chart
+        historyLen: HISTORY_LEN['weekly'],  // 52W default; updated on timeframe change
     };
 
     // ════════════════════════════════════════════════════════════
@@ -1657,7 +1662,8 @@
         document.getElementById('tf-group').addEventListener('click', e => {
             const btn = e.target.closest('button');
             if (!btn) return;
-            State.timeframe = btn.dataset.tf;
+            State.timeframe  = btn.dataset.tf;
+            State.historyLen = HISTORY_LEN[State.timeframe] ?? 52;
             document.querySelectorAll('#tf-group button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             // Swap tail buttons to match new timeframe and reset to its default

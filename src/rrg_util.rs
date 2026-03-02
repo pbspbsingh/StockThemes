@@ -11,7 +11,7 @@ use axum::{
     extract::{Path, Query},
 };
 use chrono::Datelike;
-use log::debug;
+use log::trace;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
@@ -77,7 +77,7 @@ pub async fn rrg_handler(
     Path(ticker): Path<String>,
     Query(params): Query<RrgQuery>,
 ) -> Result<Json<RrgResponse>, HtmlError> {
-    debug!("Ticker: {ticker}, params: {params:?}");
+    trace!("Ticker: {ticker}, params: {params:?}");
     let store = Store::load_store().await?;
     let etf_candles = fetch_candles(&store, &YF, &ticker).await?;
     let bmk_candles = fetch_candles(&store, &YF, &APP_CONFIG.base_ticker).await?;
