@@ -8,7 +8,7 @@ pub async fn parse_performances(
     page: &Page,
     ticker_type: TickerType,
 ) -> anyhow::Result<Vec<Performance>> {
-    let indices = find_perf_cols(&page).await?;
+    let indices = find_perf_cols(page).await?;
     if indices.is_empty() {
         anyhow::bail!("Performance information didn't load in time for {ticker_type:?}");
     }
@@ -30,7 +30,7 @@ async fn parse_perf_info(
 ) -> anyhow::Result<Performance> {
     let cells = row.find_elements("td").await?;
     let mut name = cells
-        .get(0)
+        .first()
         .context("No cells returned")?
         .inner_text()
         .await?

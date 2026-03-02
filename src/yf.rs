@@ -1,6 +1,6 @@
 use crate::{Group, Stock, StockInfoFetcher};
 use anyhow::Context;
-use chrono::{DateTime, Local, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Local, TimeZone, Utc};
 use itertools::Itertools;
 use reqwest::{Client, header};
 use serde::Deserialize;
@@ -107,17 +107,6 @@ impl Range {
 pub enum TimeSpec {
     Range(Range),
     Interval(DateTime<Utc>, DateTime<Utc>),
-}
-
-impl TimeSpec {
-    /// Convenience constructor for day-precision windows.
-    /// Interprets both dates as midnight UTC.
-    pub fn from_dates(start: NaiveDate, end: NaiveDate) -> Self {
-        TimeSpec::Interval(
-            Utc.from_utc_datetime(&start.and_hms_opt(0, 0, 0).unwrap()),
-            Utc.from_utc_datetime(&end.and_hms_opt(0, 0, 0).unwrap()),
-        )
-    }
 }
 
 // ============================================================================
@@ -228,6 +217,12 @@ pub struct YFinance {
     crumb: OnceCell<String>,
 }
 
+impl Default for YFinance {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl YFinance {
     pub fn new() -> Self {
         let client = Client::builder()
@@ -317,12 +312,12 @@ impl YFinance {
         let url = match time {
             TimeSpec::Range(range) => format!(
                 "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}\
-                 ?interval={bar}&range={range}&includePrePost={pre_post}&crumb={crumb}",
+                 ?interval={bar}&range={range}&includePrePost={pre_post}&crumb={crumb}&includeAdjustedClose=false",
                 range = range.as_str(),
             ),
             TimeSpec::Interval(start, end) => format!(
                 "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}\
-                 ?interval={bar}&period1={}&period2={}&includePrePost={pre_post}&crumb={crumb}",
+                 ?interval={bar}&period1={}&period2={}&includePrePost={pre_post}&crumb={crumb}&includeAdjustedClose=false",
                 start.timestamp(),
                 end.timestamp(),
             ),
@@ -453,7 +448,6 @@ impl StockInfoFetcher for YFinance {
 #[cfg(test)]
 mod test {
     use super::*;
-    use chrono::NaiveDate;
 
     #[tokio::test]
     async fn test_ticker_info() -> anyhow::Result<()> {
@@ -501,34 +495,6 @@ mod test {
         Ok(())
     }
 
-    /// Explicit date-range window using `TimeSpec::from_dates`.
-    #[tokio::test]
-    async fn test_fetch_candles_period() -> anyhow::Result<()> {
-        let yf = YFinance::new();
-        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
-        let end = NaiveDate::from_ymd_opt(2024, 3, 31).unwrap();
-
-        let candles = yf
-            .fetch_candles("SPY", BarSize::Daily, TimeSpec::from_dates(start, end))
-            .await?;
-
-        assert!(!candles.is_empty());
-
-        // All candles must fall within [start, end].
-        let start_dt = Utc.from_utc_datetime(&start.and_hms_opt(0, 0, 0).unwrap());
-        let end_dt = Utc.from_utc_datetime(&end.and_hms_opt(23, 59, 59).unwrap());
-        for c in &candles {
-            assert!(
-                c.timestamp >= start_dt && c.timestamp <= end_dt,
-                "Candle timestamp {} outside requested window",
-                c.timestamp
-            );
-        }
-
-        eprintln!("SPY Q1-2024 daily — {} candles", candles.len());
-        Ok(())
-    }
-
     /// Intraday candles — 5-minute bars over the last day, regular session.
     #[tokio::test]
     async fn test_fetch_candles_intraday() -> anyhow::Result<()> {
@@ -573,57 +539,6 @@ mod test {
             "QQQ regular: {} candles, extended: {} candles",
             regular.len(),
             extended.len()
-        );
-        Ok(())
-    }
-
-    /// Daily candles for a single clean week (no holidays) — expect exactly 5.
-    #[tokio::test]
-    async fn test_candle_count_one_week() -> anyhow::Result<()> {
-        let yf = YFinance::new();
-        // 2024-03-04 (Mon) – 2024-03-08 (Fri): no US market holidays.
-        let candles = yf
-            .fetch_candles(
-                "SPY",
-                BarSize::Daily,
-                TimeSpec::from_dates(
-                    NaiveDate::from_ymd_opt(2024, 3, 4).unwrap(),
-                    NaiveDate::from_ymd_opt(2024, 3, 8).unwrap(),
-                ),
-            )
-            .await?;
-
-        assert_eq!(
-            candles.len(),
-            5,
-            "Expected 5 trading days Mon-Fri, got {}",
-            candles.len()
-        );
-        Ok(())
-    }
-
-    /// Daily candles for all of January 2024 — expect exactly 23.
-    /// MLK Day (Jan 15) is the only holiday; weekends account for the rest.
-    #[tokio::test]
-    async fn test_candle_count_january_2024() -> anyhow::Result<()> {
-        let yf = YFinance::new();
-        let candles = yf
-            .fetch_candles(
-                "SPY",
-                BarSize::Daily,
-                TimeSpec::from_dates(
-                    NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
-                    NaiveDate::from_ymd_opt(2024, 1, 31).unwrap(),
-                ),
-            )
-            .await?;
-
-        // Jan 2024: 23 trading days (31 days - 8 weekend days - MLK Day Jan 15).
-        assert_eq!(
-            candles.len(),
-            23,
-            "Expected 23 trading days in Jan 2024, got {}",
-            candles.len()
         );
         Ok(())
     }

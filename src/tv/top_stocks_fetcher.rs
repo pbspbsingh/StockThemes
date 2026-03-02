@@ -168,12 +168,8 @@ impl<'a> TopStocksFetcher<'a> {
             }
         }
 
-        info!(
-            "[{sort_by}] Fetched {}/{} stocks",
-            result.len(),
-            self.count
-        );
-        let perfs = parse_performances(&self.page, TickerType::Stock).await?;
+        info!("[{sort_by}] Fetched {}/{} stocks", result.len(), self.count);
+        let perfs = parse_performances(self.page, TickerType::Stock).await?;
 
         Ok((result, perfs))
     }

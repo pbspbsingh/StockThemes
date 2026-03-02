@@ -91,8 +91,8 @@ async fn fetch_stock_info(
 
     let mut fetch_fn = async |ticker: &str| -> anyhow::Result<(Stock, Performance)> {
         Ok((
-            tv_manager.fetch_stock_info(&ticker).await?,
-            fetch_stock_perf(&store, yf, &ticker).await?,
+            tv_manager.fetch_stock_info(ticker).await?,
+            fetch_stock_perf(&store, yf, ticker).await?,
         ))
     };
 
@@ -114,7 +114,10 @@ async fn fetch_stock_info(
         perfs.push(perf);
     }
     if let Some(e) = last_error {
-        warn!("Failed to fetch stock/performance for: '{}'", failed.join(","));
+        warn!(
+            "Failed to fetch stock/performance for: '{}'",
+            failed.join(","),
+        );
         return Err(e);
     }
     info!("Finished processing {} tickers", stocks.len());

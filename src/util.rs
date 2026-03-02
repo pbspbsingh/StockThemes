@@ -166,9 +166,7 @@ pub fn parse_percentage(s: impl AsRef<str>) -> anyhow::Result<f64> {
     let normalized = s
         .trim()
         .replace('−', "-") // U+2212 mathematical minus → ASCII hyphen
-        .replace('+', "")
-        .replace('%', "")
-        .replace(',', "");
+        .replace(['+', '%', ','], "");
 
     normalized
         .parse::<f64>()
@@ -181,12 +179,15 @@ pub fn compute_perf(candles: &[Candle]) -> HashMap<String, f64> {
     }
 
     let latest = candles.last().unwrap();
+    let latest_date = latest.timestamp.date_naive();
 
     let closest_close = |months_ago: u32| -> f64 {
-        let target = latest.timestamp - Months::new(months_ago);
+        let target_date = latest_date.and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let target_date = (target_date - Months::new(months_ago)).date_naive();
+
         candles
             .iter()
-            .min_by_key(|c| (c.timestamp - target).num_seconds().abs())
+            .rfind(|c| c.timestamp.date_naive() <= target_date)
             .map(|c| (latest.close - c.close) / c.close * 100.0)
             .unwrap_or(0.0)
     };

@@ -15,7 +15,7 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
-static YF: LazyLock<YFinance> = LazyLock::new(|| YFinance::new());
+static YF: LazyLock<YFinance> = LazyLock::new(YFinance::new);
 
 pub async fn rrg_home() -> Result<impl IntoResponse, HtmlError> {
     #[derive(Template)]
@@ -176,12 +176,13 @@ fn align(etf: &[PeriodClose], bmk: &[PeriodClose]) -> (Vec<f64>, Vec<chrono::Nai
     let mut bmk_closes: Vec<f64> = Vec::new();
 
     for p in etf {
-        if let Some(&b) = bmk_map.get(&p.date) {
-            if p.close > 0.0 && b > 0.0 {
-                etf_closes.push(p.close);
-                bmk_closes.push(b);
-                dates.push(p.date);
-            }
+        if let Some(&b) = bmk_map.get(&p.date)
+            && p.close > 0.0
+            && b > 0.0
+        {
+            etf_closes.push(p.close);
+            bmk_closes.push(b);
+            dates.push(p.date);
         }
     }
 
@@ -207,6 +208,7 @@ fn align(etf: &[PeriodClose], bmk: &[PeriodClose]) -> (Vec<f64>, Vec<chrono::Nai
 /// `tail_len`    — how many historical (rs_ratio, rs_momentum) pairs to return
 ///                 in the "tail" array (oldest → newest, excludes current point)
 /// `history_len` — how many (date, rs_ratio) pairs to return for the bottom chart
+#[allow(clippy::doc_overindented_list_items)]
 fn compute_rrg(
     ticker: &str,
     etf_candles: &[Candle],

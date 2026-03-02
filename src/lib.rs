@@ -104,7 +104,11 @@ pub async fn fetch_candles(
         let candles = yf
             .fetch_candles(ticker, BarSize::Daily, TimeSpec::Range(Range::TwoYears))
             .await?;
-        info!("Fetched {} candles for {} from yfinance", candles.len(), ticker);
+        info!(
+            "Fetched {} candles for {} from yfinance",
+            candles.len(),
+            ticker,
+        );
         store.save_candles(ticker, &candles).await?;
         return Ok(candles);
     }
@@ -142,11 +146,8 @@ pub async fn fetch_stock_perf(
         Some(perf) => Ok(perf),
         None => {
             let candles = fetch_candles(store, yf, ticker).await?;
-            Ok(Performance::new(
-                ticker,
-                TickerType::Stock,
-                compute_perf(&candles),
-            ))
+            let perf = compute_perf(&candles);
+            Ok(Performance::new(ticker, TickerType::Stock, perf))
         }
     }
 }

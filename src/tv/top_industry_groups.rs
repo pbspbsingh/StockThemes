@@ -41,7 +41,7 @@ impl<'a> TopIndustryGroups<'a> {
 
         self.click_perf_tab().await?;
 
-        parse_performances(&self.page, TickerType::Sector).await
+        parse_performances(self.page, TickerType::Sector).await
     }
 
     pub async fn fetch_industries(&self) -> anyhow::Result<Vec<Performance>> {
@@ -66,7 +66,7 @@ impl<'a> TopIndustryGroups<'a> {
             self.page.sleep().await;
         }
 
-        parse_performances(&self.page, TickerType::Industry).await
+        parse_performances(self.page, TickerType::Industry).await
     }
 
     async fn click_perf_tab(&self) -> anyhow::Result<()> {

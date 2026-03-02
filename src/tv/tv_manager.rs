@@ -8,6 +8,7 @@ use chromiumoxide::{Browser, Page};
 use itertools::Itertools;
 use log::info;
 use std::collections::HashMap;
+use std::slice;
 use std::sync::Arc;
 
 pub struct TvManager {
@@ -67,7 +68,7 @@ impl TvManager {
         let si_loader = StockInfoLoader::new(self.get_or_init_page().await?).await?;
         let stock = si_loader.fetch_stock_info(ticker).await?;
 
-        self.store.add_stocks(&[stock.clone()]).await?;
+        self.store.add_stocks(slice::from_ref(&stock)).await?;
 
         Ok(stock)
     }

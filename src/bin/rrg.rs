@@ -12,7 +12,7 @@ async fn main() -> anyhow::Result<()> {
     let addr = format!("127.0.0.1:{}", APP_CONFIG.http_port);
     let listener = TcpListener::bind(&addr)
         .await
-        .with_context(|| format!("Failed to bind at {addr}: e"))?;
+        .with_context(|| format!("Failed to bind at {addr}"))?;
 
     info!("Running http server at: {addr}");
     let app = Router::new()
