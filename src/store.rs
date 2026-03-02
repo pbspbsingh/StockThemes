@@ -251,6 +251,7 @@ impl Store {
                        high,
                        low,
                        close,
+                       adj_close,
                        volume,
                        last_updated as "last_updated: DateTime<Local>"
                 FROM daily_candles
@@ -266,6 +267,7 @@ impl Store {
             high: row.high,
             low: row.low,
             close: row.close,
+            adj_close: row.adj_close,
             volume: row.volume as u64,
             last_updated: row.last_updated,
         })
@@ -281,13 +283,14 @@ impl Store {
             let volume = candle.volume as i64;
             sqlx::query!(
                 r#"
-                    INSERT INTO daily_candles (ticker, ds, open, high, low, close, volume, last_updated)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    INSERT INTO daily_candles (ticker, ds, open, high, low, close, adj_close, volume, last_updated)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     ON CONFLICT(ticker, ds) DO UPDATE SET
                         open = excluded.open,
                         high = excluded.high,
                         low = excluded.low,
                         close = excluded.close,
+                        adj_close = excluded.adj_close,
                         volume = excluded.volume,
                         last_updated = excluded.last_updated
                 "#,
@@ -297,6 +300,7 @@ impl Store {
                 candle.high,
                 candle.low,
                 candle.close,
+                candle.adj_close,
                 volume,
                 candle.last_updated,
             )

@@ -1,11 +1,11 @@
 use crate::config::APP_CONFIG;
 use crate::store::Store;
-use crate::util::{compute_perf, is_upto_date};
+use crate::util::is_upto_date;
 use crate::yf::{BarSize, Candle, Range, TimeSpec, YFinance};
 use anyhow::Context;
 use axum::response::Html;
-use axum::{Router, routing};
-use chrono::{DateTime, Local, NaiveDate, TimeDelta, Utc};
+use axum::{routing, Router};
+use chrono::{DateTime, Local, Months, NaiveDate, TimeDelta, Utc};
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -147,8 +147,7 @@ pub async fn fetch_stock_perf(
         Some(perf) => Ok(perf),
         None => {
             let candles = fetch_candles(store, yf, ticker).await?;
-            let perf = compute_perf(&candles);
-            Ok(Performance::new(ticker, TickerType::Stock, perf))
+            Ok(Performance::compute(ticker, TickerType::Stock, &candles))
         }
     }
 }
@@ -166,6 +165,28 @@ impl Performance {
             perf_3m: perf_map.get("3M").copied().unwrap_or_default(),
             perf_6m: perf_map.get("6M").copied().unwrap_or_default(),
             perf_1y: perf_map.get("1Y").copied().unwrap_or_default(),
+            last_updated: Local::now(),
+        }
+    }
+
+    pub fn compute(ticker: impl Into<String>, ticker_type: TickerType, candles: &[Candle]) -> Self {
+        let latest = candles.last().unwrap();
+        let latest_date = latest.timestamp.date_naive();
+
+        let target_close = |months_ago: u32| -> f64 {
+            let target_date = latest_date - Months::new(months_ago);
+            let idx = candles.partition_point(|c| c.timestamp.date_naive() < target_date);
+            let target = &candles[idx];
+            ((latest.close - target.close) * 100.0) / target.close
+        };
+
+        Self {
+            ticker: ticker.into(),
+            ticker_type,
+            perf_1m: target_close(1),
+            perf_3m: target_close(3),
+            perf_6m: target_close(6),
+            perf_1y: target_close(12),
             last_updated: Local::now(),
         }
     }

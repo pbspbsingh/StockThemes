@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS daily_candles
     high         REAL     NOT NULL,
     low          REAL     NOT NULL,
     close        REAL     NOT NULL,
+    adj_close    REAL,
     volume       INTEGER  NOT NULL,
     last_updated DATETIME NOT NULL,
     UNIQUE (ticker, ds)

@@ -1,9 +1,8 @@
 use anyhow::Context;
-use chrono::{DateTime, Datelike, Local, Months, TimeDelta, Weekday};
+use chrono::{DateTime, Datelike, Local, TimeDelta, Weekday};
 use futures::stream;
 use itertools::Itertools;
 use log::{debug, info};
-use std::collections::HashMap;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -16,7 +15,6 @@ use rand::seq::SliceRandom;
 
 use crate::Performance;
 use crate::config::APP_CONFIG;
-use crate::yf::Candle;
 
 pub async fn read_stocks(
     files: &[PathBuf],
@@ -175,33 +173,6 @@ pub fn parse_percentage(s: impl AsRef<str>) -> anyhow::Result<f64> {
     normalized
         .parse::<f64>()
         .with_context(|| format!("Failed to parse percentage: {s:?}"))
-}
-
-pub fn compute_perf(candles: &[Candle]) -> HashMap<String, f64> {
-    if candles.is_empty() {
-        return HashMap::new();
-    }
-
-    let latest = candles.last().unwrap();
-    let latest_date = latest.timestamp.date_naive();
-
-    let closest_close = |months_ago: u32| -> f64 {
-        let target_date = latest_date.and_hms_opt(0, 0, 0).unwrap().and_utc();
-        let target_date = (target_date - Months::new(months_ago)).date_naive();
-
-        candles
-            .iter()
-            .rfind(|c| c.timestamp.date_naive() <= target_date)
-            .map(|c| (latest.close - c.close) / c.close * 100.0)
-            .unwrap_or(0.0)
-    };
-
-    HashMap::from([
-        ("1M".to_string(), closest_close(1)),
-        ("3M".to_string(), closest_close(3)),
-        ("6M".to_string(), closest_close(6)),
-        ("1Y".to_string(), closest_close(12)),
-    ])
 }
 
 pub fn compute_rs(perf: &Performance, base: &Performance) -> f64 {
