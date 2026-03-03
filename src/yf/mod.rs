@@ -12,7 +12,6 @@ use crate::{Group, Stock, StockInfoFetcher};
 use anyhow::Context;
 use chrono::{Local, TimeZone, Utc};
 use de::{ChartResponse, QuoteSummaryResponse};
-use itertools::Itertools;
 use log::warn;
 use reqwest::{Client, StatusCode, header};
 use std::time::Duration;
@@ -268,7 +267,7 @@ impl YFinance {
         let volumes = quote.volume.unwrap_or_default();
         let last_updated = Local::now();
 
-        let candles: Vec<Candle> = timestamps
+        let candles = timestamps
             .into_iter()
             .enumerate()
             .filter_map(|(i, ts)| {
@@ -278,7 +277,6 @@ impl YFinance {
                 let close = closes.get(i)?.as_ref()?;
                 let volume = volumes.get(i)?.as_ref()?;
                 let adj_close = adj_closes.get(i).copied().flatten();
-
                 Some(Candle {
                     timestamp: Utc.timestamp_opt(ts, 0).single()?,
                     open: *open,
@@ -289,19 +287,18 @@ impl YFinance {
                     adj_close,
                     last_updated,
                 })
-            })
-            .sorted_by_key(|candle| candle.timestamp)
-            .collect();
+            });
 
         // When an explicit interval was requested, strip any candles Yahoo
         // appended outside the window (e.g. a "current price" sentinel bar).
-        let candles = match time {
+        let mut candles: Vec<_> = match time {
             TimeSpec::Interval(start, end) => candles
-                .into_iter()
                 .filter(|c| c.timestamp >= start && c.timestamp <= end)
                 .collect(),
-            TimeSpec::Range(_) => candles,
+            TimeSpec::Range(_) => candles.collect(),
         };
+
+        candles.sort_unstable_by_key(|candle| candle.timestamp);
 
         Ok(candles)
     }

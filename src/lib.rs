@@ -195,9 +195,9 @@ impl Performance {
 impl Display for Performance {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}={{", self.ticker,)?;
-        write!(f, "1M={:.2}%,", self.perf_1m)?;
-        write!(f, "3M={:.2}%,", self.perf_3m)?;
-        write!(f, "6M={:.2}%,", self.perf_6m)?;
+        write!(f, "1M={:.2}%, ", self.perf_1m)?;
+        write!(f, "3M={:.2}%, ", self.perf_3m)?;
+        write!(f, "6M={:.2}%, ", self.perf_6m)?;
         write!(f, "1Y={:.2}%", self.perf_1y)?;
         writeln!(f, "}}")
     }
