@@ -70,6 +70,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
     drop(tv_manager);
+    drop(yf);
     info!("Total {} unique stocks fetched", stocks.len());
 
     save_csv(&args.output_file, &args.tv_screen_url, &stocks).await?;

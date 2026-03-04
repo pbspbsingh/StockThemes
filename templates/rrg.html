@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔄</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><rect x='16.5' y='2' width='13' height='13' rx='1' fill='%232ecc71' opacity='.22'/><rect x='2' y='2' width='13' height='13' rx='1' fill='%234a9eff' opacity='.18'/><rect x='2' y='16.5' width='13' height='13' rx='1' fill='%23e74c3c' opacity='.18'/><rect x='16.5' y='16.5' width='13' height='13' rx='1' fill='%23f39c12' opacity='.18'/><line x1='15.5' y1='2' x2='15.5' y2='30' stroke='%23fff' stroke-width='.6' stroke-opacity='.15'/><line x1='2' y1='15.5' x2='30' y2='15.5' stroke='%23fff' stroke-width='.6' stroke-opacity='.15'/><polyline points='7,22 11,18 15,17 19,13' fill='none' stroke='%232ecc71' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' opacity='.9'/><circle cx='19' cy='13' r='2.5' fill='%232ecc71'/></svg>">
     <title>Relative Rotation Graph — {{ benchmark }}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -192,6 +192,52 @@
         .btn-group button:hover { color: #d0d0d0; }
         .btn-group button.active { background: #4a9eff; color: #fff; }
 
+        /* Dim slider */
+        .dim-slider-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        #dim-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 80px;
+            height: 3px;
+            border-radius: 2px;
+            background: linear-gradient(
+                to right,
+                #4a9eff 0%,
+                #4a9eff calc(var(--val) * 100%),
+                #333    calc(var(--val) * 100%)
+            );
+            outline: none;
+            cursor: pointer;
+        }
+        #dim-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #4a9eff;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        #dim-slider::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #4a9eff;
+            border: none;
+            cursor: pointer;
+        }
+        #dim-slider:hover::-webkit-slider-thumb { background: #78baff; }
+        #dim-value {
+            font-size: 11px;
+            color: #666;
+            min-width: 28px;
+            text-align: right;
+        }
+
         .benchmark-tag {
             font-size: 12px;
             color: #aaa;
@@ -361,6 +407,148 @@
             font-size: 13px;
             color: #444;
         }
+
+        /* ── Chart icon button ──────────────────────────────────── */
+        .chart-icon-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border: none;
+            background: transparent;
+            color: #4a9eff;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 3px;
+            flex-shrink: 0;
+            padding: 0;
+            margin-left: 4px;
+            transition: background 0.15s, color 0.15s, opacity 0.15s;
+            line-height: 1;
+            opacity: 0;
+        }
+        .chart-icon-btn:hover { background: rgba(74,158,255,0.18); color: #78baff; }
+        .sector-header:hover .chart-icon-btn,
+        .industry-item:hover .chart-icon-btn { opacity: 1; }
+
+        /* ── TV Chart Popup ─────────────────────────────────────── */
+        .tv-popup-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.72);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .tv-popup-backdrop.open { display: flex; }
+
+        .tv-popup-modal {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.8);
+            width: calc(100vw - 48px);
+            height: calc(100vh - 48px);
+            max-width: 1600px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tv-popup-header {
+            background: #2d2d2d;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            border-bottom: 1px solid #3a3a3a;
+            gap: 10px;
+        }
+        .tv-popup-title {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+        .tv-popup-title span { color: #4a9eff; }
+        .tv-popup-hint { font-size: 11px; color: #555; }
+        .tv-popup-close {
+            width: 26px;
+            height: 26px;
+            border: none;
+            background: #3a3a3a;
+            color: #aaa;
+            font-size: 15px;
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+            flex-shrink: 0;
+        }
+        .tv-popup-close:hover { background: #e74c3c; color: #fff; }
+
+        .tv-popup-charts {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .tv-chart-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            position: relative;
+        }
+        .tv-chart-panel + .tv-chart-panel { border-top: 2px solid #111; }
+
+        .tv-chart-label {
+            position: absolute;
+            top: 8px;
+            left: 12px;
+            z-index: 10;
+            font-size: 10px;
+            font-weight: 700;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            pointer-events: none;
+            background: rgba(30,30,30,0.85);
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .tv-chart-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ── Toast ──────────────────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%) translateY(12px);
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-left: 3px solid #f39c12;
+            color: #d0d0d0;
+            font-size: 12px;
+            padding: 8px 16px;
+            border-radius: 5px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+            z-index: 2000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            white-space: nowrap;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     </style>
 </head>
 <body>
@@ -390,6 +578,11 @@
                 <div class="btn-group" id="tail-group">
                     <!-- Populated dynamically based on timeframe -->
                 </div>
+            </div>
+            <div class="ctrl-group dim-slider-wrap">
+                <span class="ctrl-label">Dim</span>
+                <input type="range" id="dim-slider" min="0" max="1" step="0.05">
+                <span id="dim-value">15%</span>
             </div>
             <div class="ctrl-group">
                 <span class="ctrl-label">Benchmark</span>
@@ -440,6 +633,30 @@
      sectors: array of { sector, sector_etf, industries: [{name, etf}] }
      benchmark: string, e.g. "SPY"
 ═══════════════════════════════════════════════════════ -->
+<!-- ── TV Chart Popup ───────────────────────────────────────── -->
+<div class="tv-popup-backdrop" id="tv-popup-backdrop">
+    <div class="tv-popup-modal">
+        <div class="tv-popup-header">
+            <div class="tv-popup-title" id="tv-popup-title">Chart — <span id="tv-popup-etf"></span></div>
+            <span class="tv-popup-hint">Daily · Weekly &nbsp;|&nbsp; Esc to close</span>
+            <button class="tv-popup-close" id="tv-popup-close" title="Close (Esc)">✕</button>
+        </div>
+        <div class="tv-popup-charts">
+            <div class="tv-chart-panel">
+                <div class="tv-chart-label">Daily</div>
+                <div class="tv-chart-container" id="tv-chart-daily"></div>
+            </div>
+            <div class="tv-chart-panel">
+                <div class="tv-chart-label">Weekly</div>
+                <div class="tv-chart-container" id="tv-chart-weekly"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
 <script id="sectors-data" type="application/json">{{ sectors | json | safe }}</script>
 
 <script>
@@ -475,8 +692,15 @@
     // APP STATE
     // ════════════════════════════════════════════════════════════
 
+    // ── Sort sectors and their industries alphabetically at load time ──
+    const _rawSectors = JSON.parse(document.getElementById('sectors-data').textContent);
+    _rawSectors.sort((a, b) => a.sector.localeCompare(b.sector));
+    _rawSectors.forEach(sec => {
+        sec.industries.sort((a, b) => a.name.localeCompare(b.name));
+    });
+
     const State = {
-        sectors: JSON.parse(document.getElementById('sectors-data').textContent),
+        sectors: _rawSectors,
         benchmark: BENCHMARK,
 
         // UI
@@ -490,6 +714,9 @@
         timeframe: 'weekly',
         tailLen: 4,
         historyLen: HISTORY_LEN['weekly'],  // 52W default; updated on timeframe change
+
+        // Dim opacity for non-selected ETF tails/dots (0 = invisible, 1 = full)
+        dimOpacity: parseFloat(localStorage.getItem('rrg_dim_opacity') ?? '0.15'),
     };
 
     // ════════════════════════════════════════════════════════════
@@ -552,6 +779,20 @@
                 <span class="sector-chevron">▶</span>
                 <span class="sector-label">${sName}</span>
                 <span class="sector-etf-tag">${sEtf}</span>
+                <button class="chart-icon-btn" data-chart-etf="${sEtf}" data-chart-name="${sName}" title="Open chart (C)"><svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Candle 1 -->
+  <line x1="2.5" y1="1" x2="2.5" y2="3" stroke="currentColor" stroke-width="1"/>
+  <rect x="1" y="3" width="3" height="4" rx="0.5" fill="currentColor"/>
+  <line x1="2.5" y1="7" x2="2.5" y2="9" stroke="currentColor" stroke-width="1"/>
+  <!-- Candle 2 -->
+  <line x1="6.5" y1="3" x2="6.5" y2="5" stroke="currentColor" stroke-width="1"/>
+  <rect x="5" y="5" width="3" height="5" rx="0.5" fill="currentColor"/>
+  <line x1="6.5" y1="10" x2="6.5" y2="12" stroke="currentColor" stroke-width="1"/>
+  <!-- Candle 3 -->
+  <line x1="10.5" y1="1" x2="10.5" y2="4" stroke="currentColor" stroke-width="1"/>
+  <rect x="9" y="4" width="3" height="3" rx="0.5" fill="currentColor"/>
+  <line x1="10.5" y1="7" x2="10.5" y2="10" stroke="currentColor" stroke-width="1"/>
+</svg></button>
             </div>
             <div class="industry-list ${expanded ? 'open' : ''}" data-sector-industries="${sName}">
                 ${sectorObj.industries.map(ind => {
@@ -559,6 +800,20 @@
                 return `<div class="industry-item ${isSel ? 'selected' : ''}" data-industry="${ind.name}" data-etf="${ind.etf}">
                         <span class="industry-label">${ind.name}</span>
                         <span class="industry-etf-tag">${ind.etf}</span>
+                        <button class="chart-icon-btn" data-chart-etf="${ind.etf}" data-chart-name="${ind.name}" title="Open chart (C)"><svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Candle 1 -->
+  <line x1="2.5" y1="1" x2="2.5" y2="3" stroke="currentColor" stroke-width="1"/>
+  <rect x="1" y="3" width="3" height="4" rx="0.5" fill="currentColor"/>
+  <line x1="2.5" y1="7" x2="2.5" y2="9" stroke="currentColor" stroke-width="1"/>
+  <!-- Candle 2 -->
+  <line x1="6.5" y1="3" x2="6.5" y2="5" stroke="currentColor" stroke-width="1"/>
+  <rect x="5" y="5" width="3" height="5" rx="0.5" fill="currentColor"/>
+  <line x1="6.5" y1="10" x2="6.5" y2="12" stroke="currentColor" stroke-width="1"/>
+  <!-- Candle 3 -->
+  <line x1="10.5" y1="1" x2="10.5" y2="4" stroke="currentColor" stroke-width="1"/>
+  <rect x="9" y="4" width="3" height="3" rx="0.5" fill="currentColor"/>
+  <line x1="10.5" y1="7" x2="10.5" y2="10" stroke="currentColor" stroke-width="1"/>
+</svg></button>
                     </div>`;
             }).join('')}
             </div>
@@ -578,8 +833,17 @@
 
             // Industry clicks
             row.querySelectorAll('.industry-item').forEach(el => {
-                el.addEventListener('click', () => {
+                el.addEventListener('click', (e) => {
+                    if (e.target.closest('.chart-icon-btn')) return;
                     onIndustryClick(el.dataset.industry, el.dataset.etf);
+                });
+            });
+
+            // Chart icon clicks
+            row.querySelectorAll('.chart-icon-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openChartPopup(btn.dataset.chartEtf, btn.dataset.chartName);
                 });
             });
 
@@ -943,7 +1207,10 @@
             const tail      = d.tail || [];
             const quadrant  = getQuadrant(d.rs_ratio, d.rs_momentum);
             const dotColor  = QUADRANTS[quadrant].dot;
-            const isHovered = idx === rrgHoveredIdx;
+            const isHovered  = idx === rrgHoveredIdx;
+            const isSelected = State.selectedItem &&
+                (d.etf === State.selectedItem.etf || d.name === State.selectedItem.name);
+            const dimFactor  = (State.selectedItem && !isSelected) ? State.dimOpacity : 1;
 
             // Use solo anim progress for the selected dot, main anim for all others
             const isSolo    = rrgSoloEtf !== null && (d.etf === rrgSoloEtf || d.name === rrgSoloEtf);
@@ -963,7 +1230,7 @@
             // ── Tail line ──────────────────────────────────────
             for (let i = 1; i <= fullSegs && i < fullPath.length; i++) {
                 const t     = i / fullPath.length;
-                const alpha = t * (isHovered ? 0.85 : 0.5);
+                const alpha = t * (isHovered ? 0.85 : 0.5) * dimFactor;
                 const lw    = 1 + t * (isHovered ? 2.5 : 1.5);
                 ctx.beginPath();
                 ctx.strokeStyle = dotColor;
@@ -986,7 +1253,7 @@
                     ctx.beginPath();
                     ctx.strokeStyle = dotColor;
                     ctx.lineWidth   = 1 + t * (isHovered ? 2.5 : 1.5);
-                    ctx.globalAlpha = t * (isHovered ? 0.85 : 0.5);
+                    ctx.globalAlpha = t * (isHovered ? 0.85 : 0.5) * dimFactor;
                     ctx.lineCap     = 'round';
                     ctx.moveTo(p0.x, p0.y);
                     ctx.lineTo(ex, ey);
@@ -1130,6 +1397,8 @@
             // Selected dot — persistent ring so it's always identifiable
             const isSelected = State.selectedItem &&
                 (d.etf === State.selectedItem.etf || d.name === State.selectedItem.name);
+            const dimFactor  = (State.selectedItem && !isSelected) ? State.dimOpacity : 1;
+
             if (isSelected) {
                 ctx.beginPath();
                 ctx.arc(Math.round(dotX), Math.round(dotY), lb.dotR + 3.5, 0, Math.PI * 2);
@@ -1154,7 +1423,7 @@
             ctx.beginPath();
             ctx.arc(Math.round(dotX), Math.round(dotY), lb.dotR, 0, Math.PI * 2);
             ctx.fillStyle   = dotColor;
-            ctx.globalAlpha = isHovered ? 1 : 0.9;
+            ctx.globalAlpha = (isHovered ? 1 : 0.9) * dimFactor;
             ctx.fill();
             ctx.globalAlpha = 1;
 
@@ -1162,13 +1431,12 @@
             const labelY   = Math.round(lb.y);
             const displaced = Math.abs(lb.y - lb.prefY);
             if (displaced > LEADER_THRESH) {
-                // Line from dot edge to label anchor
                 const lineX0 = Math.round(lb.isLeft ? dotX - lb.dotR - 2 : dotX + lb.dotR + 2);
                 const lineX1 = Math.round(lb.anchor);
                 ctx.beginPath();
                 ctx.strokeStyle = dotColor;
                 ctx.lineWidth   = 0.75;
-                ctx.globalAlpha = 0.3;
+                ctx.globalAlpha = 0.3 * dimFactor;
                 ctx.setLineDash([2, 3]);
                 ctx.moveTo(lineX0, Math.round(dotY));
                 ctx.lineTo(lineX1, labelY);
@@ -1184,7 +1452,9 @@
             ctx.fillStyle    = isHovered ? '#fff' : '#c8c8c8';
             ctx.textAlign    = lb.isLeft ? 'right' : 'left';
             ctx.textBaseline = 'middle';
+            ctx.globalAlpha  = dimFactor;
             ctx.fillText(d.name, Math.round(lb.anchor), labelY);
+            ctx.globalAlpha  = 1;
         });
     }
 
@@ -1612,6 +1882,20 @@
                 applyNavFocus(newList);
                 break;
             }
+            case 'c':
+            case 'C': {
+                e.preventDefault();
+                if (!State.selectedItem) {
+                    showToast('No sector or industry selected');
+                } else {
+                    openChartPopup(State.selectedItem.etf, State.selectedItem.name);
+                }
+                break;
+            }
+            case 'Escape': {
+                closeChartPopup();
+                break;
+            }
         }
     });
 
@@ -1657,6 +1941,26 @@
 
         // Render initial tail buttons for the default timeframe
         renderTailButtons(State.timeframe);
+
+        // Dim slider
+        const dimSlider = document.getElementById('dim-slider');
+        const dimValue  = document.getElementById('dim-value');
+
+        function updateDimSlider(val) {
+            State.dimOpacity = val;
+            dimSlider.value  = val;
+            dimSlider.style.setProperty('--val', val);
+            dimValue.textContent = Math.round(val * 100) + '%';
+            localStorage.setItem('rrg_dim_opacity', val);
+            drawRRG();
+        }
+
+        // Init from State (which was already loaded from localStorage)
+        updateDimSlider(State.dimOpacity);
+
+        dimSlider.addEventListener('input', () => {
+            updateDimSlider(parseFloat(dimSlider.value));
+        });
 
         // Timeframe
         document.getElementById('tf-group').addEventListener('click', e => {
@@ -1713,6 +2017,121 @@
     // INIT
     // ════════════════════════════════════════════════════════════
 
+    // ════════════════════════════════════════════════════════════
+    // TV CHART POPUP
+    // ════════════════════════════════════════════════════════════
+
+    let tvWidgetDaily  = null;
+    let tvWidgetWeekly = null;
+    let tvScriptReady  = false;
+    let tvScriptLoading = false;
+
+    function loadTVScript(cb) {
+        if (tvScriptReady) { cb(); return; }
+        if (tvScriptLoading) {
+            document.getElementById('tv-script-tag').addEventListener('load', () => { tvScriptReady = true; cb(); });
+            return;
+        }
+        tvScriptLoading = true;
+        const s = document.createElement('script');
+        s.id  = 'tv-script-tag';
+        s.src = 'https://s3.tradingview.com/tv.js';
+        s.onload = () => { tvScriptReady = true; cb(); };
+        document.head.appendChild(s);
+    }
+
+    function createWidget(tickerSymbol, containerId, interval) {
+        const studies = ['MASimple@tv-basicstudies'];
+        const studiesOverrides = {
+            'moving average.length': 10,
+            'moving average.ma.color': interval === 'W' ? '#ff922b' : '#5693e7',
+        };
+        if (interval === 'D') {
+            studies.push('STD;MA%Ribbon');
+        }
+        return new TradingView.widget({
+            width:            '100%',
+            height:           '100%',
+            symbol:           tickerSymbol,
+            interval:         interval,
+            timezone:         'America/Los_Angeles',
+            theme:            'dark',
+            style:            '1',
+            locale:           'en',
+            toolbar_bg:       '#1e1e1e',
+            enable_publishing: false,
+            container_id:     containerId,
+            studies:          studies,
+            studies_overrides: studiesOverrides,
+            loading_screen:   { backgroundColor: '#1e1e1e' },
+        });
+    }
+
+    function openChartPopup(etf, name) {
+        // Update header
+        document.getElementById('tv-popup-title').innerHTML =
+            `Chart &nbsp;<span style="color:#4a9eff;font-weight:600">${etf}</span>&nbsp;<span style="color:#666;font-weight:400;font-size:11px">— ${name}</span>`;
+
+        // Show backdrop
+        document.getElementById('tv-popup-backdrop').classList.add('open');
+
+        // Prevent body scroll
+        document.body.style.overflow = 'hidden';
+
+        // Load TV script then create widgets
+        loadTVScript(() => {
+            // Clear previous instances
+            document.getElementById('tv-chart-daily').innerHTML  = '';
+            document.getElementById('tv-chart-weekly').innerHTML = '';
+
+            tvWidgetDaily  = createWidget(etf, 'tv-chart-daily',  'D');
+            tvWidgetWeekly = createWidget(etf, 'tv-chart-weekly', 'W');
+        });
+    }
+
+    function closeChartPopup() {
+        const backdrop = document.getElementById('tv-popup-backdrop');
+        if (!backdrop.classList.contains('open')) return;
+
+        backdrop.classList.remove('open');
+        document.body.style.overflow = '';
+
+        // Destroy widget iframes to free memory
+        document.getElementById('tv-chart-daily').innerHTML  = '';
+        document.getElementById('tv-chart-weekly').innerHTML = '';
+        tvWidgetDaily  = null;
+        tvWidgetWeekly = null;
+    }
+
+    // Close on backdrop click (outside modal)
+    document.getElementById('tv-popup-backdrop').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('tv-popup-backdrop')) closeChartPopup();
+    });
+
+    // Close button
+    document.getElementById('tv-popup-close').addEventListener('click', closeChartPopup);
+
+    // ════════════════════════════════════════════════════════════
+    // TOAST
+    // ════════════════════════════════════════════════════════════
+
+    let toastTimer = null;
+
+    function showToast(message) {
+        const el = document.getElementById('toast');
+        el.textContent = message;
+        el.classList.add('show');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+            el.classList.remove('show');
+            toastTimer = null;
+        }, 2500);
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // INIT
+    // ════════════════════════════════════════════════════════════
+
     function init() {
         renderLeftPanel();
         initControls();
@@ -1722,5 +2141,6 @@
 
     init();
 </script>
+
 </body>
 </html>

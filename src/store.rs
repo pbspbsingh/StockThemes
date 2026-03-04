@@ -243,10 +243,10 @@ impl Store {
     }
 
     pub async fn get_candles(&self, ticker: &str) -> sqlx::Result<Vec<Candle>> {
-        let one_year_ago = Utc::now() - TimeDelta::days(2 * 365);
+        let one_year_ago = Utc::now().date_naive() - TimeDelta::days(2 * 365);
         let rows = sqlx::query!(
             r#"
-                SELECT ds as "ds: DateTime<Utc>",
+                SELECT day,
                        open,
                        high,
                        low,
@@ -255,14 +255,14 @@ impl Store {
                        volume,
                        last_updated as "last_updated: DateTime<Local>"
                 FROM daily_candles
-                WHERE ticker = $1 AND ds >= $2
-                ORDER BY ds ASC
+                WHERE ticker = $1 AND day >= $2
+                ORDER BY day ASC
             "#,
             ticker,
             one_year_ago,
         )
         .map(|row| Candle {
-            timestamp: row.ds,
+            timestamp: row.day.and_hms_opt(0, 0, 0).unwrap().and_utc(),
             open: row.open,
             high: row.high,
             low: row.low,
@@ -280,12 +280,13 @@ impl Store {
     pub async fn save_candles(&self, ticker: &str, candles: &[Candle]) -> sqlx::Result<()> {
         let mut tx = self.pool.begin().await?;
         for candle in candles {
+            let day = candle.timestamp.date_naive();
             let volume = candle.volume as i64;
             sqlx::query!(
                 r#"
-                    INSERT INTO daily_candles (ticker, ds, open, high, low, close, adj_close, volume, last_updated)
+                    INSERT INTO daily_candles (ticker, day, open, high, low, close, adj_close, volume, last_updated)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    ON CONFLICT(ticker, ds) DO UPDATE SET
+                    ON CONFLICT(ticker, day) DO UPDATE SET
                         open = excluded.open,
                         high = excluded.high,
                         low = excluded.low,
@@ -295,7 +296,7 @@ impl Store {
                         last_updated = excluded.last_updated
                 "#,
                 ticker,
-                candle.timestamp,
+                day,
                 candle.open,
                 candle.high,
                 candle.low,

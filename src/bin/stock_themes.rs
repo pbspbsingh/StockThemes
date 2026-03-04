@@ -60,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
 
     let (stocks, stock_perfs) = fetch_stock_info(&mut tv_manager, &yf, tickers).await?;
     drop(tv_manager);
+    drop(yf);
 
     let summary = Summary::summarize(stocks);
     let html = summary.render(sectors, industries, stock_perfs, &base_perf);

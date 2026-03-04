@@ -82,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
     drop(tv_manager);
+    drop(yf);
     info!("Total {} unique stocks fetched", stocks.len());
 
     let summary = Summary::summarize(stocks);
