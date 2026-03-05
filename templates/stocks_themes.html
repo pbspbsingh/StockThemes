@@ -393,6 +393,165 @@
         .tv-pane-full {
             height: 100%;
         }
+
+        /* ── Chart icon button (header breadcrumb) ──────────────── */
+        .chart-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border: none;
+            background: transparent;
+            color: #4a9eff;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 3px;
+            flex-shrink: 0;
+            padding: 0;
+            margin-left: 3px;
+            vertical-align: middle;
+            opacity: 0.5;
+            transform: scale(0.95);
+            transition: background 0.15s, color 0.15s, opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+            line-height: 1;
+            position: relative;
+        }
+        .chart-icon-btn:hover {
+            background: rgba(74,158,255,0.18);
+            color: #78baff;
+            opacity: 1;
+            transform: scale(1.15);
+            box-shadow: 0 0 6px rgba(74,158,255,0.35);
+        }
+        .chart-icon-btn:active {
+            transform: scale(1.05);
+            box-shadow: none;
+        }
+
+        /* CSS tooltip on the chart icon button */
+        .chart-icon-btn::after {
+            content: attr(data-etf);
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%) translateY(-4px);
+            background: #1a1a1a;
+            color: #4a9eff;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+            padding: 3px 7px;
+            border-radius: 4px;
+            border: 1px solid #3a3a3a;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s, transform 0.15s;
+            z-index: 100;
+        }
+        .chart-icon-btn:hover::after {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ── TV Chart Popup ─────────────────────────────────────── */
+        .tv-popup-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.72);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .tv-popup-backdrop.open { display: flex; }
+
+        .tv-popup-modal {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.8);
+            width: calc(100vw - 48px);
+            height: calc(100vh - 48px);
+            max-width: 1600px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tv-popup-header {
+            background: #2d2d2d;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            border-bottom: 1px solid #3a3a3a;
+            gap: 10px;
+        }
+        .tv-popup-title {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+        .tv-popup-hint { font-size: 11px; color: #555; }
+        .tv-popup-close {
+            width: 26px;
+            height: 26px;
+            border: none;
+            background: #3a3a3a;
+            color: #aaa;
+            font-size: 15px;
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+            flex-shrink: 0;
+        }
+        .tv-popup-close:hover { background: #e74c3c; color: #fff; }
+
+        .tv-popup-charts {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .tv-chart-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            position: relative;
+        }
+        .tv-chart-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+        }
+        /* ── Toast ──────────────────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%) translateY(12px);
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-left: 3px solid #f39c12;
+            color: #d0d0d0;
+            font-size: 12px;
+            padding: 8px 16px;
+            border-radius: 5px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+            z-index: 2000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            white-space: nowrap;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     </style>
 </head>
 
@@ -431,7 +590,29 @@
     </div>
 </div>
 
+<!-- ── TV Chart Popup ───────────────────────────────────────── -->
+<div class="tv-popup-backdrop" id="tv-popup-backdrop">
+    <div class="tv-popup-modal">
+        <div class="tv-popup-header">
+            <div class="tv-popup-title" id="tv-popup-title">Chart</div>
+            <span class="tv-popup-hint">Daily &nbsp;|&nbsp; Esc to close</span>
+            <button class="tv-popup-close" id="tv-popup-close" title="Close (Esc)">✕</button>
+        </div>
+        <div class="tv-popup-charts">
+            <div class="tv-chart-panel">
+                <div class="tv-chart-container" id="tv-chart-daily"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
 <!-- DATA Starts -->
+<script id="sectors-data" type="application/json">
+    {{ sectors | json | safe }}
+</script>
 <script id="sector-rs" type="application/json">
     {{ sector_rs|json|safe }}
 </script>
@@ -450,6 +631,18 @@
     // ============================================================
     // Data Loader
     // ============================================================
+
+    // ETF lookup maps built from sectors-data (same shape as rrg.html)
+    // sectors-data: [{ sector, sector_etf, industries: [{ name, etf }] }]
+    const _sectorsData = JSON.parse(document.getElementById('sectors-data').textContent);
+    const sectorEtfMap   = new Map();  // sector name (lower) → ETF ticker
+    const industryEtfMap = new Map();  // industry name (lower) → ETF ticker
+    _sectorsData.forEach(s => {
+        if (s.sector_etf) sectorEtfMap.set(s.sector.toLowerCase(), s.sector_etf);
+        (s.industries ?? []).forEach(ind => {
+            if (ind.etf) industryEtfMap.set(ind.name.toLowerCase(), ind.etf);
+        });
+    });
 
     // Three independent RS lookup maps (lowercase keys for case-insensitive matching)
     const sectorRS = new Map(
@@ -658,8 +851,10 @@
                         return {
                             sector: sector.name,
                             sectorUrl: sector.url,
+                            sectorEtf: sectorEtfMap.get(sector.name.toLowerCase()) ?? null,
                             industry: industry.name,
                             industryUrl: industry.url,
+                            industryEtf: industryEtfMap.get(industry.name.toLowerCase()) ?? null,
                             ticker: tickerSymbol,
                             exchange: ticker.exchange
                         };
@@ -800,6 +995,18 @@
     // ============================================================
     // PREVIEW MANAGER
     // ============================================================
+    const CANDLE_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <line x1="2.5" y1="1" x2="2.5" y2="3" stroke="currentColor" stroke-width="1"/>
+  <rect x="1" y="3" width="3" height="4" rx="0.5" fill="currentColor"/>
+  <line x1="2.5" y1="7" x2="2.5" y2="9" stroke="currentColor" stroke-width="1"/>
+  <line x1="6.5" y1="3" x2="6.5" y2="5" stroke="currentColor" stroke-width="1"/>
+  <rect x="5" y="5" width="3" height="5" rx="0.5" fill="currentColor"/>
+  <line x1="6.5" y1="10" x2="6.5" y2="12" stroke="currentColor" stroke-width="1"/>
+  <line x1="10.5" y1="1" x2="10.5" y2="4" stroke="currentColor" stroke-width="1"/>
+  <rect x="9" y="4" width="3" height="3" rx="0.5" fill="currentColor"/>
+  <line x1="10.5" y1="7" x2="10.5" y2="10" stroke="currentColor" stroke-width="1"/>
+</svg>`;
+
     const PreviewManager = {
         getContainer() {
             return DOM.getElement('preview');
@@ -810,7 +1017,26 @@
             const toggleElement = document.getElementById('chart-toggle');
 
             if (tickerInfo) {
-                titleElement.innerHTML = `<a href="${tickerInfo.sectorUrl}" target="_blank">${tickerInfo.sector}</a> \\ <a href="${tickerInfo.industryUrl}" target="_blank">${tickerInfo.industry}</a> \\ <a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank">${tickerInfo.ticker}</a>`;
+                const sectorChartBtn = tickerInfo.sectorEtf
+                    ? `<button class="chart-icon-btn" data-etf="${tickerInfo.sectorEtf}" data-name="${tickerInfo.sector}">${CANDLE_SVG}</button>`
+                    : '';
+                const industryChartBtn = tickerInfo.industryEtf
+                    ? `<button class="chart-icon-btn" data-etf="${tickerInfo.industryEtf}" data-name="${tickerInfo.industry}">${CANDLE_SVG}</button>`
+                    : '';
+
+                titleElement.innerHTML =
+                    `<a href="${tickerInfo.sectorUrl}" target="_blank">${tickerInfo.sector}</a>${sectorChartBtn}` +
+                    ` \\ <a href="${tickerInfo.industryUrl}" target="_blank">${tickerInfo.industry}</a>${industryChartBtn}` +
+                    ` \\ <a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank">${tickerInfo.ticker}</a>`;
+
+                // Attach click handlers to the icon buttons
+                titleElement.querySelectorAll('.chart-icon-btn').forEach(btn => {
+                    btn.addEventListener('click', e => {
+                        e.preventDefault();
+                        openChartPopup(btn.dataset.etf, btn.dataset.name);
+                    });
+                });
+
                 toggleElement.style.display = 'flex';
             } else {
                 titleElement.textContent = 'Preview';
@@ -996,18 +1222,10 @@
                     </div>
                 `;
 
-            if (!window.TradingView) {
-                const script = document.createElement('script');
-                script.src = 'https://s3.tradingview.com/tv.js';
-                script.onload = () => {
-                    this.createWidget(tickerSymbol, dailyWidgetId, 'D');
-                    this.createWidget(tickerSymbol, weeklyWidgetId, 'W');
-                };
-                document.head.appendChild(script);
-            } else {
+            loadTVScript(() => {
                 this.createWidget(tickerSymbol, dailyWidgetId, 'D');
                 this.createWidget(tickerSymbol, weeklyWidgetId, 'W');
-            }
+            });
         },
 
         renderSingleView(container, tickerSymbol, timestamp) {
@@ -1019,16 +1237,9 @@
                     </div>
                 `;
 
-            if (!window.TradingView) {
-                const script = document.createElement('script');
-                script.src = 'https://s3.tradingview.com/tv.js';
-                script.onload = () => {
-                    this.createWidget(tickerSymbol, dailyWidgetId, 'D');
-                };
-                document.head.appendChild(script);
-            } else {
+            loadTVScript(() => {
                 this.createWidget(tickerSymbol, dailyWidgetId, 'D');
-            }
+            });
         },
 
         createWidget(tickerSymbol, containerId, interval) {
@@ -1063,12 +1274,53 @@
     // ============================================================
     // KEYBOARD NAVIGATION
     // ============================================================
+    // ============================================================
+    // TOAST
+    // ============================================================
+    let toastTimer = null;
+
+    function showToast(message) {
+        const el = document.getElementById('toast');
+        el.textContent = message;
+        el.classList.add('show');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+            el.classList.remove('show');
+            toastTimer = null;
+        }, 2500);
+    }
+
     const KeyboardNavigation = {
         init() {
             document.addEventListener('keydown', event => this.handleKeyDown(event));
         },
 
         handleKeyDown(event) {
+            // Skip if user is typing in an input
+            if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
+
+            if (event.key === 's') {
+                event.preventDefault();
+                if (AppState.currentTickerSymbol === null) {
+                    showToast('No stock selected');
+                    return;
+                }
+                const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
+                if (info?.sectorEtf) openChartPopup(info.sectorEtf, info.sector);
+                return;
+            }
+
+            if (event.key === 'i') {
+                event.preventDefault();
+                if (AppState.currentTickerSymbol === null) {
+                    showToast('No stock selected');
+                    return;
+                }
+                const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
+                if (info?.industryEtf) openChartPopup(info.industryEtf, info.industry);
+                return;
+            }
+
             if (AppState.currentTickers.length === 0) return;
 
             if (event.key === 'ArrowDown') {
@@ -1108,6 +1360,60 @@
             }
         }
     };
+
+    // ============================================================
+    // TV CHART POPUP
+    // ============================================================
+    let tvScriptReady  = false;
+    let tvScriptLoading = false;
+
+    function loadTVScript(cb) {
+        if (tvScriptReady) { cb(); return; }
+        if (tvScriptLoading) {
+            document.getElementById('tv-script-tag').addEventListener('load', () => { tvScriptReady = true; cb(); });
+            return;
+        }
+        tvScriptLoading = true;
+        const s = document.createElement('script');
+        s.id  = 'tv-script-tag';
+        s.src = 'https://s3.tradingview.com/tv.js';
+        s.onload = () => { tvScriptReady = true; cb(); };
+        document.head.appendChild(s);
+    }
+
+    function openChartPopup(etf, name) {
+        document.getElementById('tv-popup-title').innerHTML =
+            `Chart &nbsp;<span style="color:#4a9eff;font-weight:600">${etf}</span>&nbsp;<span style="color:#666;font-weight:400;font-size:11px">— ${name}</span>`;
+
+        document.getElementById('tv-popup-backdrop').classList.add('open');
+        document.body.style.overflow = 'hidden';
+
+        loadTVScript(() => {
+            document.getElementById('tv-chart-daily').innerHTML = '';
+            TradingViewWidget.createWidget(etf, 'tv-chart-daily', 'D');
+        });
+    }
+
+    function closeChartPopup() {
+        const backdrop = document.getElementById('tv-popup-backdrop');
+        if (!backdrop.classList.contains('open')) return;
+        backdrop.classList.remove('open');
+        document.body.style.overflow = '';
+        document.getElementById('tv-chart-daily').innerHTML = '';
+    }
+
+    // Close on backdrop click (outside modal)
+    document.getElementById('tv-popup-backdrop').addEventListener('click', e => {
+        if (e.target === document.getElementById('tv-popup-backdrop')) closeChartPopup();
+    });
+
+    // Close button
+    document.getElementById('tv-popup-close').addEventListener('click', closeChartPopup);
+
+    // Esc to close
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeChartPopup();
+    });
 
     // ============================================================
     // APPLICATION INITIALIZATION

@@ -1,5 +1,5 @@
 use crate::util::compute_rs;
-use crate::{Performance, Stock, Ticker};
+use crate::{etf_map, Performance, Stock, Ticker};
 use askama::Template;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -93,6 +93,7 @@ impl Summary {
         #[template(path = "./stocks_themes.html")]
         struct Html<'a> {
             summary: &'a Summary,
+            sectors: Vec<etf_map::Sector>,
             sector_rs: HashMap<String, f64>,
             industry_rs: HashMap<String, f64>,
             stock_rs: HashMap<String, f64>,
@@ -113,6 +114,7 @@ impl Summary {
 
         let html = Html {
             summary: self,
+            sectors: etf_map::tv_mapping(),
             sector_rs: create_rs_map(sectors, base),
             industry_rs: create_rs_map(industries, base),
             stock_rs: create_rs_map(stocks, base),

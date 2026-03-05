@@ -505,8 +505,6 @@
             min-height: 0;
             position: relative;
         }
-        .tv-chart-panel + .tv-chart-panel { border-top: 2px solid #111; }
-
         .tv-chart-label {
             position: absolute;
             top: 8px;
@@ -569,8 +567,8 @@
             <div class="ctrl-group">
                 <span class="ctrl-label">TF</span>
                 <div class="btn-group" id="tf-group">
-                    <button data-tf="daily">D</button>
-                    <button data-tf="weekly" class="active">W</button>
+                    <button data-tf="daily" class="active">D</button>
+                    <button data-tf="weekly">W</button>
                 </div>
             </div>
             <div class="ctrl-group">
@@ -638,17 +636,12 @@
     <div class="tv-popup-modal">
         <div class="tv-popup-header">
             <div class="tv-popup-title" id="tv-popup-title">Chart — <span id="tv-popup-etf"></span></div>
-            <span class="tv-popup-hint">Daily · Weekly &nbsp;|&nbsp; Esc to close</span>
+            <span class="tv-popup-hint">Daily &nbsp;|&nbsp; Esc to close</span>
             <button class="tv-popup-close" id="tv-popup-close" title="Close (Esc)">✕</button>
         </div>
         <div class="tv-popup-charts">
             <div class="tv-chart-panel">
-                <div class="tv-chart-label">Daily</div>
                 <div class="tv-chart-container" id="tv-chart-daily"></div>
-            </div>
-            <div class="tv-chart-panel">
-                <div class="tv-chart-label">Weekly</div>
-                <div class="tv-chart-container" id="tv-chart-weekly"></div>
             </div>
         </div>
     </div>
@@ -711,9 +704,9 @@
         navIndex: -1,           // index in current buildNavList() flat list
 
         // Controls
-        timeframe: 'weekly',
-        tailLen: 4,
-        historyLen: HISTORY_LEN['weekly'],  // 52W default; updated on timeframe change
+        timeframe: 'daily',
+        tailLen: 20,
+        historyLen: HISTORY_LEN['daily'],  // 200d default; updated on timeframe change
 
         // Dim opacity for non-selected ETF tails/dots (0 = invisible, 1 = full)
         dimOpacity: parseFloat(localStorage.getItem('rrg_dim_opacity') ?? '0.15'),
@@ -2022,7 +2015,6 @@
     // ════════════════════════════════════════════════════════════
 
     let tvWidgetDaily  = null;
-    let tvWidgetWeekly = null;
     let tvScriptReady  = false;
     let tvScriptLoading = false;
 
@@ -2082,10 +2074,8 @@
         loadTVScript(() => {
             // Clear previous instances
             document.getElementById('tv-chart-daily').innerHTML  = '';
-            document.getElementById('tv-chart-weekly').innerHTML = '';
 
             tvWidgetDaily  = createWidget(etf, 'tv-chart-daily',  'D');
-            tvWidgetWeekly = createWidget(etf, 'tv-chart-weekly', 'W');
         });
     }
 
@@ -2098,9 +2088,7 @@
 
         // Destroy widget iframes to free memory
         document.getElementById('tv-chart-daily').innerHTML  = '';
-        document.getElementById('tv-chart-weekly').innerHTML = '';
         tvWidgetDaily  = null;
-        tvWidgetWeekly = null;
     }
 
     // Close on backdrop click (outside modal)
