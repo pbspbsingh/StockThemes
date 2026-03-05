@@ -1,10 +1,11 @@
+use crate::config::APP_CONFIG;
 use crate::store::Store;
 use crate::tv::Closeable;
 use crate::tv::stock_info_loader::StockInfoLoader;
 use crate::tv::top_industry_groups::TopIndustryGroups;
 use crate::tv::top_stocks_fetcher::TopStocksFetcher;
-use crate::{Performance, Stock, TickerType, browser};
-use chromiumoxide::{Browser, Page};
+use crate::{Performance, Stock, TickerType};
+use chrome_driver::{Browser, ChromeDriverConfig, Page};
 use itertools::Itertools;
 use log::info;
 use std::collections::HashMap;
@@ -154,7 +155,12 @@ impl TvManager {
     async fn get_or_init_page(&mut self) -> anyhow::Result<&Page> {
         if self.page.is_none() {
             info!("TvFetcher: cache miss — launching browser");
-            let browser = browser::init_browser().await?;
+            let browser = ChromeDriverConfig::new(&APP_CONFIG.chrome_path)
+                .user_data_dir(&APP_CONFIG.user_data_dir)
+                .args(&APP_CONFIG.chrome_args)
+                .launch_if_needed(APP_CONFIG.launch_chrome_if_needed)
+                .connect()
+                .await?;
             let page = browser.new_page("about:blank").await?;
             self.browser = Some(browser);
             self.page = Some(page);

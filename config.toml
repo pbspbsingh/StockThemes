@@ -1,11 +1,12 @@
 chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 user_data_dir = "/Users/singhpra/Trading/ChromeDataDir"
-chrome_args = ["--headless=new"]
+chrome_args = []
+launch_chrome_if_needed = true
 
 log_config = "info,headless_chrome=warn,stock_themes=debug"
 
-market_hours = ["06:30", "13:00"]
 base_ticker = "SPY"
+market_hours = ["06:30", "13:00"]
 
 ignored_stocks = []
 

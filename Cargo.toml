@@ -25,14 +25,13 @@ tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 axum = "0.8"
 reqwest = { version = "0.13", features = ["json", "cookies", "gzip", "deflate"] }
-chromiumoxide = { version = "0.8", features = ["tokio"] }
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "chrono"] }
+chrome_driver = { git = "https://github.com/pbspbsingh/ChromeDriver" }
 
 anyhow = "1"
 rand = "0.10"
 itertools = "0.14"
 chrono = { version = "0.4", features = ["serde"] }
-sysinfo = "0.38"
 
 serde = { version = "1", features = ["derive"] }
 toml = "1"

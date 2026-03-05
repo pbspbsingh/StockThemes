@@ -3,7 +3,7 @@ use crate::tv::{Sleepable, TV_HOME};
 use crate::util::normalize;
 use crate::{Group, Performance, Stock, TickerType};
 use anyhow::{Context, Ok};
-use chromiumoxide::{Element, Page};
+use chrome_driver::{Element, Page};
 use chrono::Local;
 use log::{debug, info};
 use url::Url;

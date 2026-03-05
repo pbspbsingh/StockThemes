@@ -1,10 +1,8 @@
 use anyhow::Context;
-use chromiumoxide::{
-    Element, Page,
-    cdp::browser_protocol::input::{
-        DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
-    },
+use chrome_driver::chromiumoxide::cdp::browser_protocol::input::{
+    DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
 };
+use chrome_driver::{Element, Page};
 use chrono::Local;
 
 use super::TV_HOME;

@@ -267,27 +267,24 @@ impl YFinance {
         let volumes = quote.volume.unwrap_or_default();
         let last_updated = Local::now();
 
-        let candles = timestamps
-            .into_iter()
-            .enumerate()
-            .filter_map(|(i, ts)| {
-                let open = opens.get(i)?.as_ref()?;
-                let high = highs.get(i)?.as_ref()?;
-                let low = lows.get(i)?.as_ref()?;
-                let close = closes.get(i)?.as_ref()?;
-                let volume = volumes.get(i)?.as_ref()?;
-                let adj_close = adj_closes.get(i).copied().flatten();
-                Some(Candle {
-                    timestamp: Utc.timestamp_opt(ts, 0).single()?,
-                    open: *open,
-                    high: *high,
-                    low: *low,
-                    close: *close,
-                    volume: *volume,
-                    adj_close,
-                    last_updated,
-                })
-            });
+        let candles = timestamps.into_iter().enumerate().filter_map(|(i, ts)| {
+            let open = opens.get(i)?.as_ref()?;
+            let high = highs.get(i)?.as_ref()?;
+            let low = lows.get(i)?.as_ref()?;
+            let close = closes.get(i)?.as_ref()?;
+            let volume = volumes.get(i)?.as_ref()?;
+            let adj_close = adj_closes.get(i).copied().flatten();
+            Some(Candle {
+                timestamp: Utc.timestamp_opt(ts, 0).single()?,
+                open: *open,
+                high: *high,
+                low: *low,
+                close: *close,
+                volume: *volume,
+                adj_close,
+                last_updated,
+            })
+        });
 
         // When an explicit interval was requested, strip any candles Yahoo
         // appended outside the window (e.g. a "current price" sentinel bar).

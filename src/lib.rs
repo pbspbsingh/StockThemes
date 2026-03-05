@@ -4,7 +4,7 @@ use crate::util::is_upto_date;
 use crate::yf::{BarSize, Candle, Range, TimeSpec, YFinance};
 use anyhow::Context;
 use axum::response::Html;
-use axum::{routing, Router};
+use axum::{Router, routing};
 use chrono::{DateTime, Local, Months, NaiveDate, TimeDelta, Utc};
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,6 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use tokio::net::TcpListener;
 
-pub mod browser;
 pub mod config;
 mod etf_map;
 mod html_error;

@@ -1,5 +1,5 @@
-use chromiumoxide::Page;
-use chromiumoxide::cdp::browser_protocol::target::CloseTargetParams;
+use chrome_driver::Page;
+use chrome_driver::chromiumoxide::cdp::browser_protocol::target::CloseTargetParams;
 use std::time::Duration;
 use tokio::time;
 

@@ -1,7 +1,7 @@
 use crate::util::{normalize, parse_percentage};
 use crate::{Performance, TickerType};
 use anyhow::Context;
-use chromiumoxide::{Element, Page};
+use chrome_driver::{Element, Page};
 use std::collections::HashMap;
 
 pub async fn parse_performances(

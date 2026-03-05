@@ -14,12 +14,10 @@ pub struct Config {
     pub log_config: String,
     pub chrome_path: String,
     pub user_data_dir: PathBuf,
-    #[serde(default)]
     pub chrome_args: Vec<String>,
-    #[serde(default)]
     pub launch_chrome_if_needed: bool,
-    pub market_hours: (NaiveTime, NaiveTime),
     pub base_ticker: String,
+    pub market_hours: (NaiveTime, NaiveTime),
     #[serde(default)]
     pub ignored_stocks: Vec<String>,
     pub http_port: u16,
