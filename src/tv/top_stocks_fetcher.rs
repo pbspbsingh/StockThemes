@@ -1,11 +1,13 @@
+use crate::tv::TV_HOME;
 use crate::tv::perf_util::parse_performances;
-use crate::tv::{Sleepable, TV_HOME};
 use crate::util::normalize;
 use crate::{Group, Performance, Stock, TickerType};
 use anyhow::{Context, Ok};
-use chrome_driver::{Element, Page};
+use chrome_driver::{Element, Page, Sleepable};
 use chrono::Local;
-use log::{debug, info};
+use log::{debug, info, trace};
+use std::time::Duration;
+use tokio::time;
 use url::Url;
 
 pub struct TopStocksFetcher<'a> {
@@ -120,7 +122,7 @@ impl<'a> TopStocksFetcher<'a> {
             if !check_box_found {
                 anyhow::bail!("Checkbox for Industry {industry:?} not found");
             }
-            page.nap().await;
+            time::sleep(Duration::from_millis(rand::random_range(50..250))).await;
         }
 
         info!("All {total} industries selected, fetching top {count} stocks");
@@ -160,7 +162,7 @@ impl<'a> TopStocksFetcher<'a> {
         {
             let stock = Self::parse_stock(row, sector_idx, industry_idx).await?;
 
-            debug!("[{sort_by}] Parsed stock: {}", stock.ticker);
+            trace!("[{sort_by}] Parsed stock: {}", stock.ticker);
 
             result.push(stock);
             if result.len() >= self.count {

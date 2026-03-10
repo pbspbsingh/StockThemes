@@ -1,11 +1,10 @@
 use crate::config::APP_CONFIG;
 use crate::store::Store;
-use crate::tv::Closeable;
 use crate::tv::stock_info_loader::StockInfoLoader;
 use crate::tv::top_industry_groups::TopIndustryGroups;
 use crate::tv::top_stocks_fetcher::TopStocksFetcher;
 use crate::{Performance, Stock, TickerType};
-use chrome_driver::{Browser, ChromeDriverConfig, Page};
+use chrome_driver::{Browser, ChromeDriverConfig, Page, Sleepable};
 use itertools::Itertools;
 use log::info;
 use std::collections::HashMap;
@@ -172,7 +171,7 @@ impl TvManager {
 impl Drop for TvManager {
     fn drop(&mut self) {
         if let Some(browser) = self.browser.take()
-            && let Some(page) = self.page.take()
+            && let Some(mut page) = self.page.take()
         {
             tokio::spawn(async move {
                 page.close_me().await;

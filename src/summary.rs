@@ -1,5 +1,5 @@
 use crate::util::compute_rs;
-use crate::{etf_map, Performance, Stock, Ticker};
+use crate::{Performance, Stock, Ticker, etf_map};
 use askama::Template;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};

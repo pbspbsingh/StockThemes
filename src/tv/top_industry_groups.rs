@@ -1,7 +1,6 @@
-use crate::tv::Sleepable;
 use crate::{Performance, TickerType};
 use anyhow::Context;
-use chrome_driver::Page;
+use chrome_driver::{Page, Sleepable};
 use log::info;
 
 use crate::tv::perf_util::parse_performances;

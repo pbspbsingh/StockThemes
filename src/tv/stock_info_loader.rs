@@ -2,13 +2,13 @@ use anyhow::Context;
 use chrome_driver::chromiumoxide::cdp::browser_protocol::input::{
     DispatchKeyEventParams, DispatchKeyEventType, InsertTextParams,
 };
-use chrome_driver::{Element, Page};
+use chrome_driver::{Element, Page, Sleepable};
 use chrono::Local;
 
 use super::TV_HOME;
 
 use crate::util::normalize;
-use crate::{Group, Stock, StockInfoFetcher, tv::Sleepable};
+use crate::{Group, Stock, StockInfoFetcher};
 
 pub struct StockInfoLoader<'a> {
     page: &'a Page,
