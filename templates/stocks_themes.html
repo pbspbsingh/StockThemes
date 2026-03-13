@@ -1299,7 +1299,7 @@
             // Skip if user is typing in an input
             if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
 
-            if (event.key === 's') {
+            if (event.key === 's' || event.key === 'ArrowLeft') {
                 event.preventDefault();
                 if (AppState.currentTickerSymbol === null) {
                     showToast('No stock selected');
@@ -1310,7 +1310,7 @@
                 return;
             }
 
-            if (event.key === 'i') {
+            if (event.key === 'i' || event.key === 'ArrowRight') {
                 event.preventDefault();
                 if (AppState.currentTickerSymbol === null) {
                     showToast('No stock selected');
