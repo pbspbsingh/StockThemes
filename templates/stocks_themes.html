@@ -580,8 +580,8 @@
             <span id="preview-title">Preview</span>
             <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
                 <div class="chart-toggle" id="chart-toggle">
-                    <button data-mode="single" title="Daily chart">D</button>
-                    <button data-mode="split" class="active" title="Daily and Weekly split view">D/W</button>
+                    <button data-mode="hourly" title="Daily and Hourly split view">D/H</button>
+                    <button data-mode="split" title="Daily and Weekly split view">D/W</button>
                 </div>
                 <a href="/rrg.html" class="rrg-link" title="Relative Rotation Graph" target="_blank">RRG</a>
             </div>
@@ -676,7 +676,7 @@
             return b.size - a.size;
         }),
 
-        chartMode: 'split',
+        chartMode: localStorage.getItem('chartMode') || 'split',
         currentTickerSymbol: null,
 
         clearIndustrySelection() {
@@ -1199,46 +1199,33 @@
         show(tickerSymbol) {
             AppState.currentTickerSymbol = tickerSymbol;
             const container = PreviewManager.getContainer();
-            const timestamp = Date.now();
 
             PreviewManager.updateHeader(DataHelpers.findTickerInfo(tickerSymbol));
             Renderers.highlightTickerContext();
 
-            if (AppState.chartMode === 'split') {
-                this.renderSplitView(container, tickerSymbol, timestamp);
-            } else {
-                this.renderSingleView(container, tickerSymbol, timestamp);
-            }
-        },
-
-        renderSplitView(container, tickerSymbol, timestamp) {
-            const dailyWidgetId = 'tradingview_daily_' + timestamp;
-            const weeklyWidgetId = 'tradingview_weekly_' + timestamp;
-
+            // Both modes share the same split layout with stable IDs.
+            // Full container rebuild happens on ticker change only.
+            const bottomInterval = AppState.chartMode === 'hourly' ? '60' : 'W';
             container.innerHTML = `
-                    <div class="tradingview-widget-container tv-container-split">
-                        <div id="${dailyWidgetId}" class="tv-pane tv-pane-half"></div>
-                        <div id="${weeklyWidgetId}" class="tv-pane tv-pane-half"></div>
-                    </div>
-                `;
+                <div class="tradingview-widget-container tv-container-split">
+                    <div id="tv-daily-main"  class="tv-pane tv-pane-half"></div>
+                    <div id="tv-bottom-main" class="tv-pane tv-pane-half"></div>
+                </div>
+            `;
 
             loadTVScript(() => {
-                this.createWidget(tickerSymbol, dailyWidgetId, 'D');
-                this.createWidget(tickerSymbol, weeklyWidgetId, 'W');
+                this.createWidget(tickerSymbol, 'tv-daily-main',  'D');
+                this.createWidget(tickerSymbol, 'tv-bottom-main', bottomInterval);
             });
         },
 
-        renderSingleView(container, tickerSymbol, timestamp) {
-            const dailyWidgetId = 'tradingview_daily_' + timestamp;
-
-            container.innerHTML = `
-                    <div class="tradingview-widget-container tv-pane tv-pane-full">
-                        <div id="${dailyWidgetId}" class="tv-pane tv-pane-full"></div>
-                    </div>
-                `;
-
+        // Called on mode toggle only — leaves the top daily chart untouched.
+        swapBottomPane(tickerSymbol, interval) {
+            const bottomPane = document.getElementById('tv-bottom-main');
+            if (!bottomPane) return;
+            bottomPane.innerHTML = '';
             loadTVScript(() => {
-                this.createWidget(tickerSymbol, dailyWidgetId, 'D');
+                this.createWidget(tickerSymbol, 'tv-bottom-main', interval);
             });
         },
 
@@ -1248,7 +1235,7 @@
                 "moving average.length": 10,
                 "moving average.ma.color": interval === "W" ? "#ff922b" : "#5693e7",
             };
-            if (interval === 'D') {
+            if (interval === 'D' || interval === '60') {
                 studies.push("STD;MA%Ribbon");
             }
 
@@ -1428,18 +1415,26 @@
         const toggleContainer = document.getElementById('chart-toggle');
         const buttons = toggleContainer.querySelectorAll('button');
 
+        // Restore active button from stored mode
+        buttons.forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-mode') === AppState.chartMode);
+        });
+
         buttons.forEach(button => {
             button.addEventListener('click', () => {
                 const mode = button.getAttribute('data-mode');
                 if (mode === AppState.chartMode) return;
 
                 AppState.chartMode = mode;
+                localStorage.setItem('chartMode', mode);
 
                 buttons.forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
 
                 if (AppState.currentTickerSymbol) {
-                    TradingViewWidget.show(AppState.currentTickerSymbol);
+                    // Only swap the bottom pane — daily chart stays alive
+                    const interval = mode === 'hourly' ? '60' : 'W';
+                    TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
                 }
             });
         });
