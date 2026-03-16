@@ -390,10 +390,6 @@
             height: 50%;
         }
 
-        .tv-pane-full {
-            height: 100%;
-        }
-
         /* ── Chart icon button (header breadcrumb) ──────────────── */
         .chart-icon-btn {
             display: inline-flex;
@@ -516,7 +512,7 @@
         .tv-popup-charts {
             flex: 1;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             min-height: 0;
         }
         .tv-chart-panel {
@@ -526,11 +522,39 @@
             min-height: 0;
             position: relative;
         }
+        .tv-chart-panel + .tv-chart-panel {
+            border-left: 1px solid #2a2a2a;
+        }
+        .tv-chart-panel.hidden {
+            display: none;
+        }
         .tv-chart-container {
             flex: 1;
             width: 100%;
             height: 100%;
         }
+
+        /* Popup chart mode toggle (always visible, unlike main #chart-toggle) */
+        .popup-chart-toggle {
+            display: flex;
+            gap: 2px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            padding: 2px;
+        }
+        .popup-chart-toggle button {
+            padding: 4px 10px;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+        .popup-chart-toggle button:hover { color: #d0d0d0; }
+        .popup-chart-toggle button.active { background: #4a9eff; color: #fff; }
         /* ── Toast ──────────────────────────────────────────────── */
         .toast {
             position: fixed;
@@ -595,12 +619,19 @@
     <div class="tv-popup-modal">
         <div class="tv-popup-header">
             <div class="tv-popup-title" id="tv-popup-title">Chart</div>
-            <span class="tv-popup-hint">Daily &nbsp;|&nbsp; Esc to close</span>
+            <div class="popup-chart-toggle" id="popup-chart-toggle">
+                <button data-popup-mode="daily" title="Daily chart only">D</button>
+                <button data-popup-mode="split" title="Daily + Weekly split">D/W</button>
+            </div>
+            <span class="tv-popup-hint">Esc to close</span>
             <button class="tv-popup-close" id="tv-popup-close" title="Close (Esc)">✕</button>
         </div>
         <div class="tv-popup-charts">
             <div class="tv-chart-panel">
                 <div class="tv-chart-container" id="tv-chart-daily"></div>
+            </div>
+            <div class="tv-chart-panel" id="tv-chart-weekly-panel">
+                <div class="tv-chart-container" id="tv-chart-weekly"></div>
             </div>
         </div>
     </div>
@@ -677,6 +708,8 @@
         }),
 
         chartMode: localStorage.getItem('chartMode') || 'split',
+        popupChartMode: localStorage.getItem('popupChartMode') || 'split',
+        popupCurrentEtf: null,
         currentTickerSymbol: null,
 
         clearIndustrySelection() {
@@ -1259,9 +1292,6 @@
     };
 
     // ============================================================
-    // KEYBOARD NAVIGATION
-    // ============================================================
-    // ============================================================
     // TOAST
     // ============================================================
     let toastTimer = null;
@@ -1277,6 +1307,9 @@
         }, 2500);
     }
 
+    // ============================================================
+    // KEYBOARD NAVIGATION
+    // ============================================================
     const KeyboardNavigation = {
         init() {
             document.addEventListener('keydown', event => this.handleKeyDown(event));
@@ -1372,12 +1405,21 @@
         document.getElementById('tv-popup-title').innerHTML =
             `Chart &nbsp;<span style="color:#4a9eff;font-weight:600">${etf}</span>&nbsp;<span style="color:#666;font-weight:400;font-size:11px">— ${name}</span>`;
 
+        AppState.popupCurrentEtf = etf;
+
+        const isSplit = AppState.popupChartMode === 'split';
+        document.getElementById('tv-chart-weekly-panel').classList.toggle('hidden', !isSplit);
+
         document.getElementById('tv-popup-backdrop').classList.add('open');
         document.body.style.overflow = 'hidden';
 
         loadTVScript(() => {
             document.getElementById('tv-chart-daily').innerHTML = '';
+            document.getElementById('tv-chart-weekly').innerHTML = '';
             TradingViewWidget.createWidget(etf, 'tv-chart-daily', 'D');
+            if (isSplit) {
+                TradingViewWidget.createWidget(etf, 'tv-chart-weekly', 'W');
+            }
         });
     }
 
@@ -1387,6 +1429,8 @@
         backdrop.classList.remove('open');
         document.body.style.overflow = '';
         document.getElementById('tv-chart-daily').innerHTML = '';
+        document.getElementById('tv-chart-weekly').innerHTML = '';
+        AppState.popupCurrentEtf = null;
     }
 
     // Close on backdrop click (outside modal)
@@ -1409,6 +1453,43 @@
         Renderers.renderAll();
         KeyboardNavigation.init();
         initChartToggle();
+        initPopupChartToggle();
+    }
+
+    function initPopupChartToggle() {
+        const toggleContainer = document.getElementById('popup-chart-toggle');
+        const buttons = toggleContainer.querySelectorAll('button');
+
+        // Restore active button from stored mode
+        buttons.forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-popup-mode') === AppState.popupChartMode);
+        });
+
+        buttons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.getAttribute('data-popup-mode');
+                if (mode === AppState.popupChartMode) return;
+
+                AppState.popupChartMode = mode;
+                localStorage.setItem('popupChartMode', mode);
+
+                buttons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // If popup is currently open, manage the weekly pane only — daily stays alive
+                if (document.getElementById('tv-popup-backdrop').classList.contains('open') && AppState.popupCurrentEtf) {
+                    const isSplit = mode === 'split';
+                    const weeklyPanel = document.getElementById('tv-chart-weekly-panel');
+                    weeklyPanel.classList.toggle('hidden', !isSplit);
+                    if (isSplit) {
+                        document.getElementById('tv-chart-weekly').innerHTML = '';
+                        TradingViewWidget.createWidget(AppState.popupCurrentEtf, 'tv-chart-weekly', 'W');
+                    } else {
+                        document.getElementById('tv-chart-weekly').innerHTML = '';
+                    }
+                }
+            });
+        });
     }
 
     function initChartToggle() {
