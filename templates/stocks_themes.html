@@ -33,6 +33,7 @@
             overflow-y: auto;
             display: flex;
             flex-direction: column;
+            scroll-padding-top: 40px;
         }
 
         .column-header {
@@ -973,9 +974,15 @@
             });
 
             // Industries column
+            let highlightedIndustry = null;
             document.querySelectorAll('#industries .item').forEach(el => {
-                el.classList.toggle('ticker-context', !!(info && el.dataset.name === info.industry));
+                const isContext = !!(info && el.dataset.name === info.industry);
+                el.classList.toggle('ticker-context', isContext);
+                if (isContext) highlightedIndustry = el;
             });
+            if (highlightedIndustry) {
+                highlightedIndustry.scrollIntoView({ block: 'nearest' });
+            }
         },
 
         renderTickers() {
