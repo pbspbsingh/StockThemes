@@ -3,7 +3,7 @@ user_data_dir = "/Users/singhpra/Trading/ChromeDataDir"
 chrome_args = []
 launch_chrome_if_needed = true
 
-log_config = "info,headless_chrome=warn,stock_themes=debug"
+log_config = "info,chromiumoxide=error,stock_themes=debug"
 
 base_ticker = "SPY"
 market_hours = ["06:30", "13:00"]

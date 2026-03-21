@@ -304,8 +304,9 @@ impl<'a> TopStocksFetcher<'a> {
             debug!("Searching for {col_name} column");
             let input_field = self
                 .page
-                .find_element(r#"#overlap-manager-root input[aria-label="Type column name"]"#)
+                .find_element(r#"#overlap-manager-root input[aria-label="Search"]"#)
                 .await
+
                 .context("Couldn't find column input field")?;
             input_field.type_str(col_name).await?;
             self.page.sleep().await;
@@ -313,7 +314,7 @@ impl<'a> TopStocksFetcher<'a> {
             debug!("Adding {col_name} column");
             self.page
                 .find_element(
-                    format!(r#"#overlap-manager-root div[data-qa-id="screener-add-filter-option__{col_name}"]"#),
+                    format!(r#"#overlap-manager-root div[data-qa-id="screener-add-filter-option-{col_name}"]"#),
                 )
                 .await
                 .with_context(|| format!("Couldn't find {col_name} column in the add form"))?

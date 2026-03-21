@@ -70,6 +70,10 @@
             border-left: 3px solid #4a9eff;
         }
 
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         @keyframes context-pulse {
             0%, 100% { border-bottom-color: #3a6b3a; }
             50%       { border-bottom-color: #62c462; }
@@ -1236,6 +1240,16 @@
     // TRADINGVIEW WIDGET
     // ============================================================
     const TradingViewWidget = {
+        _instances: {},  // containerId → widget instance
+
+        _destroy(containerId) {
+            const w = this._instances[containerId];
+            if (w) {
+                try { w.remove(); } catch (e) {}
+                delete this._instances[containerId];
+            }
+        },
+
         show(tickerSymbol) {
             AppState.currentTickerSymbol = tickerSymbol;
             const container = PreviewManager.getContainer();
@@ -1243,8 +1257,10 @@
             PreviewManager.updateHeader(DataHelpers.findTickerInfo(tickerSymbol));
             Renderers.highlightTickerContext();
 
-            // Both modes share the same split layout with stable IDs.
-            // Full container rebuild happens on ticker change only.
+            // Destroy existing main pane widgets before rebuilding DOM
+            this._destroy('tv-daily-main');
+            this._destroy('tv-bottom-main');
+
             const bottomInterval = AppState.chartMode === 'hourly' ? '60' : 'W';
             container.innerHTML = `
                 <div class="tradingview-widget-container tv-container-split">
@@ -1263,6 +1279,7 @@
         swapBottomPane(tickerSymbol, interval) {
             const bottomPane = document.getElementById('tv-bottom-main');
             if (!bottomPane) return;
+            this._destroy('tv-bottom-main');
             bottomPane.innerHTML = '';
             loadTVScript(() => {
                 this.createWidget(tickerSymbol, 'tv-bottom-main', interval);
@@ -1279,7 +1296,7 @@
                 studies.push("STD;MA%Ribbon");
             }
 
-            new TradingView.widget({
+            const w = new TradingView.widget({
                 width: "100%",
                 height: "100%",
                 symbol: tickerSymbol,
@@ -1295,6 +1312,7 @@
                 studies_overrides: studiesOverrides,
                 loading_screen: { backgroundColor: "#1e1e1e" }
             });
+            this._instances[containerId] = w;
         }
     };
 
@@ -1373,10 +1391,22 @@
             }
         },
 
+        _chartDebounceTimer: null,
+
         updateView() {
             Renderers.renderTickers();
-            TradingViewWidget.show(AppState.currentTickers[AppState.selectedTickerIndex].ticker);
             this.scrollTickerIntoView();
+            // Clear immediately so the old chart doesn't linger on the new ticker
+            const container = PreviewManager.getContainer();
+            container.innerHTML = `
+                <div style="height:100%;display:flex;align-items:center;justify-content:center;">
+                    <div style="width:64px;height:64px;border:3px solid #2a2a2a;border-top-color:#4a9eff;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+                </div>
+            `;
+            clearTimeout(this._chartDebounceTimer);
+            this._chartDebounceTimer = setTimeout(() => {
+                TradingViewWidget.show(AppState.currentTickers[AppState.selectedTickerIndex].ticker);
+            }, 300);
         },
 
         scrollTickerIntoView() {
@@ -1421,6 +1451,8 @@
         document.body.style.overflow = 'hidden';
 
         loadTVScript(() => {
+            TradingViewWidget._destroy('tv-chart-daily');
+            TradingViewWidget._destroy('tv-chart-weekly');
             document.getElementById('tv-chart-daily').innerHTML = '';
             document.getElementById('tv-chart-weekly').innerHTML = '';
             TradingViewWidget.createWidget(etf, 'tv-chart-daily', 'D');
@@ -1435,6 +1467,8 @@
         if (!backdrop.classList.contains('open')) return;
         backdrop.classList.remove('open');
         document.body.style.overflow = '';
+        TradingViewWidget._destroy('tv-chart-daily');
+        TradingViewWidget._destroy('tv-chart-weekly');
         document.getElementById('tv-chart-daily').innerHTML = '';
         document.getElementById('tv-chart-weekly').innerHTML = '';
         AppState.popupCurrentEtf = null;
@@ -1489,9 +1523,11 @@
                     const weeklyPanel = document.getElementById('tv-chart-weekly-panel');
                     weeklyPanel.classList.toggle('hidden', !isSplit);
                     if (isSplit) {
+                        TradingViewWidget._destroy('tv-chart-weekly');
                         document.getElementById('tv-chart-weekly').innerHTML = '';
                         TradingViewWidget.createWidget(AppState.popupCurrentEtf, 'tv-chart-weekly', 'W');
                     } else {
+                        TradingViewWidget._destroy('tv-chart-weekly');
                         document.getElementById('tv-chart-weekly').innerHTML = '';
                     }
                 }
