@@ -473,9 +473,9 @@
             border: 1px solid #333;
             border-radius: 8px;
             box-shadow: 0 24px 80px rgba(0,0,0,0.8);
-            width: calc(100vw - 48px);
-            height: calc(100vh - 48px);
-            max-width: 1600px;
+            width: calc(100vw - 24px);
+            height: calc(100vh - 144px);
+            max-width: 1920px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -483,7 +483,7 @@
 
         .tv-popup-header {
             background: #2d2d2d;
-            padding: 10px 14px;
+            padding: 6px 14px;
             display: flex;
             align-items: center;
             flex-shrink: 0;
@@ -492,8 +492,8 @@
         }
         .tv-popup-title {
             flex: 1;
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 12px;
+            font-weight: 400;
             color: #e0e0e0;
         }
         .tv-popup-hint { font-size: 11px; color: #555; }
@@ -530,36 +530,23 @@
         .tv-chart-panel + .tv-chart-panel {
             border-left: 1px solid #2a2a2a;
         }
-        .tv-chart-panel.hidden {
-            display: none;
-        }
         .tv-chart-container {
             flex: 1;
             width: 100%;
             height: 100%;
         }
 
-        /* Popup chart mode toggle (always visible, unlike main #chart-toggle) */
-        .popup-chart-toggle {
-            display: flex;
-            gap: 2px;
-            background: #1a1a1a;
-            border-radius: 4px;
-            padding: 2px;
-        }
-        .popup-chart-toggle button {
-            padding: 4px 10px;
-            border: none;
-            background: transparent;
-            color: #888;
-            font-size: 12px;
+        /* Label strip at the top of each popup chart panel */
+        .tv-panel-label {
+            padding: 8px 10px;
+            font-size: 11px;
             font-weight: 600;
-            cursor: pointer;
-            border-radius: 3px;
-            transition: all 0.2s;
+            color: #888;
+            background: #252525;
+            border-bottom: 1px solid #2a2a2a;
+            letter-spacing: 0.3px;
+            flex-shrink: 0;
         }
-        .popup-chart-toggle button:hover { color: #d0d0d0; }
-        .popup-chart-toggle button.active { background: #4a9eff; color: #fff; }
         /* ── Toast ──────────────────────────────────────────────── */
         .toast {
             position: fixed;
@@ -623,20 +610,18 @@
 <div class="tv-popup-backdrop" id="tv-popup-backdrop">
     <div class="tv-popup-modal">
         <div class="tv-popup-header">
-            <div class="tv-popup-title" id="tv-popup-title">Chart</div>
-            <div class="popup-chart-toggle" id="popup-chart-toggle">
-                <button data-popup-mode="daily" title="Daily chart only">D</button>
-                <button data-popup-mode="split" title="Daily + Weekly split">D/W</button>
-            </div>
+            <div class="tv-popup-title" id="tv-popup-title">Sector &amp; Industry Charts</div>
             <span class="tv-popup-hint">Esc to close</span>
             <button class="tv-popup-close" id="tv-popup-close" title="Close (Esc)">✕</button>
         </div>
         <div class="tv-popup-charts">
             <div class="tv-chart-panel">
-                <div class="tv-chart-container" id="tv-chart-daily"></div>
+                <div class="tv-panel-label" id="tv-sector-label"></div>
+                <div class="tv-chart-container" id="tv-chart-sector"></div>
             </div>
-            <div class="tv-chart-panel" id="tv-chart-weekly-panel">
-                <div class="tv-chart-container" id="tv-chart-weekly"></div>
+            <div class="tv-chart-panel">
+                <div class="tv-panel-label" id="tv-industry-label"></div>
+                <div class="tv-chart-container" id="tv-chart-industry"></div>
             </div>
         </div>
     </div>
@@ -713,8 +698,7 @@
         }),
 
         chartMode: localStorage.getItem('chartMode') || 'split',
-        popupChartMode: localStorage.getItem('popupChartMode') || 'split',
-        popupCurrentEtf: null,
+        popupInfo: null,
         currentTickerSymbol: null,
 
         clearIndustrySelection() {
@@ -1077,7 +1061,8 @@
                 titleElement.querySelectorAll('.chart-icon-btn').forEach(btn => {
                     btn.addEventListener('click', e => {
                         e.preventDefault();
-                        openChartPopup(btn.dataset.etf, btn.dataset.name);
+                        const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
+                        if (info) openChartPopup(info);
                     });
                 });
 
@@ -1344,25 +1329,15 @@
             // Skip if user is typing in an input
             if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
 
-            if (event.key === 's' || event.key === 'ArrowLeft') {
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
                 event.preventDefault();
+                if (document.getElementById('tv-popup-backdrop').classList.contains('open')) return;
                 if (AppState.currentTickerSymbol === null) {
                     showToast('No stock selected');
                     return;
                 }
                 const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
-                if (info?.sectorEtf) openChartPopup(info.sectorEtf, info.sector);
-                return;
-            }
-
-            if (event.key === 'i' || event.key === 'ArrowRight') {
-                event.preventDefault();
-                if (AppState.currentTickerSymbol === null) {
-                    showToast('No stock selected');
-                    return;
-                }
-                const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
-                if (info?.industryEtf) openChartPopup(info.industryEtf, info.industry);
+                if (info) openChartPopup(info);
                 return;
             }
 
@@ -1405,7 +1380,13 @@
             `;
             clearTimeout(this._chartDebounceTimer);
             this._chartDebounceTimer = setTimeout(() => {
-                TradingViewWidget.show(AppState.currentTickers[AppState.selectedTickerIndex].ticker);
+                const ticker = AppState.currentTickers[AppState.selectedTickerIndex].ticker;
+                TradingViewWidget.show(ticker);
+                // If the ETF popup is open, update it to reflect the new ticker
+                if (document.getElementById('tv-popup-backdrop').classList.contains('open')) {
+                    const info = DataHelpers.findTickerInfo(ticker);
+                    if (info) openChartPopup(info);
+                }
             }, 300);
         },
 
@@ -1438,26 +1419,41 @@
         document.head.appendChild(s);
     }
 
-    function openChartPopup(etf, name) {
+    function openChartPopup(info) {
+        AppState.popupInfo = info;
+
         document.getElementById('tv-popup-title').innerHTML =
-            `Chart &nbsp;<span style="color:#4a9eff;font-weight:600">${etf}</span>&nbsp;<span style="color:#666;font-weight:400;font-size:11px">— ${name}</span>`;
+            `<span style="color:#4a9eff;font-weight:600">${info.ticker}</span>` +
+            `<span style="color:#555;font-weight:400;font-size:11px;margin-left:6px">Sector &amp; Industry</span>`;
 
-        AppState.popupCurrentEtf = etf;
-
-        const isSplit = AppState.popupChartMode === 'split';
-        document.getElementById('tv-chart-weekly-panel').classList.toggle('hidden', !isSplit);
+        document.getElementById('tv-sector-label').innerHTML = info.sectorEtf
+            ? `<span style="color:#d0d0d0">${info.sectorEtf}</span> <span style="color:#555">— ${info.sector}</span>`
+            : `<span style="color:#555">${info.sector}</span>`;
+        document.getElementById('tv-industry-label').innerHTML = info.industryEtf
+            ? `<span style="color:#d0d0d0">${info.industryEtf}</span> <span style="color:#555">— ${info.industry}</span>`
+            : `<span style="color:#555">${info.industry}</span>`;
 
         document.getElementById('tv-popup-backdrop').classList.add('open');
         document.body.style.overflow = 'hidden';
 
         loadTVScript(() => {
-            TradingViewWidget._destroy('tv-chart-daily');
-            TradingViewWidget._destroy('tv-chart-weekly');
-            document.getElementById('tv-chart-daily').innerHTML = '';
-            document.getElementById('tv-chart-weekly').innerHTML = '';
-            TradingViewWidget.createWidget(etf, 'tv-chart-daily', 'D');
-            if (isSplit) {
-                TradingViewWidget.createWidget(etf, 'tv-chart-weekly', 'W');
+            TradingViewWidget._destroy('tv-chart-sector');
+            TradingViewWidget._destroy('tv-chart-industry');
+            const sectorContainer  = document.getElementById('tv-chart-sector');
+            const industryContainer = document.getElementById('tv-chart-industry');
+            sectorContainer.innerHTML  = '';
+            industryContainer.innerHTML = '';
+
+            if (info.sectorEtf) {
+                TradingViewWidget.createWidget(info.sectorEtf, 'tv-chart-sector', 'D');
+            } else {
+                sectorContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.sector}</div>`;
+            }
+
+            if (info.industryEtf) {
+                TradingViewWidget.createWidget(info.industryEtf, 'tv-chart-industry', 'D');
+            } else {
+                industryContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.industry}</div>`;
             }
         });
     }
@@ -1467,11 +1463,11 @@
         if (!backdrop.classList.contains('open')) return;
         backdrop.classList.remove('open');
         document.body.style.overflow = '';
-        TradingViewWidget._destroy('tv-chart-daily');
-        TradingViewWidget._destroy('tv-chart-weekly');
-        document.getElementById('tv-chart-daily').innerHTML = '';
-        document.getElementById('tv-chart-weekly').innerHTML = '';
-        AppState.popupCurrentEtf = null;
+        TradingViewWidget._destroy('tv-chart-sector');
+        TradingViewWidget._destroy('tv-chart-industry');
+        document.getElementById('tv-chart-sector').innerHTML = '';
+        document.getElementById('tv-chart-industry').innerHTML = '';
+        AppState.popupInfo = null;
     }
 
     // Close on backdrop click (outside modal)
@@ -1494,45 +1490,6 @@
         Renderers.renderAll();
         KeyboardNavigation.init();
         initChartToggle();
-        initPopupChartToggle();
-    }
-
-    function initPopupChartToggle() {
-        const toggleContainer = document.getElementById('popup-chart-toggle');
-        const buttons = toggleContainer.querySelectorAll('button');
-
-        // Restore active button from stored mode
-        buttons.forEach(btn => {
-            btn.classList.toggle('active', btn.getAttribute('data-popup-mode') === AppState.popupChartMode);
-        });
-
-        buttons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const mode = btn.getAttribute('data-popup-mode');
-                if (mode === AppState.popupChartMode) return;
-
-                AppState.popupChartMode = mode;
-                localStorage.setItem('popupChartMode', mode);
-
-                buttons.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-
-                // If popup is currently open, manage the weekly pane only — daily stays alive
-                if (document.getElementById('tv-popup-backdrop').classList.contains('open') && AppState.popupCurrentEtf) {
-                    const isSplit = mode === 'split';
-                    const weeklyPanel = document.getElementById('tv-chart-weekly-panel');
-                    weeklyPanel.classList.toggle('hidden', !isSplit);
-                    if (isSplit) {
-                        TradingViewWidget._destroy('tv-chart-weekly');
-                        document.getElementById('tv-chart-weekly').innerHTML = '';
-                        TradingViewWidget.createWidget(AppState.popupCurrentEtf, 'tv-chart-weekly', 'W');
-                    } else {
-                        TradingViewWidget._destroy('tv-chart-weekly');
-                        document.getElementById('tv-chart-weekly').innerHTML = '';
-                    }
-                }
-            });
-        });
     }
 
     function initChartToggle() {
