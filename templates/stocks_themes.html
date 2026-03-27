@@ -596,6 +596,7 @@
             <span id="preview-title">Preview</span>
             <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
                 <div class="chart-toggle" id="chart-toggle">
+                    <button data-mode="daily" title="Daily chart only">D</button>
                     <button data-mode="hourly" title="Daily and Hourly split view">D/H</button>
                     <button data-mode="split" title="Daily and Weekly split view">D/W</button>
                 </div>
@@ -1246,17 +1247,18 @@
             this._destroy('tv-daily-main');
             this._destroy('tv-bottom-main');
 
+            const isDaily = AppState.chartMode === 'daily';
             const bottomInterval = AppState.chartMode === 'hourly' ? '60' : 'W';
             container.innerHTML = `
                 <div class="tradingview-widget-container tv-container-split">
-                    <div id="tv-daily-main"  class="tv-pane tv-pane-half"></div>
-                    <div id="tv-bottom-main" class="tv-pane tv-pane-half"></div>
+                    <div id="tv-daily-main"  class="tv-pane ${isDaily ? '' : 'tv-pane-half'}"></div>
+                    <div id="tv-bottom-main" class="tv-pane tv-pane-half" ${isDaily ? 'style="display:none"' : ''}></div>
                 </div>
             `;
 
             loadTVScript(() => {
-                this.createWidget(tickerSymbol, 'tv-daily-main',  'D');
-                this.createWidget(tickerSymbol, 'tv-bottom-main', bottomInterval);
+                this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
+                if (!isDaily) this.createWidget(tickerSymbol, 'tv-bottom-main', bottomInterval);
             });
         },
 
@@ -1274,10 +1276,11 @@
         createWidget(tickerSymbol, containerId, interval) {
             const studies = ["MASimple@tv-basicstudies"];
             const studiesOverrides = {
-                "moving average.length": 10,
-                "moving average.ma.color": interval === "W" ? "#ff922b" : "#5693e7",
+                "moving average.length": interval === '60' ? 65 : 10,
+                "moving average.ma.color": interval === 'W' ? "#ff922b" : "#5693e7",
             };
-            if (interval === 'D' || interval === '60') {
+
+            if (interval === 'D') {
                 studies.push("STD;MA%Ribbon");
             }
 
@@ -1506,6 +1509,7 @@
                 const mode = button.getAttribute('data-mode');
                 if (mode === AppState.chartMode) return;
 
+                const wasDaily = AppState.chartMode === 'daily';
                 AppState.chartMode = mode;
                 localStorage.setItem('chartMode', mode);
 
@@ -1513,9 +1517,26 @@
                 button.classList.add('active');
 
                 if (AppState.currentTickerSymbol) {
-                    // Only swap the bottom pane — daily chart stays alive
-                    const interval = mode === 'hourly' ? '60' : 'W';
-                    TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
+                    const isDaily = mode === 'daily';
+                    const topPane    = document.getElementById('tv-daily-main');
+                    const bottomPane = document.getElementById('tv-bottom-main');
+
+                    if (isDaily) {
+                        // Hide bottom pane, expand top — daily widget untouched
+                        TradingViewWidget._destroy('tv-bottom-main');
+                        if (bottomPane) { bottomPane.style.display = 'none'; bottomPane.innerHTML = ''; }
+                        if (topPane)    topPane.classList.remove('tv-pane-half');
+                    } else if (wasDaily) {
+                        // Restore split — daily widget untouched, create bottom
+                        if (topPane)    topPane.classList.add('tv-pane-half');
+                        if (bottomPane) bottomPane.style.display = '';
+                        const interval = mode === 'hourly' ? '60' : 'W';
+                        TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
+                    } else {
+                        // D/H ↔ D/W — both split, just swap bottom widget
+                        const interval = mode === 'hourly' ? '60' : 'W';
+                        TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
+                    }
                 }
             });
         });

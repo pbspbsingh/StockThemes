@@ -150,6 +150,7 @@ impl<'a> TopStocksFetcher<'a> {
             .await
             .context("Failed to add IndustryGroup column")?;
 
+
         info!("[{sort_by}] Querying rows from the table");
         let mut result = Vec::new();
         for row in self
@@ -278,13 +279,13 @@ impl<'a> TopStocksFetcher<'a> {
     async fn add_sector_industry_columns(&self, col_name: &str) -> anyhow::Result<usize> {
         assert!(col_name == "Sector" || col_name == "Industry");
 
-        debug!("Clicking Custom tab");
-        self.page
-            .find_xpath(r"//button[@role='tab'][contains(., 'Custom')]")
-            .await?
-            .click()
-            .await?;
-        self.page.sleep().await;
+        // debug!("Clicking Custom tab");
+        // self.page
+        //     .find_xpath(r"//button[@role='tab'][contains(., 'Custom')]")
+        //     .await?
+        //     .click()
+        //     .await?;
+        // self.page.sleep().await;
 
         if self
             .page
@@ -306,7 +307,6 @@ impl<'a> TopStocksFetcher<'a> {
                 .page
                 .find_element(r#"#overlap-manager-root input[aria-label="Search"]"#)
                 .await
-
                 .context("Couldn't find column input field")?;
             input_field.type_str(col_name).await?;
             self.page.sleep().await;
