@@ -3,11 +3,9 @@ use crate::tv::perf_util::parse_performances;
 use crate::util::normalize;
 use crate::{Group, Performance, Stock, TickerType};
 use anyhow::{Context, Ok};
-use chrome_driver::{Element, Page, Sleepable};
+use chrome_driver::{Element, Page, PageFeatures};
 use chrono::Local;
 use log::{debug, info, trace};
-use std::time::Duration;
-use tokio::time;
 use url::Url;
 
 pub struct TopStocksFetcher<'a> {
@@ -122,7 +120,7 @@ impl<'a> TopStocksFetcher<'a> {
             if !check_box_found {
                 anyhow::bail!("Checkbox for Industry {industry:?} not found");
             }
-            time::sleep(Duration::from_millis(rand::random_range(50..250))).await;
+            page.nap().await;
         }
 
         info!("All {total} industries selected, fetching top {count} stocks");
@@ -278,14 +276,6 @@ impl<'a> TopStocksFetcher<'a> {
 
     async fn add_sector_industry_columns(&self, col_name: &str) -> anyhow::Result<usize> {
         assert!(col_name == "Sector" || col_name == "Industry");
-
-        // debug!("Clicking Custom tab");
-        // self.page
-        //     .find_xpath(r"//button[@role='tab'][contains(., 'Custom')]")
-        //     .await?
-        //     .click()
-        //     .await?;
-        // self.page.sleep().await;
 
         if self
             .page
