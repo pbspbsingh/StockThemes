@@ -1,14 +1,15 @@
-use crate::{Group, Performance, Stock, TickerType};
+use crate::{Group, Performance, Stock, TWO_YEARS, TickerType};
 use anyhow::Context;
 use chrono::{DateTime, Local, TimeDelta, Utc};
 use sqlx::sqlite::{SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 use sqlx::{
-    Decode, Encode, Sqlite, SqlitePool, Type, encode::IsNull, error::BoxDynError,
+    Decode, Encode, Pool, Sqlite, SqlitePool, Type, encode::IsNull, error::BoxDynError,
     sqlite::SqlitePoolOptions,
 };
 
 use crate::util::is_upto_date;
 use crate::yf::Candle;
+use log::warn;
 use std::sync::{Arc, LazyLock, Weak};
 use tokio::sync::Mutex;
 
@@ -32,7 +33,7 @@ impl Store {
         let options = SqliteConnectOptions::new()
             .filename(DB_FILE)
             .create_if_missing(true)
-            .auto_vacuum(SqliteAutoVacuum::Full)
+            .auto_vacuum(SqliteAutoVacuum::Incremental)
             .journal_mode(SqliteJournalMode::Wal) // concurrent reads + writes
             .synchronous(SqliteSynchronous::Normal) // safe with WAL, much faster than Full
             .pragma("cache_size", "-65536") // 64MB page cache (negative = KiB)
@@ -51,12 +52,7 @@ impl Store {
             .await
             .context("Failed to run database migrations")?;
 
-        // Evict stale stock rows older than 30 days
-        let cutoff = Local::now().date_naive() - TimeDelta::days(30);
-        sqlx::query!("DELETE FROM stocks WHERE last_update < $1", cutoff)
-            .execute(&pool)
-            .await
-            .context("Failed to evict stale stock rows")?;
+        Self::cleanup(&pool).await?;
 
         let store = Arc::new(Store { pool });
         *weak = Arc::downgrade(&store);
@@ -64,6 +60,30 @@ impl Store {
         Ok(store)
     }
 
+    async fn cleanup(pool: &Pool<Sqlite>) -> anyhow::Result<()> {
+        // Evict stale stock rows older than 30 days
+        let cutoff = Local::now().date_naive() - TimeDelta::days(30);
+        let stale_stocks = sqlx::query!("DELETE FROM stocks WHERE last_update < $1", cutoff)
+            .execute(pool)
+            .await
+            .context("Failed to evict stale stock rows")?
+            .rows_affected();
+        if stale_stocks > 0 {
+            warn!("Cleaned {stale_stocks} stale stocks info");
+        }
+
+        // Evict stale candles older than 2 years
+        let cutoff = Local::now().date_naive() - TWO_YEARS;
+        let old_candles = sqlx::query!("DELETE FROM daily_candles WHERE day < $1", cutoff)
+            .execute(pool)
+            .await
+            .context("Failed to evict old daily candles")?
+            .rows_affected();
+        if stale_stocks > 0 {
+            warn!("Cleaned {old_candles} old candles");
+        }
+        Ok(())
+    }
     // ── Stock methods ────────────────────────────────────────────────────────
 
     pub async fn get_stock(&self, ticker: impl AsRef<str>) -> anyhow::Result<Option<Stock>> {

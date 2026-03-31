@@ -22,6 +22,8 @@ pub mod tv;
 pub mod util;
 pub mod yf;
 
+const TWO_YEARS: TimeDelta = TimeDelta::days(2 * 365);
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Stock {
     pub ticker: String,
@@ -124,7 +126,7 @@ pub async fn fetch_candles(
     let start = candles
         .last()
         .map(|c| c.timestamp - TimeDelta::days(1))
-        .unwrap_or_else(|| Utc::now() - TimeDelta::days(2 * 365));
+        .unwrap_or_else(|| Utc::now() - TWO_YEARS);
     let end = Utc::now();
     let new_candles = yf
         .fetch_candles(ticker, BarSize::Daily, TimeSpec::Interval(start, end))
