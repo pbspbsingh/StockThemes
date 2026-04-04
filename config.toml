@@ -5,7 +5,7 @@ launch_chrome_if_needed = true
 
 log_config = "info,chromiumoxide=error,stock_themes=debug"
 
-base_ticker = "SPY"
+base_ticker = "QQQ"
 market_hours = ["06:30", "13:00"]
 
 ignored_stocks = []

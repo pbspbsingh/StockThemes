@@ -251,12 +251,37 @@
             cursor: not-allowed;
         }
 
+        /* Clickable sort label in column headers */
+        .sort-label {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            transition: color 0.15s;
+        }
+
+        .sort-label:hover {
+            color: #fff;
+        }
+
+        /* Tiny sort-mode indicator: r = RS, c = count */
+        .sort-ind {
+            font-size: 8px;
+            font-weight: 700;
+            color: #4a9eff;
+            letter-spacing: 0;
+            opacity: 0.85;
+            position: relative;
+            top: -0.3em;
+        }
+
         /* Preview pane fills remaining height */
         #preview {
             height: 100%;
         }
 
-        /* Stats bar above tables (Sectors N / Industry Groups N / Total Stocks N) */
+        /* Stats bar above tables (Sectors N / Industries N / Total Stocks N) */
         .stats-bar {
             display: flex;
             gap: 40px;
@@ -575,14 +600,14 @@
 <div class="container">
     <div class="column">
         <div class="column-header column-header-flex">
-            <span>Sectors</span>
+            <span class="sort-label" id="sector-sort-label" title="Click to toggle sort order">Sectors <span class="sort-ind" id="sector-sort-ind"></span></span>
             <button id="clear-sectors" class="btn-clear" disabled title="Clear sector selection" onclick="AppState.selectedSectors.clear(); AppState.clearIndustrySelection(); Renderers.renderAll();">✕ clear</button>
         </div>
         <div id="sectors"></div>
     </div>
     <div class="column">
         <div class="column-header column-header-flex">
-            <span>Industry Groups</span>
+            <span class="sort-label" id="industry-sort-label" title="Click to toggle sort order">Industry <span class="sort-ind" id="industry-sort-ind"></span></span>
             <button id="clear-industries" class="btn-clear" disabled title="Clear industry selection" onclick="AppState.selectedIndustries.clear(); AppState.clearTickerSelection(); Renderers.renderIndustries(); Renderers.renderTickers(); PreviewManager.updatePreview();">✕ clear</button>
         </div>
         <div id="industries"></div>
@@ -690,13 +715,26 @@
         selectedTickerIndex: -1,
         currentTickers: [],
 
-        // Sort sectors: RS descending, fallback to stock count descending
-        sortedSectors: [...stockData.sectors].sort((a, b) => {
-            const aRS = sectorRS.get(a.name.toLowerCase()) ?? 0;
-            const bRS = sectorRS.get(b.name.toLowerCase()) ?? 0;
-            if (aRS !== bRS) return bRS - aRS;
-            return b.size - a.size;
-        }),
+        // Persisted sort mode: 'rs' or 'count'
+        sectorSortMode:   localStorage.getItem('sectorSortMode')   || 'rs',
+        industrySortMode: localStorage.getItem('industrySortMode') || 'rs',
+
+        get sortedSectors() {
+            return [...stockData.sectors].sort((a, b) => {
+                if (this.sectorSortMode === 'count') {
+                    if (b.size !== a.size) return b.size - a.size;
+                    // fallback: RS desc
+                    const aRS = sectorRS.get(a.name.toLowerCase()) ?? 0;
+                    const bRS = sectorRS.get(b.name.toLowerCase()) ?? 0;
+                    return bRS - aRS;
+                }
+                // default: RS desc, fallback count
+                const aRS = sectorRS.get(a.name.toLowerCase()) ?? 0;
+                const bRS = sectorRS.get(b.name.toLowerCase()) ?? 0;
+                if (aRS !== bRS) return bRS - aRS;
+                return b.size - a.size;
+            });
+        },
 
         chartMode: localStorage.getItem('chartMode') || 'split',
         popupInfo: null,
@@ -812,8 +850,16 @@
     // ============================================================
     // SORT HELPERS
     // ============================================================
-    function sortByIndustryRS(industries) {
+    function sortIndustries(industries) {
         return [...industries].sort((a, b) => {
+            if (AppState.industrySortMode === 'count') {
+                if (b.size !== a.size) return b.size - a.size;
+                // fallback: RS desc
+                const aRS = industryRS.get(a.name.toLowerCase()) ?? 0;
+                const bRS = industryRS.get(b.name.toLowerCase()) ?? 0;
+                return bRS - aRS;
+            }
+            // default: RS desc, fallback count
             const aRS = industryRS.get(a.name.toLowerCase()) ?? 0;
             const bRS = industryRS.get(b.name.toLowerCase()) ?? 0;
             if (aRS !== bRS) return bRS - aRS;
@@ -846,7 +892,7 @@
                 }
             });
 
-            return sortByIndustryRS(industries);
+            return sortIndustries(industries);
         },
 
         getFilteredTickers() {
@@ -1089,7 +1135,7 @@
                     ? `<span class="item-rs" style="background:${sBg};color:${sFg};">${sRS.toFixed(2)}</span>`
                     : '—';
 
-                return sortByIndustryRS(sector.industries).map((ind, idx) => {
+                return sortIndustries(sector.industries).map((ind, idx) => {
                     const iRS = industryRS.get(ind.name.toLowerCase()) ?? null;
                     const { bg: iBg, fg: iFg } = rsColor(iRS);
                     const iRSHtml = iRS != null
@@ -1115,7 +1161,7 @@
                     <h2>Stock Universe Overview</h2>
                     <div class="stats-bar">
                         ${Templates.stat('Sectors', AppState.sortedSectors.length)}
-                        ${Templates.stat('Industry Groups', totalIndustries)}
+                        ${Templates.stat('Industries', totalIndustries)}
                         ${Templates.stat('Total Stocks', totalStocks)}
                     </div>
                     <table class="overview-table">
@@ -1123,7 +1169,7 @@
                             <tr>
                                 <th class="col-sector">Sector</th>
                                 <th class="col-rs">RS</th>
-                                <th class="col-industry">Industry Group</th>
+                                <th class="col-industry">Industry</th>
                                 <th class="col-rs col-rs-last">RS</th>
                             </tr>
                         </thead>
@@ -1146,7 +1192,7 @@
 
             if (selectedSectors.size === 1 && selectedIndustries.size === 0) {
                 const filteredSectors = sortedSectors.filter(s => selectedSectors.has(s.name));
-                const allIndustries = sortByIndustryRS(filteredSectors.flatMap(s => s.industries));
+                const allIndustries = sortIndustries(filteredSectors.flatMap(s => s.industries));
                 this.showIndustriesOverview(allIndustries);
                 return;
             }
@@ -1166,7 +1212,7 @@
                         }
                     });
                 }
-                this.showIndustriesOverview(sortByIndustryRS(matchingIndustries));
+                this.showIndustriesOverview(sortIndustries(matchingIndustries));
                 return;
             }
         },
@@ -1204,13 +1250,13 @@
                 <div class="sector-summary">
                     <h2>Industry Overview</h2>
                     <div class="stats-bar">
-                        ${Templates.stat('Industry Groups', industries.length)}
+                        ${Templates.stat('Industries', industries.length)}
                         ${Templates.stat('Total Stocks', totalStocks)}
                     </div>
                     <table class="overview-table">
                         <thead>
                             <tr>
-                                <th class="col-industry">Industry Group</th>
+                                <th class="col-industry">Industry</th>
                                 <th class="col-rs">RS</th>
                                 <th class="col-tickers">Tickers</th>
                             </tr>
@@ -1493,6 +1539,46 @@
         Renderers.renderAll();
         KeyboardNavigation.init();
         initChartToggle();
+        initSortToggles();
+    }
+
+    function initSortToggles() {
+        function setupToggle(labelId, indId, storageKey, getMode, setMode, onchange) {
+            const label = document.getElementById(labelId);
+            const ind   = document.getElementById(indId);
+            if (!label || !ind) return;
+
+            function updateInd() {
+                ind.textContent = getMode() === 'rs' ? 'r' : 'c';
+                ind.title = getMode() === 'rs' ? 'sorted by RS — click for count' : 'sorted by count — click for RS';
+            }
+
+            updateInd();
+
+            label.addEventListener('click', () => {
+                const next = getMode() === 'rs' ? 'count' : 'rs';
+                setMode(next);
+                localStorage.setItem(storageKey, next);
+                updateInd();
+                onchange();
+            });
+        }
+
+        setupToggle(
+            'sector-sort-label', 'sector-sort-ind',
+            'sectorSortMode',
+            () => AppState.sectorSortMode,
+            m  => { AppState.sectorSortMode = m; },
+            () => Renderers.renderAll()
+        );
+
+        setupToggle(
+            'industry-sort-label', 'industry-sort-ind',
+            'industrySortMode',
+            () => AppState.industrySortMode,
+            m  => { AppState.industrySortMode = m; },
+            () => { Renderers.renderIndustries(); Renderers.renderTickers(); PreviewManager.updatePreview(); }
+        );
     }
 
     function initChartToggle() {
