@@ -11,6 +11,10 @@ path = "src/bin/stock_themes.rs"
 name = "top_stocks"
 path = "src/bin/top_stocks.rs"
 
+[[bin]]
+name = "trade_analyzer"
+path = "src/bin/trade_analyzer.rs"
+
 [profile.release]
 lto = true
 strip = true
