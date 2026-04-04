@@ -15,5 +15,5 @@ http_port = 8000
 [trade_analysis]
 daily_chart_days = 365
 daily_chart_post_days = 15
-hourly_chart_days = 15
+hourly_chart_days = 30
 hourly_chart_post_days = 5

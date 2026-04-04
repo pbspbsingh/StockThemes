@@ -171,6 +171,22 @@ body {
   overflow: hidden;
 }
 
+.chart-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  border: 2px solid #2a2a2a;
+  border-top-color: #4a9eff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  z-index: 10;
+  pointer-events: none;
+}
+@keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
 /* ── Fullscreen backdrop ─────────────────────────────────── */
 .fs-backdrop {
   display: none;
@@ -305,6 +321,11 @@ const TRADES              = {{ trades_json|safe }};
 const BENCHMARK           = {{ benchmark_json|safe }};
 const MIN_HOURLY_CANDLES  = {{ min_hourly_candles }};
 const TZ_OFFSET_SECS      = {{ tz_offset_secs }};
+
+const INDICATOR_COLORS = {
+  SMA10: '#4a9eff', SMA20: '#9c27b0', SMA50: '#ff9800',
+  EMA20: '#ff69b4', EMA65: '#4a9eff', EMA130: '#9c27b0',
+};
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let selectedIdx  = -1;
@@ -489,11 +510,12 @@ async function renderAllCharts(trade, fullscreen) {
   await Promise.all(ids.map(async (id, i) => {
     const cfg     = configs[i];
     const el      = document.getElementById(`${prefix}cc-${id}`);
-    const from    = cfg.isHourly ? trade.hourly_from : trade.daily_from;
-    const to      = cfg.isHourly ? trade.hourly_to   : trade.daily_to;
-    const candles = await fetchCandles(cfg.ticker, cfg.isHourly, from, to);
+    const from     = cfg.isHourly ? trade.hourly_from : trade.daily_from;
+    const to       = cfg.isHourly ? trade.hourly_to   : trade.daily_to;
+    const response = await fetchCandles(cfg.ticker, cfg.isHourly, from, to);
 
-    if (!candles || candles.length === 0) return;
+    if (!response || response.candles.length === 0) return;
+    const candles = response.candles;
 
     const chart = LightweightCharts.createChart(el, {
       ...CHART_OPTIONS,
@@ -532,16 +554,13 @@ async function renderAllCharts(trade, fullscreen) {
       color: c.close >= c.open ? '#26a69a44' : '#ef535044',
     })));
 
-    // Indicators
-    if (!cfg.isHourly) {
-      addSMA(chart, data, 10,  '#4a9eff');
-      addSMA(chart, data, 20,  '#9c27b0');
-      addSMA(chart, data, 50,  '#ff9800');
-    } else {
-      addEMA(chart, data, 20,  '#ff69b4');
-      addEMA(chart, data, 65,  '#4a9eff');
-      addEMA(chart, data, 130, '#9c27b0');
-    }
+    // Indicators (computed server-side)
+    Object.entries(response.indicators).forEach(([name, points]) => {
+      if (!points.length) return;
+      const color = INDICATOR_COLORS[name] || '#888';
+      const s = chart.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      s.setData(points.map(p => ({ time: cfg.isHourly ? p.time : utcTimestampToDate(p.time), value: p.value })));
+    });
 
     const markers = buildMarkers(trade, cfg.isHourly);
     if (markers.length > 0) series.setMarkers(markers);
@@ -582,31 +601,6 @@ async function renderAllCharts(trade, fullscreen) {
       hourlyAvailable ? '' : 'none';
   });
   gridEl.style.gridTemplateColumns = hourlyAvailable ? '' : '1fr';
-}
-
-// ── Indicators ────────────────────────────────────────────────────────────────
-function addSMA(chart, data, period, color) {
-  if (data.length < period) return;
-  const smaData = [];
-  for (let i = period - 1; i < data.length; i++) {
-    const sum = data.slice(i - period + 1, i + 1).reduce((s, d) => s + d.close, 0);
-    smaData.push({ time: data[i].time, value: sum / period });
-  }
-  const s = chart.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-  s.setData(smaData);
-}
-
-function addEMA(chart, data, period, color) {
-  if (data.length < period) return;
-  const k = 2 / (period + 1);
-  let ema = data.slice(0, period).reduce((s, d) => s + d.close, 0) / period;
-  const emaData = [{ time: data[period - 1].time, value: ema }];
-  for (let i = period; i < data.length; i++) {
-    ema = data[i].close * k + ema * (1 - k);
-    emaData.push({ time: data[i].time, value: ema });
-  }
-  const s = chart.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-  s.setData(emaData);
 }
 
 // ── Marker builders ───────────────────────────────────────────────────────────
@@ -672,13 +666,13 @@ async function fetchCandles(ticker, isHourly, from, to) {
 
   try {
     const resp = await fetch(url);
-    if (!resp.ok) return [];
+    if (!resp.ok) return null;
     const data = await resp.json();
     candleCache[key] = data;
     return data;
   } catch(e) {
     console.error('Failed to fetch candles:', e);
-    return [];
+    return null;
   }
 }
 

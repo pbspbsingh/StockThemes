@@ -8,6 +8,7 @@ use axum::{
 };
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::info;
@@ -50,6 +51,57 @@ pub struct CandlePoint {
     volume: u64,
 }
 
+#[derive(Serialize)]
+pub struct IndicatorPoint {
+    time: i64,
+    value: f64,
+}
+
+#[derive(Serialize)]
+pub struct CandleResponse {
+    candles: Vec<CandlePoint>,
+    indicators: HashMap<String, Vec<IndicatorPoint>>,
+}
+
+// ── Indicator computation ─────────────────────────────────────────────────────
+
+fn calc_sma(candles: &[crate::yf::Candle], period: usize, ts_offset: i64) -> Vec<IndicatorPoint> {
+    if candles.len() < period {
+        return vec![];
+    }
+    candles
+        .windows(period)
+        .enumerate()
+        .map(|(i, window)| {
+            let sum: f64 = window.iter().map(|c| c.close).sum();
+            IndicatorPoint {
+                time: candles[i + period - 1].timestamp.timestamp() + ts_offset,
+                value: sum / period as f64,
+            }
+        })
+        .collect()
+}
+
+fn calc_ema(candles: &[crate::yf::Candle], period: usize, ts_offset: i64) -> Vec<IndicatorPoint> {
+    if candles.len() < period {
+        return vec![];
+    }
+    let k = 2.0 / (period as f64 + 1.0);
+    let mut ema: f64 = candles[..period].iter().map(|c| c.close).sum::<f64>() / period as f64;
+    let mut points = vec![IndicatorPoint {
+        time: candles[period - 1].timestamp.timestamp() + ts_offset,
+        value: ema,
+    }];
+    for c in &candles[period..] {
+        ema = c.close * k + ema * (1.0 - k);
+        points.push(IndicatorPoint {
+            time: c.timestamp.timestamp() + ts_offset,
+            value: ema,
+        });
+    }
+    points
+}
+
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 pub async fn home(State(state): State<AppState>) -> impl IntoResponse {
@@ -67,7 +119,19 @@ pub async fn daily_candles(
         DateTime::from_timestamp(q.to, 0).ok_or_else(|| anyhow::anyhow!("Invalid to timestamp"))?;
 
     let candles = crate::fetch_candles(&state.store, &state.yf, &ticker).await?;
-    let points: Vec<CandlePoint> = candles
+
+    let mut indicators: HashMap<String, Vec<IndicatorPoint>> = HashMap::new();
+    for (name, period) in [("SMA10", 10usize), ("SMA20", 20), ("SMA50", 50)] {
+        let full = calc_sma(&candles, period, 0);
+        let from_ts = from.timestamp();
+        let to_ts = to.timestamp();
+        indicators.insert(
+            name.to_string(),
+            full.into_iter().filter(|p| p.time >= from_ts && p.time <= to_ts).collect(),
+        );
+    }
+
+    let candle_points: Vec<CandlePoint> = candles
         .into_iter()
         .filter(|c| c.timestamp >= from && c.timestamp <= to)
         .map(|c| CandlePoint {
@@ -80,7 +144,7 @@ pub async fn daily_candles(
         })
         .collect();
 
-    Ok(Json(points))
+    Ok(Json(CandleResponse { candles: candle_points, indicators }))
 }
 
 pub async fn hourly_candles(
@@ -95,7 +159,13 @@ pub async fn hourly_candles(
 
     let tz_offset = chrono::Local::now().offset().local_minus_utc() as i64;
     let candles = fetch_hourly_candles(&state.store, &state.yf, &ticker, from, to).await?;
-    let points: Vec<CandlePoint> = candles
+
+    let mut indicators: HashMap<String, Vec<IndicatorPoint>> = HashMap::new();
+    for (name, period) in [("EMA20", 20usize), ("EMA65", 65), ("EMA130", 130)] {
+        indicators.insert(name.to_string(), calc_ema(&candles, period, tz_offset));
+    }
+
+    let candle_points: Vec<CandlePoint> = candles
         .into_iter()
         .map(|c| CandlePoint {
             time: c.timestamp.timestamp() + tz_offset,
@@ -107,7 +177,7 @@ pub async fn hourly_candles(
         })
         .collect();
 
-    Ok(Json(points))
+    Ok(Json(CandleResponse { candles: candle_points, indicators }))
 }
 
 // ── Server startup ────────────────────────────────────────────────────────────

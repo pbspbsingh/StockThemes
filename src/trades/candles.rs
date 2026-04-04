@@ -5,8 +5,8 @@ use tracing::info;
 use crate::store::Store;
 use crate::yf::{BarSize, TimeSpec, YFinance};
 
-/// Maximum look-back Yahoo Finance supports for hourly candles (~60 days).
-const HOURLY_MAX_LOOKBACK_DAYS: i64 = 60;
+/// Maximum look-back Yahoo Finance supports for hourly candles
+const HOURLY_MAX_LOOKBACK_DAYS: i64 = 200;
 
 /// Lazily loads hourly candles for `ticker` within `[from, to]`.
 /// Returns cached candles if already present, otherwise fetches from YF and saves.
