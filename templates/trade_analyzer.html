@@ -137,6 +137,7 @@ body {
   transition: background 0.15s;
 }
 .btn:hover { background: #383838; }
+.btn.active { background: #1a3a52; border-color: #4a9eff; color: #4a9eff; }
 
 .chart-placeholder {
   flex: 1;
@@ -268,7 +269,10 @@ body {
   <div class="chart-area">
     <div class="chart-toolbar">
       <div class="chart-title" id="chart-title">Select a trade to view charts</div>
-      <button class="btn" id="fs-btn" onclick="openFullscreen()" style="display:none">⛶ Fullscreen</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn" id="hourly-btn" onclick="toggleHourly()">Hourly</button>
+        <button class="btn" id="fs-btn" onclick="openFullscreen()" style="display:none">⛶ Fullscreen</button>
+      </div>
     </div>
     <div id="chart-placeholder" class="chart-placeholder">← Click a trade row</div>
     <div id="chart-grid" class="chart-grid" style="display:none">
@@ -333,6 +337,7 @@ const renderGen   = { '': 0, 'fs-': 0 };
 let sortCol       = 'date';
 let sortDir       = 'asc';
 let sortedIndices = [];
+let showHourly    = localStorage.getItem('ta:show-hourly') !== 'false';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtPnl(usd, pct) {
@@ -518,7 +523,6 @@ document.getElementById('fs-backdrop').addEventListener('click', e => {
 
 // ── Chart rendering ───────────────────────────────────────────────────────────
 const CHART_OPTIONS = {
-  autoSize: true,
   layout: { background: { color: '#161616' }, textColor: '#888' },
   grid: { vertLines: { color: '#1f1f1f' }, horzLines: { color: '#1f1f1f' } },
   crosshair: { mode: 1 },
@@ -536,6 +540,31 @@ function showSpinner(el) {
 
 function hideSpinner(el) {
   el.querySelector('.chart-spinner')?.remove();
+}
+
+function resizeAllCharts() {
+  Object.values(activeSeries).forEach(({ chart, el }) => {
+    chart.resize(el.clientWidth, el.clientHeight);
+  });
+}
+
+function applyHourlyVisibility(prefix) {
+  const h = activeSeries[prefix + 'hourly-ticker'];
+  const dataOk = !!(h) && h.count >= MIN_HOURLY_CANDLES;
+  const visible = showHourly && dataOk;
+  const gridEl = document.getElementById(prefix ? 'fs-grid' : 'chart-grid');
+  document.getElementById(`${prefix}cc-hourly-ticker`).closest('.chart-panel').style.display =
+    visible ? '' : 'none';
+  gridEl.style.gridTemplateColumns = visible ? '' : '1fr';
+  document.getElementById('hourly-btn').classList.toggle('active', showHourly);
+  requestAnimationFrame(resizeAllCharts);
+}
+
+function toggleHourly() {
+  showHourly = !showHourly;
+  localStorage.setItem('ta:show-hourly', showHourly);
+  applyHourlyVisibility('');
+  if (fsActive) applyHourlyVisibility('fs-');
 }
 
 function destroyChartsInScope(prefix) {
@@ -578,7 +607,9 @@ async function renderAllCharts(trade, fullscreen) {
     if (!response || response.candles.length === 0) return;
     const candles = response.candles;
 
-    const chart = LightweightCharts.createChart(el, CHART_OPTIONS);
+    const chart = LightweightCharts.createChart(el, {
+      ...CHART_OPTIONS, width: el.clientWidth, height: el.clientHeight,
+    });
 
     const series = chart.addCandlestickSeries({
       upColor:          '#22ab94',
@@ -630,18 +661,12 @@ async function renderAllCharts(trade, fullscreen) {
       chart.timeScale().fitContent();
     }
 
-    activeSeries[prefix + id] = { chart, series, count: data.length };
+    activeSeries[prefix + id] = { chart, series, count: data.length, el };
   }));
 
   if (renderGen[prefix] !== gen) return;
 
-  // Hide hourly panels if no data (60-day YF limit), reshape grid to single column
-  const h = activeSeries[prefix + 'hourly-ticker'];
-  const hourlyAvailable = !!(h) && h.count >= MIN_HOURLY_CANDLES;
-  const gridEl = document.getElementById(prefix ? 'fs-grid' : 'chart-grid');
-  document.getElementById(`${prefix}cc-hourly-ticker`).closest('.chart-panel').style.display =
-    hourlyAvailable ? '' : 'none';
-  gridEl.style.gridTemplateColumns = hourlyAvailable ? '' : '1fr';
+  applyHourlyVisibility(prefix);
 }
 
 // ── Marker builders ───────────────────────────────────────────────────────────
@@ -717,7 +742,10 @@ async function fetchCandles(ticker, isHourly, from, to) {
   }
 }
 
+window.addEventListener('resize', resizeAllCharts);
+
 // ── Init ──────────────────────────────────────────────────────────────────────
+document.getElementById('hourly-btn').classList.toggle('active', showHourly);
 renderHeader();
 renderList();
 if (TRADES.length > 0) selectTrade(sortedIndices[0]);
