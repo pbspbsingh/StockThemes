@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Trade Analyzer</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%231a1a1a' rx='4'/><line x1='7' y1='5' x2='7' y2='27' stroke='%2322ab94' stroke-width='1.5'/><rect x='4' y='12' width='6' height='10' fill='%2322ab94' rx='0.5'/><line x1='16' y1='7' x2='16' y2='25' stroke='%23ef5350' stroke-width='1.5'/><rect x='13' y='10' width='6' height='9' fill='%23ef5350' rx='0.5'/><line x1='25' y1='6' x2='25' y2='26' stroke='%2322ab94' stroke-width='1.5'/><rect x='22' y='13' width='6' height='9' fill='%2322ab94' rx='0.5'/></svg>">
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -48,6 +49,16 @@ body {
   letter-spacing: 0.05em;
   flex-shrink: 0;
 }
+.list-header span {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  transition: color 0.1s;
+}
+.list-header span:hover { color: #bbb; }
+.list-header span.sort-active { color: #ccc; }
 .month-separator {
   padding: 4px 10px;
   background: #1a1a1a;
@@ -249,12 +260,7 @@ body {
 
   <!-- Left: trade list -->
   <div class="trade-list">
-    <div class="list-header" id="list-header">
-      <span>Day</span>
-      <span>Ticker</span>
-      <span style="text-align:right">Qty</span>
-      <span style="text-align:right">P&amp;L</span>
-    </div>
+    <div class="list-header" id="list-header"></div>
     <div class="list-body" id="list-body"></div>
   </div>
 
@@ -274,13 +280,9 @@ body {
         <div class="chart-panel-label" id="lbl-hourly-ticker">Hourly — </div>
         <div class="chart-container" id="cc-hourly-ticker"></div>
       </div>
-      <div class="chart-panel">
+      <div class="chart-panel" style="grid-column: 1 / -1">
         <div class="chart-panel-label" id="lbl-daily-bench">Daily — </div>
         <div class="chart-container" id="cc-daily-bench"></div>
-      </div>
-      <div class="chart-panel">
-        <div class="chart-panel-label" id="lbl-hourly-bench">Hourly — </div>
-        <div class="chart-container" id="cc-hourly-bench"></div>
       </div>
     </div>
   </div>
@@ -303,13 +305,9 @@ body {
         <div class="chart-panel-label" id="fs-lbl-hourly-ticker">Hourly — </div>
         <div class="chart-container" id="fs-cc-hourly-ticker"></div>
       </div>
-      <div class="chart-panel">
+      <div class="chart-panel" style="grid-column: 1 / -1">
         <div class="chart-panel-label" id="fs-lbl-daily-bench">Daily — </div>
         <div class="chart-container" id="fs-cc-daily-bench"></div>
-      </div>
-      <div class="chart-panel">
-        <div class="chart-panel-label" id="fs-lbl-hourly-bench">Hourly — </div>
-        <div class="chart-container" id="fs-cc-hourly-bench"></div>
       </div>
     </div>
   </div>
@@ -328,9 +326,13 @@ const INDICATOR_COLORS = {
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let selectedIdx  = -1;
-let activeSeries = {};   // { id: { chart, series } }
-let fsActive     = false;
+let selectedIdx   = -1;
+let activeSeries  = {};   // { id: { chart, series } }
+let fsActive      = false;
+const renderGen   = { '': 0, 'fs-': 0 };
+let sortCol       = 'date';
+let sortDir       = 'asc';
+let sortedIndices = [];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtPnl(usd, pct) {
@@ -340,13 +342,66 @@ function fmtPnl(usd, pct) {
   return { text: `${sign}$${usd.toFixed(2)}`, cls };
 }
 
+// ── Sort ──────────────────────────────────────────────────────────────────────
+const SORT_DEFAULTS = { date: 'asc', ticker: 'asc', qty: 'desc', pnl: 'desc' };
+
+function getSortedIndices() {
+  const indices = TRADES.map((_, i) => i);
+  if (sortCol === 'date') {
+    return sortDir === 'asc' ? indices : indices.reverse();
+  }
+  return indices.sort((a, b) => {
+    const ta = TRADES[a], tb = TRADES[b];
+    let va, vb;
+    if      (sortCol === 'ticker') { va = ta.ticker;              vb = tb.ticker; }
+    else if (sortCol === 'qty')    { va = ta.qty;                 vb = tb.qty; }
+    else if (sortCol === 'pnl')    { va = ta.pnl_usd ?? -Infinity; vb = tb.pnl_usd ?? -Infinity; }
+    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return sortDir === 'asc' ?  1 : -1;
+    return 0;
+  });
+}
+
+function onSortClick(col) {
+  if (sortCol === col) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortCol = col;
+    sortDir = SORT_DEFAULTS[col];
+  }
+  renderHeader();
+  renderList();
+}
+
 // ── Build trade list ──────────────────────────────────────────────────────────
-function buildList() {
+function renderHeader() {
+  const cols = [
+    { key: 'date',   label: 'Day',   style: '' },
+    { key: 'ticker', label: 'Ticker', style: '' },
+    { key: 'qty',    label: 'Qty',   style: 'justify-self:end;flex-direction:row-reverse' },
+    { key: 'pnl',    label: 'P&amp;L', style: 'justify-self:end;flex-direction:row-reverse' },
+  ];
+  document.getElementById('list-header').innerHTML = cols.map(col => {
+    const isActive = sortCol === col.key;
+    const icon     = isActive ? (sortDir === 'asc' ? '↑' : '↓') : '⇅';
+    const iconStyle = `font-size:9px;${isActive ? 'color:#4a9eff' : 'opacity:0.25'}`;
+    return `<span class="${isActive ? 'sort-active' : ''}" style="${col.style}" onclick="onSortClick('${col.key}')">
+      ${col.label}<span style="${iconStyle}">${icon}</span>
+    </span>`;
+  }).join('');
+}
+
+function renderList() {
+  sortedIndices = getSortedIndices();
+  const showSeparators = sortCol === 'date' && sortDir === 'asc';
   const body = document.getElementById('list-body');
+  body.innerHTML = '';
   let lastMonth = null;
 
-  TRADES.forEach((t, i) => {
-    if (t.month_label !== lastMonth) {
+  sortedIndices.forEach(origIdx => {
+    const t = TRADES[origIdx];
+
+    if (showSeparators && t.month_label !== lastMonth) {
       const sep = document.createElement('div');
       sep.className = 'month-separator';
       sep.textContent = t.month_label;
@@ -354,12 +409,12 @@ function buildList() {
       lastMonth = t.month_label;
     }
 
-    const pnl = fmtPnl(t.pnl_usd, t.pnl_pct);
+    const pnl = fmtPnl(t.pnl_usd);
     const row = document.createElement('div');
-    row.className = 'trade-row';
-    row.dataset.idx = i;
+    row.className = 'trade-row' + (origIdx === selectedIdx ? ' selected' : '');
+    row.dataset.idx = origIdx;
 
-    const dotCls = t.status === 'OPEN' ? 'open' : 'closed';
+    const dotCls      = t.status === 'OPEN' ? 'open' : 'closed';
     const tickerColor = t.is_long ? '#22ab94' : '#ef5350';
     row.innerHTML = `
       <span class="col-day">${t.day_label}</span>
@@ -369,13 +424,13 @@ function buildList() {
       <span style="text-align:right;font-size:11px;color:#888">${t.qty}</span>
       <span class="col-pnl ${pnl.cls}">${pnl.text}</span>`;
 
-    row.addEventListener('click', () => selectTrade(i));
+    row.addEventListener('click', () => selectTrade(origIdx));
     body.appendChild(row);
   });
 
   const closedTrades = TRADES.filter(t => t.pnl_usd != null);
-  const netPnl = closedTrades.reduce((sum, t) => sum + t.pnl_usd, 0);
-  const netCls = netPnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+  const netPnl  = closedTrades.reduce((sum, t) => sum + t.pnl_usd, 0);
+  const netCls  = netPnl >= 0 ? 'pnl-pos' : 'pnl-neg';
   const netText = (netPnl >= 0 ? '+' : '') + '$' + netPnl.toFixed(2);
   const summary = document.createElement('div');
   summary.className = 'trade-row';
@@ -423,18 +478,22 @@ function updateChartTitle(t) {
   document.getElementById('chart-title').innerHTML =
     `<span>${t.ticker}</span>
      &nbsp;<span style="color:${sideColor};font-size:11px;font-weight:600">${side}</span>
-     &nbsp;${t.day_label} &nbsp;
-     <span style="color:#888;font-size:11px">${t.qty} shares</span> &nbsp;
-     <span style="color:${pnlColor};font-size:12px;font-weight:600">${pnl.text}</span>
-     &nbsp;<span style="color:#666;font-size:11px">${t.duration}</span>`;
+     &nbsp;<span style="color:#888;font-size:11px">${t.qty} shares</span>
+     &nbsp;<span style="color:#666;font-size:11px">${t.open_date}</span>
+     &nbsp;<span style="color:#666;font-size:11px">(${t.duration})</span>
+     &nbsp;<span style="color:${pnlColor};font-size:12px;font-weight:600">${pnl.text}</span>`;
   const fsTitle = document.getElementById('fs-title');
   fsTitle.innerHTML = document.getElementById('chart-title').innerHTML;
 }
 
 // ── Keyboard navigation ───────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (e.key === 'ArrowDown') { e.preventDefault(); selectTrade(selectedIdx + 1); }
-  if (e.key === 'ArrowUp')   { e.preventDefault(); selectTrade(selectedIdx - 1); }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const pos     = sortedIndices.indexOf(selectedIdx);
+    const nextPos = e.key === 'ArrowDown' ? pos + 1 : pos - 1;
+    if (nextPos >= 0 && nextPos < sortedIndices.length) selectTrade(sortedIndices[nextPos]);
+  }
   if (e.key === 'Escape' && fsActive) closeFullscreen();
 });
 
@@ -459,6 +518,7 @@ document.getElementById('fs-backdrop').addEventListener('click', e => {
 
 // ── Chart rendering ───────────────────────────────────────────────────────────
 const CHART_OPTIONS = {
+  autoSize: true,
   layout: { background: { color: '#161616' }, textColor: '#888' },
   grid: { vertLines: { color: '#1f1f1f' }, horzLines: { color: '#1f1f1f' } },
   crosshair: { mode: 1 },
@@ -468,19 +528,18 @@ const CHART_OPTIONS = {
   handleScale: true,
 };
 
-// ── Zoom persistence ──────────────────────────────────────────────────────────
-function saveZoom(isHourly, range) {
-  if (!range) return;
-  localStorage.setItem(isHourly ? 'ta:zoom:hourly' : 'ta:zoom:daily', JSON.stringify(range));
+function showSpinner(el) {
+  const s = document.createElement('div');
+  s.className = 'chart-spinner';
+  el.appendChild(s);
 }
 
-function loadZoom(isHourly) {
-  const s = localStorage.getItem(isHourly ? 'ta:zoom:hourly' : 'ta:zoom:daily');
-  return s ? JSON.parse(s) : null;
+function hideSpinner(el) {
+  el.querySelector('.chart-spinner')?.remove();
 }
 
 function destroyChartsInScope(prefix) {
-  ['daily-ticker','hourly-ticker','daily-bench','hourly-bench'].forEach(id => {
+  ['daily-ticker','hourly-ticker','daily-bench'].forEach(id => {
     const key = prefix + id;
     if (activeSeries[key]) {
       try { activeSeries[key].chart.remove(); } catch(_) {}
@@ -492,36 +551,34 @@ function destroyChartsInScope(prefix) {
 async function renderAllCharts(trade, fullscreen) {
   const prefix = fullscreen ? 'fs-' : '';
   destroyChartsInScope(prefix);
+  const gen = ++renderGen[prefix];
 
-  const ids = ['daily-ticker','hourly-ticker','daily-bench','hourly-bench'];
+  const ids = ['daily-ticker','hourly-ticker','daily-bench'];
   const configs = [
-    { ticker: trade.ticker,  isHourly: false },
-    { ticker: trade.ticker,  isHourly: true  },
-    { ticker: BENCHMARK,     isHourly: false },
-    { ticker: BENCHMARK,     isHourly: true  },
+    { ticker: trade.ticker, isHourly: false },
+    { ticker: trade.ticker, isHourly: true  },
+    { ticker: BENCHMARK,    isHourly: false },
   ];
 
   // Update labels
   document.getElementById(`${prefix}lbl-daily-ticker`).textContent  = `Daily — ${trade.ticker}`;
   document.getElementById(`${prefix}lbl-hourly-ticker`).textContent = `Hourly — ${trade.ticker}`;
   document.getElementById(`${prefix}lbl-daily-bench`).textContent   = `Daily — ${BENCHMARK}`;
-  document.getElementById(`${prefix}lbl-hourly-bench`).textContent  = `Hourly — ${BENCHMARK}`;
 
   await Promise.all(ids.map(async (id, i) => {
     const cfg     = configs[i];
     const el      = document.getElementById(`${prefix}cc-${id}`);
     const from     = cfg.isHourly ? trade.hourly_from : trade.daily_from;
     const to       = cfg.isHourly ? trade.hourly_to   : trade.daily_to;
+    showSpinner(el);
     const response = await fetchCandles(cfg.ticker, cfg.isHourly, from, to);
+    hideSpinner(el);
 
+    if (renderGen[prefix] !== gen) return;
     if (!response || response.candles.length === 0) return;
     const candles = response.candles;
 
-    const chart = LightweightCharts.createChart(el, {
-      ...CHART_OPTIONS,
-      width:  el.clientWidth,
-      height: el.clientHeight,
-    });
+    const chart = LightweightCharts.createChart(el, CHART_OPTIONS);
 
     const series = chart.addCandlestickSeries({
       upColor:          '#22ab94',
@@ -565,41 +622,25 @@ async function renderAllCharts(trade, fullscreen) {
     const markers = buildMarkers(trade, cfg.isHourly);
     if (markers.length > 0) series.setMarkers(markers);
 
-    chart.timeScale().fitContent();
-    const savedZoom = loadZoom(cfg.isHourly);
     try {
-      if (savedZoom) {
-        chart.timeScale().setVisibleRange(savedZoom);
-      } else {
-        const from = cfg.isHourly ? trade.hourly_from + TZ_OFFSET_SECS : utcTimestampToDate(trade.daily_from);
-        const to   = cfg.isHourly ? trade.hourly_to   + TZ_OFFSET_SECS : utcTimestampToDate(trade.daily_to);
-        chart.timeScale().setVisibleRange({ from, to });
-      }
-    } catch(_) {}
-
-    if (cfg.ticker !== BENCHMARK) {
-      requestAnimationFrame(() => {
-        chart.timeScale().subscribeVisibleTimeRangeChange(range => saveZoom(cfg.isHourly, range));
-      });
+      const from = cfg.isHourly ? trade.hourly_from + TZ_OFFSET_SECS : utcTimestampToDate(trade.daily_from);
+      const to   = cfg.isHourly ? trade.hourly_to   + TZ_OFFSET_SECS : utcTimestampToDate(trade.daily_to);
+      chart.timeScale().setVisibleRange({ from, to });
+    } catch(_) {
+      chart.timeScale().fitContent();
     }
 
     activeSeries[prefix + id] = { chart, series, count: data.length };
-
-    // Resize observer
-    const ro = new ResizeObserver(() => {
-      chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
-    });
-    ro.observe(el);
   }));
+
+  if (renderGen[prefix] !== gen) return;
 
   // Hide hourly panels if no data (60-day YF limit), reshape grid to single column
   const h = activeSeries[prefix + 'hourly-ticker'];
   const hourlyAvailable = !!(h) && h.count >= MIN_HOURLY_CANDLES;
   const gridEl = document.getElementById(prefix ? 'fs-grid' : 'chart-grid');
-  ['hourly-ticker', 'hourly-bench'].forEach(id => {
-    document.getElementById(`${prefix}cc-${id}`).closest('.chart-panel').style.display =
-      hourlyAvailable ? '' : 'none';
-  });
+  document.getElementById(`${prefix}cc-hourly-ticker`).closest('.chart-panel').style.display =
+    hourlyAvailable ? '' : 'none';
   gridEl.style.gridTemplateColumns = hourlyAvailable ? '' : '1fr';
 }
 
@@ -677,8 +718,9 @@ async function fetchCandles(ticker, isHourly, from, to) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-buildList();
-if (TRADES.length > 0) selectTrade(0);
+renderHeader();
+renderList();
+if (TRADES.length > 0) selectTrade(sortedIndices[0]);
 </script>
 </body>
 </html>
