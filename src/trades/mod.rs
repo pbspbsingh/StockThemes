@@ -209,7 +209,7 @@ pub fn build_views(trades: &[Trade], cfg: &crate::config::TradeAnalysisConfig) -
                 open_date: trade
                     .open_time
                     .with_timezone(&Local)
-                    .format("%Y-%m-%d %H:%M:%S")
+                    .format("%H:%M")
                     .to_string(),
                 month_label: trade
                     .open_time

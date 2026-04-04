@@ -1,13 +1,12 @@
 use anyhow::{Context, anyhow};
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
-use chrono_tz::America::New_York;
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use std::collections::HashMap;
 
 use super::{Fill, PosEffect, Side, Trade};
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
-/// Parse a ThinkorSwim datetime string (Eastern Time) and return UTC.
+/// Parse a ThinkorSwim datetime string (local time) and return UTC.
 pub fn parse_datetime(s: &str) -> anyhow::Result<DateTime<Utc>> {
     let s = s.trim();
     let (date_str, time_str) = s
@@ -27,11 +26,11 @@ pub fn parse_datetime(s: &str) -> anyhow::Result<DateTime<Utc>> {
     let time = NaiveTime::parse_from_str(time_str.trim(), "%H:%M:%S")
         .with_context(|| format!("Invalid time '{time_str}'"))?;
     let naive = NaiveDateTime::new(date, time);
-    New_York
+    Local
         .from_local_datetime(&naive)
         .single()
         .map(|dt| dt.with_timezone(&Utc))
-        .ok_or_else(|| anyhow!("Ambiguous or invalid ET datetime '{s}'"))
+        .ok_or_else(|| anyhow!("Ambiguous or invalid local datetime '{s}'"))
 }
 
 pub fn parse_csv_line(line: &str) -> Vec<String> {
