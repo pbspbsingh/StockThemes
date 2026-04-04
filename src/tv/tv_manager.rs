@@ -6,10 +6,10 @@ use crate::tv::top_stocks_fetcher::TopStocksFetcher;
 use crate::{Performance, Stock, TickerType};
 use chrome_driver::{Browser, ChromeDriverConfig, Page, PageFeatures};
 use itertools::Itertools;
-use tracing::info;
 use std::collections::HashMap;
 use std::slice;
 use std::sync::Arc;
+use tracing::info;
 
 pub struct TvManager {
     store: Arc<Store>,

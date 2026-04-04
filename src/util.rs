@@ -2,12 +2,12 @@ use anyhow::Context;
 use chrono::{DateTime, Datelike, Local, TimeDelta, Weekday};
 use futures::stream;
 use itertools::Itertools;
-use tracing::{debug, info};
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
 };
 use tokio::fs;
+use tracing::{debug, info};
 
 use futures::{StreamExt, TryStreamExt};
 

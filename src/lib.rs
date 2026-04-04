@@ -6,11 +6,11 @@ use anyhow::Context;
 use axum::response::Html;
 use axum::{Router, routing};
 use chrono::{DateTime, Local, Months, NaiveDate, TimeDelta, Utc};
-use tracing::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use tokio::net::TcpListener;
+use tracing::{debug, info, trace};
 
 pub mod config;
 mod etf_map;

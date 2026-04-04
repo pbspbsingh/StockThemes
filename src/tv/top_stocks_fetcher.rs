@@ -148,7 +148,6 @@ impl<'a> TopStocksFetcher<'a> {
             .await
             .context("Failed to add IndustryGroup column")?;
 
-
         info!("[{sort_by}] Querying rows from the table");
         let mut result = Vec::new();
         for row in self

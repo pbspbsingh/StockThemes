@@ -1,18 +1,17 @@
 use anyhow::Context;
 use clap::Parser;
-use tracing::info;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
+use tracing::info;
 
 use stock_themes::config::APP_CONFIG;
+use stock_themes::init_logger;
 use stock_themes::store::Store;
 use stock_themes::trades::build_views;
 use stock_themes::trades::parser::{parse_tos_csv, trades_to_csv};
 use stock_themes::trades::routes::start_server;
 use stock_themes::yf::YFinance;
-use stock_themes::init_logger;
-use stock_themes::trades::candles::prefetch_all;
 
 #[derive(Parser, Debug)]
 #[command(name = "trade_analyzer")]
@@ -36,7 +35,11 @@ async fn main() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("Cannot read '{}'", args.input.display()))?;
     let trades = parse_tos_csv(&content);
-    info!("Parsed {} trades from {}", trades.len(), args.input.display());
+    info!(
+        "Parsed {} trades from {}",
+        trades.len(),
+        args.input.display()
+    );
 
     // Write analysis CSV
     let csv = trades_to_csv(&trades);
@@ -50,16 +53,12 @@ async fn main() -> anyhow::Result<()> {
         args.output.display()
     );
 
-    // Build views + candle windows
+    // Build views
     let benchmark = APP_CONFIG.base_ticker.to_uppercase();
-    let views = build_views(&trades, &benchmark, &APP_CONFIG.trade_analysis);
+    let views = build_views(&trades, &APP_CONFIG.trade_analysis);
 
-    // Prefetch all candle data (gap-free)
     let store = Store::load_store().await?;
-    let yf    = Arc::new(YFinance::new());
-    info!("Prefetching candles for {} tickers...", views.tickers.len());
-    prefetch_all(&store, &yf, &views.tickers, &views.daily_windows, &views.hourly_windows).await?;
-    info!("Candle prefetch complete");
+    let yf = Arc::new(YFinance::new());
 
     // Start web server
     start_server(store, yf, views.trade_views, &benchmark).await

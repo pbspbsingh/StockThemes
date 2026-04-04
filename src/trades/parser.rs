@@ -1,12 +1,14 @@
 use anyhow::{Context, anyhow};
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
+use chrono_tz::America::New_York;
 use std::collections::HashMap;
 
 use super::{Fill, PosEffect, Side, Trade};
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
-pub fn parse_datetime(s: &str) -> anyhow::Result<NaiveDateTime> {
+/// Parse a ThinkorSwim datetime string (Eastern Time) and return UTC.
+pub fn parse_datetime(s: &str) -> anyhow::Result<DateTime<Utc>> {
     let s = s.trim();
     let (date_str, time_str) = s
         .split_once(' ')
@@ -14,12 +16,22 @@ pub fn parse_datetime(s: &str) -> anyhow::Result<NaiveDateTime> {
     let mut parts = date_str.split('/');
     let month: u32 = parts.next().context("missing month")?.trim().parse()?;
     let day: u32 = parts.next().context("missing day")?.trim().parse()?;
-    let year: i32 = parts.next().context("missing year")?.trim().parse::<i32>()? + 2000;
+    let year: i32 = parts
+        .next()
+        .context("missing year")?
+        .trim()
+        .parse::<i32>()?
+        + 2000;
     let date = NaiveDate::from_ymd_opt(year, month, day)
         .ok_or_else(|| anyhow!("Invalid date in '{s}'"))?;
     let time = NaiveTime::parse_from_str(time_str.trim(), "%H:%M:%S")
         .with_context(|| format!("Invalid time '{time_str}'"))?;
-    Ok(NaiveDateTime::new(date, time))
+    let naive = NaiveDateTime::new(date, time);
+    New_York
+        .from_local_datetime(&naive)
+        .single()
+        .map(|dt| dt.with_timezone(&Utc))
+        .ok_or_else(|| anyhow!("Ambiguous or invalid ET datetime '{s}'"))
 }
 
 pub fn parse_csv_line(line: &str) -> Vec<String> {
@@ -159,7 +171,14 @@ pub fn parse_tos_csv(content: &str) -> Vec<Trade> {
                     Ok(p) => p,
                     Err(_) => continue,
                 };
-                fills.push(Fill { exec_time, side, qty, pos_effect, symbol, price });
+                fills.push(Fill {
+                    exec_time,
+                    side,
+                    qty,
+                    pos_effect,
+                    symbol,
+                    price,
+                });
             }
             Section::Other => {}
         }
@@ -195,7 +214,11 @@ pub fn parse_tos_csv(content: &str) -> Vec<Trade> {
                 open_qty += fill.qty;
             }
 
-            net += if fill.side == Side::Buy { fill.qty as i64 } else { -(fill.qty as i64) };
+            net += if fill.side == Side::Buy {
+                fill.qty as i64
+            } else {
+                -(fill.qty as i64)
+            };
 
             if net == 0 {
                 let open_time = current
@@ -277,7 +300,9 @@ pub fn trades_to_csv(trades: &[Trade]) -> String {
         out.push_str(&format!(
             "{},{},{},{},{},{},{}\n",
             t.ticker,
-            t.open_time.format("%Y-%m-%d %H:%M:%S"),
+            t.open_time
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M:%S"),
             t.qty,
             status,
             t.duration_str(),

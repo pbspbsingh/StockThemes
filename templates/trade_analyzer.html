@@ -19,19 +19,6 @@ body {
   flex-direction: column;
 }
 
-/* ── Top bar ─────────────────────────────────────────────── */
-.topbar {
-  background: #1e1e1e;
-  border-bottom: 1px solid #333;
-  padding: 8px 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-.topbar-title { font-size: 15px; font-weight: 600; color: #ccc; }
-.topbar-count { color: #666; font-size: 12px; }
-
 /* ── Main layout ─────────────────────────────────────────── */
 .layout {
   display: flex;
@@ -51,7 +38,7 @@ body {
 
 .list-header {
   display: grid;
-  grid-template-columns: 80px 1fr 70px;
+  grid-template-columns: 80px 1fr 40px 70px;
   padding: 6px 10px;
   background: #1e1e1e;
   border-bottom: 1px solid #333;
@@ -61,7 +48,15 @@ body {
   letter-spacing: 0.05em;
   flex-shrink: 0;
 }
-.list-header.show-month { grid-template-columns: 60px 80px 1fr 70px; }
+.month-separator {
+  padding: 4px 10px;
+  background: #1a1a1a;
+  border-top: 1px solid #2a2a2a;
+  color: #666;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 
 .list-body {
   overflow-y: auto;
@@ -73,14 +68,13 @@ body {
 
 .trade-row {
   display: grid;
-  grid-template-columns: 80px 1fr 70px;
+  grid-template-columns: 80px 1fr 40px 70px;
   padding: 7px 10px;
   cursor: pointer;
   border-bottom: 1px solid #1f1f1f;
   transition: background 0.1s;
   align-items: center;
 }
-.trade-row.show-month { grid-template-columns: 60px 80px 1fr 70px; }
 .trade-row:hover { background: #202020; }
 .trade-row.selected {
   background: #1a3a52;
@@ -235,11 +229,6 @@ body {
 </head>
 <body>
 
-<div class="topbar">
-  <span class="topbar-title">Trade Analyzer</span>
-  <span class="topbar-count" id="topbar-count"></span>
-</div>
-
 <div class="layout">
 
   <!-- Left: trade list -->
@@ -247,6 +236,7 @@ body {
     <div class="list-header" id="list-header">
       <span>Day</span>
       <span>Ticker</span>
+      <span style="text-align:right">Qty</span>
       <span style="text-align:right">P&amp;L</span>
     </div>
     <div class="list-body" id="list-body"></div>
@@ -311,8 +301,10 @@ body {
 
 <script>
 // ── Injected data ─────────────────────────────────────────────────────────────
-const TRADES    = {{ trades_json|safe }};
-const BENCHMARK = {{ benchmark_json|safe }};
+const TRADES              = {{ trades_json|safe }};
+const BENCHMARK           = {{ benchmark_json|safe }};
+const MIN_HOURLY_CANDLES  = {{ min_hourly_candles }};
+const TZ_OFFSET_SECS      = {{ tz_offset_secs }};
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let selectedIdx  = -1;
@@ -327,46 +319,52 @@ function fmtPnl(usd, pct) {
   return { text: `${sign}$${usd.toFixed(2)}`, cls };
 }
 
-// ── Determine whether to show Month column ────────────────────────────────────
-const months = new Set(TRADES.map(t => t.month_label));
-const showMonth = months.size > 1;
-
 // ── Build trade list ──────────────────────────────────────────────────────────
 function buildList() {
-  document.getElementById('topbar-count').textContent =
-    `${TRADES.length} trades`;
-
-  const header = document.getElementById('list-header');
-  if (showMonth) {
-    header.classList.add('show-month');
-    header.innerHTML = `
-      <span>Month</span><span>Day</span>
-      <span>Ticker</span>
-      <span style="text-align:right">P&L</span>`;
-  }
-
   const body = document.getElementById('list-body');
+  let lastMonth = null;
+
   TRADES.forEach((t, i) => {
+    if (t.month_label !== lastMonth) {
+      const sep = document.createElement('div');
+      sep.className = 'month-separator';
+      sep.textContent = t.month_label;
+      body.appendChild(sep);
+      lastMonth = t.month_label;
+    }
+
     const pnl = fmtPnl(t.pnl_usd, t.pnl_pct);
     const row = document.createElement('div');
-    row.className = 'trade-row' + (showMonth ? ' show-month' : '');
+    row.className = 'trade-row';
     row.dataset.idx = i;
 
     const dotCls = t.status === 'OPEN' ? 'open' : 'closed';
-    const monthCell = showMonth
-      ? `<span class="col-month">${t.month_label.split(' ')[0].slice(0,3)}</span>` : '';
-
+    const tickerColor = t.is_long ? '#22ab94' : '#ef5350';
     row.innerHTML = `
-      ${monthCell}
       <span class="col-day">${t.day_label}</span>
-      <span class="col-ticker">
+      <span class="col-ticker" style="color:${tickerColor}">
         <span class="status-dot ${dotCls}"></span>${t.ticker}
       </span>
+      <span style="text-align:right;font-size:11px;color:#888">${t.qty}</span>
       <span class="col-pnl ${pnl.cls}">${pnl.text}</span>`;
 
     row.addEventListener('click', () => selectTrade(i));
     body.appendChild(row);
   });
+
+  const closedTrades = TRADES.filter(t => t.pnl_usd != null);
+  const netPnl = closedTrades.reduce((sum, t) => sum + t.pnl_usd, 0);
+  const netCls = netPnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+  const netText = (netPnl >= 0 ? '+' : '') + '$' + netPnl.toFixed(2);
+  const summary = document.createElement('div');
+  summary.className = 'trade-row';
+  summary.style.cssText = 'border-top:1px solid #444;cursor:default';
+  summary.innerHTML = `
+    <span class="col-day" style="color:#888;font-size:11px">Total</span>
+    <span class="col-ticker" style="color:#aaa">${TRADES.length} trades</span>
+    <span></span>
+    <span class="col-pnl ${netCls}">${netText}</span>`;
+  body.appendChild(summary);
 }
 
 // ── Select a trade ────────────────────────────────────────────────────────────
@@ -398,9 +396,15 @@ function selectTrade(idx) {
 
 function updateChartTitle(t) {
   const pnl = fmtPnl(t.pnl_usd, t.pnl_pct);
+  const pnlColor  = pnl.cls === 'pnl-pos' ? '#22ab94' : pnl.cls === 'pnl-neg' ? '#ef5350' : '#888';
+  const side      = t.is_long ? 'LONG' : 'SHORT';
+  const sideColor = t.is_long ? '#22ab94' : '#ef5350';
   document.getElementById('chart-title').innerHTML =
-    `<span>${t.ticker}</span> &nbsp;${t.day_label} &nbsp;
-     <span class="${pnl.cls}" style="font-size:12px">${pnl.text}</span>
+    `<span>${t.ticker}</span>
+     &nbsp;<span style="color:${sideColor};font-size:11px;font-weight:600">${side}</span>
+     &nbsp;${t.day_label} &nbsp;
+     <span style="color:#888;font-size:11px">${t.qty} shares</span> &nbsp;
+     <span style="color:${pnlColor};font-size:12px;font-weight:600">${pnl.text}</span>
      &nbsp;<span style="color:#666;font-size:11px">${t.duration}</span>`;
   const fsTitle = document.getElementById('fs-title');
   fsTitle.innerHTML = document.getElementById('chart-title').innerHTML;
@@ -442,6 +446,17 @@ const CHART_OPTIONS = {
   handleScroll: true,
   handleScale: true,
 };
+
+// ── Zoom persistence ──────────────────────────────────────────────────────────
+function saveZoom(isHourly, range) {
+  if (!range) return;
+  localStorage.setItem(isHourly ? 'ta:zoom:hourly' : 'ta:zoom:daily', JSON.stringify(range));
+}
+
+function loadZoom(isHourly) {
+  const s = localStorage.getItem(isHourly ? 'ta:zoom:hourly' : 'ta:zoom:daily');
+  return s ? JSON.parse(s) : null;
+}
 
 function destroyChartsInScope(prefix) {
   ['daily-ticker','hourly-ticker','daily-bench','hourly-bench'].forEach(id => {
@@ -493,6 +508,7 @@ async function renderAllCharts(trade, fullscreen) {
       borderDownColor:  '#ef5350',
       wickUpColor:      '#22ab94',
       wickDownColor:    '#ef5350',
+      priceLineVisible: false,
     });
 
     const data = candles.map(c => ({
@@ -504,16 +520,51 @@ async function renderAllCharts(trade, fullscreen) {
     }));
     series.setData(data);
 
-    // Markers only on ticker charts (not benchmark)
-    if (cfg.ticker === trade.ticker) {
-      const markers = buildMarkers(trade, cfg.isHourly);
-      if (markers.length > 0) series.setMarkers(markers);
+    // Volume
+    const volSeries = chart.addHistogramSeries({
+      priceScaleId: 'vol', priceFormat: { type: 'volume' },
+      lastValueVisible: false, priceLineVisible: false,
+    });
+    chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+    volSeries.setData(candles.map((c, i) => ({
+      time:  data[i].time,
+      value: c.volume,
+      color: c.close >= c.open ? '#26a69a44' : '#ef535044',
+    })));
+
+    // Indicators
+    if (!cfg.isHourly) {
+      addSMA(chart, data, 10,  '#4a9eff');
+      addSMA(chart, data, 20,  '#9c27b0');
+      addSMA(chart, data, 50,  '#ff9800');
+    } else {
+      addEMA(chart, data, 20,  '#ff69b4');
+      addEMA(chart, data, 65,  '#4a9eff');
+      addEMA(chart, data, 130, '#9c27b0');
     }
 
-    // Fit to window then scroll to show trade period
-    chart.timeScale().fitContent();
+    const markers = buildMarkers(trade, cfg.isHourly);
+    if (markers.length > 0) series.setMarkers(markers);
 
-    activeSeries[prefix + id] = { chart, series };
+    chart.timeScale().fitContent();
+    const savedZoom = loadZoom(cfg.isHourly);
+    try {
+      if (savedZoom) {
+        chart.timeScale().setVisibleRange(savedZoom);
+      } else {
+        const from = cfg.isHourly ? trade.hourly_from + TZ_OFFSET_SECS : utcTimestampToDate(trade.daily_from);
+        const to   = cfg.isHourly ? trade.hourly_to   + TZ_OFFSET_SECS : utcTimestampToDate(trade.daily_to);
+        chart.timeScale().setVisibleRange({ from, to });
+      }
+    } catch(_) {}
+
+    if (cfg.ticker !== BENCHMARK) {
+      requestAnimationFrame(() => {
+        chart.timeScale().subscribeVisibleTimeRangeChange(range => saveZoom(cfg.isHourly, range));
+      });
+    }
+
+    activeSeries[prefix + id] = { chart, series, count: data.length };
 
     // Resize observer
     const ro = new ResizeObserver(() => {
@@ -521,18 +572,56 @@ async function renderAllCharts(trade, fullscreen) {
     });
     ro.observe(el);
   }));
+
+  // Hide hourly panels if no data (60-day YF limit), reshape grid to single column
+  const h = activeSeries[prefix + 'hourly-ticker'];
+  const hourlyAvailable = !!(h) && h.count >= MIN_HOURLY_CANDLES;
+  const gridEl = document.getElementById(prefix ? 'fs-grid' : 'chart-grid');
+  ['hourly-ticker', 'hourly-bench'].forEach(id => {
+    document.getElementById(`${prefix}cc-${id}`).closest('.chart-panel').style.display =
+      hourlyAvailable ? '' : 'none';
+  });
+  gridEl.style.gridTemplateColumns = hourlyAvailable ? '' : '1fr';
+}
+
+// ── Indicators ────────────────────────────────────────────────────────────────
+function addSMA(chart, data, period, color) {
+  if (data.length < period) return;
+  const smaData = [];
+  for (let i = period - 1; i < data.length; i++) {
+    const sum = data.slice(i - period + 1, i + 1).reduce((s, d) => s + d.close, 0);
+    smaData.push({ time: data[i].time, value: sum / period });
+  }
+  const s = chart.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+  s.setData(smaData);
+}
+
+function addEMA(chart, data, period, color) {
+  if (data.length < period) return;
+  const k = 2 / (period + 1);
+  let ema = data.slice(0, period).reduce((s, d) => s + d.close, 0) / period;
+  const emaData = [{ time: data[period - 1].time, value: ema }];
+  for (let i = period; i < data.length; i++) {
+    ema = data[i].close * k + ema * (1 - k);
+    emaData.push({ time: data[i].time, value: ema });
+  }
+  const s = chart.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+  s.setData(emaData);
 }
 
 // ── Marker builders ───────────────────────────────────────────────────────────
 function buildMarkers(trade, isHourly) {
   const markers = [];
+  const entryColor = trade.is_long ? '#22ab94' : '#ef5350';
+  const exitColor  = trade.is_long ? '#ef5350' : '#22ab94';
 
   // Entries: one per fill, no dedup
-  for (const m of trade.entry_markers) {
+  const entryList = isHourly ? trade.entry_markers_hourly : trade.entry_markers;
+  for (const m of entryList) {
     markers.push({
       time:     isHourly ? m.time : utcTimestampToDate(m.time),
       position: trade.is_long ? 'belowBar' : 'aboveBar',
-      color:    '#22ab94',
+      color:    entryColor,
       shape:    trade.is_long ? 'arrowUp' : 'arrowDown',
       text:     `E +${m.qty} @${m.price.toFixed(2)}`,
       size:     1,
@@ -545,7 +634,7 @@ function buildMarkers(trade, isHourly) {
     markers.push({
       time:     isHourly ? m.time : utcTimestampToDate(m.time),
       position: trade.is_long ? 'aboveBar' : 'belowBar',
-      color:    '#ef5350',
+      color:    exitColor,
       shape:    trade.is_long ? 'arrowDown' : 'arrowUp',
       text:     `X ${m.qty} @${m.price.toFixed(2)}`,
       size:     1,

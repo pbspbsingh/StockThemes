@@ -11,9 +11,9 @@ use axum::{
     extract::{Path, Query},
 };
 use chrono::Datelike;
-use tracing::trace;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
+use tracing::trace;
 
 static YF: LazyLock<YFinance> = LazyLock::new(YFinance::new);
 

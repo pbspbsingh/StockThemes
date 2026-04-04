@@ -7,17 +7,17 @@ use axum::{
     routing,
 };
 use chrono::DateTime;
-use tracing::info;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tracing::info;
 
+use super::candles::fetch_hourly_candles;
 use crate::config::APP_CONFIG;
 use crate::html_error::HtmlError;
 use crate::store::Store;
 use crate::trades::TradeView;
 use crate::yf::YFinance;
-use super::candles::{ensure_daily_candles, ensure_hourly_candles};
 
 // ── Shared state ──────────────────────────────────────────────────────────────
 
@@ -63,13 +63,10 @@ pub async fn daily_candles(
 ) -> Result<impl IntoResponse, HtmlError> {
     let from = DateTime::from_timestamp(q.from, 0)
         .ok_or_else(|| anyhow::anyhow!("Invalid from timestamp"))?;
-    let to = DateTime::from_timestamp(q.to, 0)
-        .ok_or_else(|| anyhow::anyhow!("Invalid to timestamp"))?;
+    let to =
+        DateTime::from_timestamp(q.to, 0).ok_or_else(|| anyhow::anyhow!("Invalid to timestamp"))?;
 
-    ensure_daily_candles(&state.store, &state.yf, &ticker, from.date_naive(), to.date_naive())
-        .await?;
-
-    let candles = state.store.get_candles(&ticker).await?;
+    let candles = crate::fetch_candles(&state.store, &state.yf, &ticker).await?;
     let points: Vec<CandlePoint> = candles
         .into_iter()
         .filter(|c| c.timestamp >= from && c.timestamp <= to)
@@ -93,16 +90,15 @@ pub async fn hourly_candles(
 ) -> Result<impl IntoResponse, HtmlError> {
     let from = DateTime::from_timestamp(q.from, 0)
         .ok_or_else(|| anyhow::anyhow!("Invalid from timestamp"))?;
-    let to = DateTime::from_timestamp(q.to, 0)
-        .ok_or_else(|| anyhow::anyhow!("Invalid to timestamp"))?;
+    let to =
+        DateTime::from_timestamp(q.to, 0).ok_or_else(|| anyhow::anyhow!("Invalid to timestamp"))?;
 
-    ensure_hourly_candles(&state.store, &state.yf, &ticker, from, to).await?;
-
-    let candles = state.store.get_hourly_candles(&ticker, from, to).await?;
+    let tz_offset = chrono::Local::now().offset().local_minus_utc() as i64;
+    let candles = fetch_hourly_candles(&state.store, &state.yf, &ticker, from, to).await?;
     let points: Vec<CandlePoint> = candles
         .into_iter()
         .map(|c| CandlePoint {
-            time: c.timestamp.timestamp(),
+            time: c.timestamp.timestamp() + tz_offset,
             open: c.open,
             high: c.high,
             low: c.low,
@@ -119,8 +115,10 @@ pub async fn hourly_candles(
 #[derive(Template)]
 #[template(path = "trade_analyzer.html")]
 struct TradeAnalyzerTemplate {
-    trades_json:    String,
+    trades_json: String,
     benchmark_json: String,
+    min_hourly_candles: f64,
+    tz_offset_secs: i32,
 }
 
 pub async fn start_server(
@@ -129,17 +127,28 @@ pub async fn start_server(
     trade_views: Vec<TradeView>,
     benchmark: &str,
 ) -> anyhow::Result<()> {
+    let cfg = &APP_CONFIG.trade_analysis;
+    // Expected hourly candles: calendar days → trading days (×5/7), 6.5h/day, 10% holiday buffer
+    let min_hourly_candles =
+        (cfg.hourly_chart_days + cfg.hourly_chart_post_days) as f64 * (5.0 / 7.0) * 6.5 * 0.9;
+    let tz_offset_secs = chrono::Local::now().offset().local_minus_utc();
     let html = TradeAnalyzerTemplate {
-        trades_json:    serde_json::to_string(&trade_views)?,
+        trades_json: serde_json::to_string(&trade_views)?,
         benchmark_json: serde_json::to_string(benchmark)?,
+        min_hourly_candles,
+        tz_offset_secs,
     }
     .render()?;
 
-    let state = AppState { store, yf, html: Arc::new(html) };
+    let state = AppState {
+        store,
+        yf,
+        html: Arc::new(html),
+    };
 
     let app = Router::new()
         .route("/", routing::get(home))
-        .route("/api/candles/daily/{ticker}",  routing::get(daily_candles))
+        .route("/api/candles/daily/{ticker}", routing::get(daily_candles))
         .route("/api/candles/hourly/{ticker}", routing::get(hourly_candles))
         .with_state(state);
 

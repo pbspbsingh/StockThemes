@@ -1,9 +1,9 @@
 use anyhow::Context;
 use axum::{Router, routing};
-use tracing::info;
 use stock_themes::config::APP_CONFIG;
 use stock_themes::{init_logger, rrg_util};
 use tokio::net::TcpListener;
+use tracing::info;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> anyhow::Result<()> {
