@@ -401,44 +401,6 @@ impl Store {
         }
         tx.commit().await
     }
-
-    /// Returns the stored daily candle dates for a ticker in the given range.
-    pub async fn daily_candle_dates(
-        &self,
-        ticker: &str,
-        from: chrono::NaiveDate,
-        to: chrono::NaiveDate,
-    ) -> sqlx::Result<Vec<chrono::NaiveDate>> {
-        let rows = sqlx::query!(
-            "SELECT day FROM daily_candles WHERE ticker = $1 AND day >= $2 AND day <= $3 ORDER BY day ASC",
-            ticker,
-            from,
-            to,
-        )
-        .map(|r| r.day)
-        .fetch_all(&self.pool)
-        .await?;
-        Ok(rows)
-    }
-
-    /// Returns the stored hourly candle timestamps for a ticker in the given range.
-    pub async fn hourly_candle_hours(
-        &self,
-        ticker: &str,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-    ) -> sqlx::Result<Vec<DateTime<Utc>>> {
-        let rows = sqlx::query!(
-            r#"SELECT hour FROM hourly_candles WHERE ticker = $1 AND hour >= $2 AND hour <= $3 ORDER BY hour ASC"#,
-            ticker,
-            from,
-            to,
-        )
-        .map(|r| r.hour.and_utc())
-        .fetch_all(&self.pool)
-        .await?;
-        Ok(rows)
-    }
 }
 
 // ── TickerType <-> SQLite ────────────────────────────────────────────────────

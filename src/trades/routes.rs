@@ -26,7 +26,7 @@ use crate::yf::YFinance;
 pub struct AppState {
     pub store: Arc<Store>,
     pub yf: Arc<YFinance>,
-    pub html: Arc<String>,
+    pub html: String,
 }
 
 // ── Query params ──────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ fn calc_ema(candles: &[crate::yf::Candle], period: usize, ts_offset: i64) -> Vec
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 pub async fn home(State(state): State<AppState>) -> impl IntoResponse {
-    Html(state.html.as_ref().clone())
+    Html(state.html.clone())
 }
 
 pub async fn daily_candles(
@@ -127,7 +127,9 @@ pub async fn daily_candles(
         let to_ts = to.timestamp();
         indicators.insert(
             name.to_string(),
-            full.into_iter().filter(|p| p.time >= from_ts && p.time <= to_ts).collect(),
+            full.into_iter()
+                .filter(|p| p.time >= from_ts && p.time <= to_ts)
+                .collect(),
         );
     }
 
@@ -144,7 +146,10 @@ pub async fn daily_candles(
         })
         .collect();
 
-    Ok(Json(CandleResponse { candles: candle_points, indicators }))
+    Ok(Json(CandleResponse {
+        candles: candle_points,
+        indicators,
+    }))
 }
 
 pub async fn hourly_candles(
@@ -177,7 +182,10 @@ pub async fn hourly_candles(
         })
         .collect();
 
-    Ok(Json(CandleResponse { candles: candle_points, indicators }))
+    Ok(Json(CandleResponse {
+        candles: candle_points,
+        indicators,
+    }))
 }
 
 // ── Server startup ────────────────────────────────────────────────────────────
@@ -210,11 +218,7 @@ pub async fn start_server(
     }
     .render()?;
 
-    let state = AppState {
-        store,
-        yf,
-        html: Arc::new(html),
-    };
+    let state = AppState { store, yf, html };
 
     let app = Router::new()
         .route("/", routing::get(home))

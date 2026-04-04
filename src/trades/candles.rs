@@ -1,12 +1,14 @@
 use anyhow::Context;
-use chrono::{DateTime, TimeDelta, Utc};
-use tracing::info;
+use chrono::{DateTime, Datelike, NaiveTime, TimeDelta, Utc, Weekday};
+use tracing::{info, warn};
 
 use crate::store::Store;
 use crate::yf::{BarSize, TimeSpec, YFinance};
 
 /// Maximum look-back Yahoo Finance supports for hourly candles
 const HOURLY_MAX_LOOKBACK_DAYS: i64 = 200;
+const TIME_FMT: &str = "%Y-%m-%d %H:%M";
+const MID_NIGHT: NaiveTime = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
 
 /// Lazily loads hourly candles for `ticker` within `[from, to]`.
 /// Returns cached candles if already present, otherwise fetches from YF and saves.
@@ -18,31 +20,31 @@ pub async fn fetch_hourly_candles(
     from: DateTime<Utc>,
     to: DateTime<Utc>,
 ) -> anyhow::Result<Vec<crate::yf::Candle>> {
-    let hourly_limit = Utc::now() - TimeDelta::days(HOURLY_MAX_LOOKBACK_DAYS);
-    let effective_from = from.max(hourly_limit);
-    if effective_from >= to {
-        return Ok(vec![]);
-    }
+    let from = from.with_time(MID_NIGHT).unwrap();
+    let to = (to + TimeDelta::days(1)).with_time(MID_NIGHT).unwrap();
+    let hourly_limit =
+        Utc::now().with_time(MID_NIGHT).unwrap() - TimeDelta::days(HOURLY_MAX_LOOKBACK_DAYS);
 
-    let stored = store.get_hourly_candles(ticker, effective_from, to).await?;
-    let covered = stored
-        .first()
-        .map(|c| c.timestamp <= effective_from + TimeDelta::days(1))
-        .unwrap_or(false);
-    if covered {
+    let stored = store.get_hourly_candles(ticker, from, to).await?;
+    if has_enough_candles(from.max(hourly_limit), to, stored.len()) {
         return Ok(stored);
     }
 
-    info!(
-        "Fetching hourly candles for {ticker} [{} → {}]",
-        effective_from.format("%Y-%m-%d %H:%M"),
-        to.format("%Y-%m-%d %H:%M")
-    );
+    if !stored.is_empty() {
+        warn!(ticker=%ticker, "[{} -> {}] candles found {}", from.format(TIME_FMT), to.format(TIME_FMT), stored.len());
+    }
+    let effective_from = stored
+        .last()
+        .map(|c| c.timestamp.with_time(MID_NIGHT).unwrap() - TimeDelta::days(3))
+        .unwrap_or(hourly_limit)
+        .max(hourly_limit);
+    let effective_to = Utc::now();
+    info!(ticker=%ticker, "Fetching hourly candles [{} → {}]", effective_from.format(TIME_FMT), effective_to.format(TIME_FMT));
     let candles = yf
         .fetch_candles(
             ticker,
             BarSize::Hour1,
-            TimeSpec::Interval(effective_from, to),
+            TimeSpec::Interval(effective_from, effective_to),
         )
         .await
         .with_context(|| format!("Failed to fetch hourly candles for {ticker}"))?;
@@ -52,5 +54,20 @@ pub async fn fetch_hourly_candles(
         .await
         .with_context(|| format!("Failed to save hourly candles for {ticker}"))?;
 
-    Ok(candles)
+    Ok(store.get_hourly_candles(ticker, from, to).await?)
+}
+
+fn has_enough_candles(start: DateTime<Utc>, end: DateTime<Utc>, candles: usize) -> bool {
+    let today = Utc::now().date_naive();
+    let mut day = start.date_naive();
+    let mut work_days = 0;
+    while day < end.date_naive() && day <= today {
+        if !matches!(day.weekday(), Weekday::Sat | Weekday::Sun) {
+            work_days += 1;
+        }
+        day = day + TimeDelta::days(1);
+    }
+
+    let expected_candles = work_days * 7;
+    candles as f64 >= (expected_candles as f64) * 0.9
 }
