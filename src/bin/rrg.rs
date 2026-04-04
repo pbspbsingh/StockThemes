@@ -1,6 +1,6 @@
 use anyhow::Context;
 use axum::{Router, routing};
-use log::info;
+use tracing::info;
 use stock_themes::config::APP_CONFIG;
 use stock_themes::{init_logger, rrg_util};
 use tokio::net::TcpListener;

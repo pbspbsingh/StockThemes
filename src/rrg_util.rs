@@ -11,7 +11,7 @@ use axum::{
     extract::{Path, Query},
 };
 use chrono::Datelike;
-use log::trace;
+use tracing::trace;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 

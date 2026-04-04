@@ -5,7 +5,7 @@ use crate::{Group, Performance, Stock, TickerType};
 use anyhow::{Context, Ok};
 use chrome_driver::{Element, Page, PageFeatures};
 use chrono::Local;
-use log::{debug, info, trace};
+use tracing::{debug, info, trace};
 use url::Url;
 
 pub struct TopStocksFetcher<'a> {

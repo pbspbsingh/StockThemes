@@ -2,7 +2,7 @@ use anyhow::Context;
 
 use chromiumoxide::browser::HeadlessMode;
 use chromiumoxide::{Browser, BrowserConfig, Handler};
-use log::{debug, info, warn};
+use tracing::{debug, info, warn};
 
 use sysinfo::{RefreshKind, System};
 

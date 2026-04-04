@@ -1,6 +1,6 @@
 use clap::Parser;
 use itertools::Itertools;
-use log::info;
+use tracing::info;
 
 use stock_themes::config::APP_CONFIG;
 use stock_themes::store::Store;

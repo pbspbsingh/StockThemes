@@ -2,7 +2,7 @@ use anyhow::Context;
 use chrono::{DateTime, Datelike, Local, TimeDelta, Weekday};
 use futures::stream;
 use itertools::Itertools;
-use log::{debug, info};
+use tracing::{debug, info};
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},

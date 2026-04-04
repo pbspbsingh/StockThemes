@@ -21,6 +21,17 @@ pub struct Config {
     #[serde(default)]
     pub ignored_stocks: Vec<String>,
     pub http_port: u16,
+
+    #[serde(default)]
+    pub trade_analysis: TradeAnalysisConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TradeAnalysisConfig {
+    pub daily_chart_days: u32,
+    pub daily_chart_post_days: u32,
+    pub hourly_chart_days: u32,
+    pub hourly_chart_post_days: u32,
 }
 
 pub static APP_CONFIG: LazyLock<Config> = LazyLock::new(|| {
@@ -34,6 +45,17 @@ fn parse_config(file: &Path) -> anyhow::Result<Config> {
     let config = toml::from_str(&content)
         .with_context(|| format!("Couldn't parse into config:\n{content}"))?;
     Ok(config)
+}
+
+impl Default for TradeAnalysisConfig {
+    fn default() -> Self {
+        Self {
+            daily_chart_days: 180,
+            daily_chart_post_days: 5,
+            hourly_chart_days: 15,
+            hourly_chart_post_days: 1,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -56,6 +78,7 @@ mod test {
             base_ticker: "QQQ".into(),
             ignored_stocks: Vec::new(),
             http_port: 8000,
+            trade_analysis: Default::default(),
         };
         eprintln!("Config:\n:{}", toml::to_string_pretty(&config).unwrap());
     }

@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Analyzer</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #121212;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Top bar ─────────────────────────────────────────────── */
+.topbar {
+  background: #1e1e1e;
+  border-bottom: 1px solid #333;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.topbar-title { font-size: 15px; font-weight: 600; color: #ccc; }
+.topbar-count { color: #666; font-size: 12px; }
+
+/* ── Main layout ─────────────────────────────────────────── */
+.layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Trade list (left panel) ─────────────────────────────── */
+.trade-list {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #2a2a2a;
+  overflow: hidden;
+}
+
+.list-header {
+  display: grid;
+  grid-template-columns: 80px 1fr 70px;
+  padding: 6px 10px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #333;
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.list-header.show-month { grid-template-columns: 60px 80px 1fr 70px; }
+
+.list-body {
+  overflow-y: auto;
+  flex: 1;
+}
+.list-body::-webkit-scrollbar { width: 4px; }
+.list-body::-webkit-scrollbar-track { background: #1a1a1a; }
+.list-body::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+
+.trade-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 70px;
+  padding: 7px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #1f1f1f;
+  transition: background 0.1s;
+  align-items: center;
+}
+.trade-row.show-month { grid-template-columns: 60px 80px 1fr 70px; }
+.trade-row:hover { background: #202020; }
+.trade-row.selected {
+  background: #1a3a52;
+  border-left: 2px solid #4a9eff;
+}
+
+.col-month { color: #888; font-size: 11px; }
+.col-day { color: #aaa; font-size: 11px; }
+.col-ticker { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 5px; }
+.col-ticker .status-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.status-dot.open { background: #f0a500; }
+.status-dot.closed { background: transparent; }
+.col-pnl { text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+.pnl-pos { color: #22ab94; }
+.pnl-neg { color: #ef5350; }
+.pnl-neutral { color: #888; }
+
+/* ── Chart area (right panel) ────────────────────────────── */
+.chart-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #161616;
+}
+
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+.chart-title { font-size: 13px; color: #bbb; }
+.chart-title span { color: #4a9eff; font-weight: 600; }
+
+.btn {
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  color: #ccc;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+.btn:hover { background: #383838; }
+
+.chart-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #444;
+  font-size: 14px;
+}
+
+/* ── 2×2 chart grid ──────────────────────────────────────── */
+.chart-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+  background: #0d0d0d;
+  overflow: hidden;
+}
+
+.chart-panel {
+  background: #161616;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chart-panel-label {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #666;
+  background: #1a1a1a;
+  border-bottom: 1px solid #222;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chart-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Fullscreen backdrop ─────────────────────────────────── */
+.fs-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+.fs-backdrop.open { display: flex; }
+
+.fs-modal {
+  background: #161616;
+  border: 1px solid #333;
+  border-radius: 6px;
+  width: 96vw;
+  height: 94vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+.fs-title { font-size: 14px; color: #ccc; }
+.fs-title span { color: #4a9eff; font-weight: 600; }
+.btn-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+.btn-close:hover { color: #fff; }
+
+.fs-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+  background: #0d0d0d;
+  overflow: hidden;
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="topbar-title">Trade Analyzer</span>
+  <span class="topbar-count" id="topbar-count"></span>
+</div>
+
+<div class="layout">
+
+  <!-- Left: trade list -->
+  <div class="trade-list">
+    <div class="list-header" id="list-header">
+      <span>Day</span>
+      <span>Ticker</span>
+      <span style="text-align:right">P&amp;L</span>
+    </div>
+    <div class="list-body" id="list-body"></div>
+  </div>
+
+  <!-- Right: chart area -->
+  <div class="chart-area">
+    <div class="chart-toolbar">
+      <div class="chart-title" id="chart-title">Select a trade to view charts</div>
+      <button class="btn" id="fs-btn" onclick="openFullscreen()" style="display:none">⛶ Fullscreen</button>
+    </div>
+    <div id="chart-placeholder" class="chart-placeholder">← Click a trade row</div>
+    <div id="chart-grid" class="chart-grid" style="display:none">
+      <div class="chart-panel">
+        <div class="chart-panel-label" id="lbl-daily-ticker">Daily — </div>
+        <div class="chart-container" id="cc-daily-ticker"></div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-panel-label" id="lbl-hourly-ticker">Hourly — </div>
+        <div class="chart-container" id="cc-hourly-ticker"></div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-panel-label" id="lbl-daily-bench">Daily — </div>
+        <div class="chart-container" id="cc-daily-bench"></div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-panel-label" id="lbl-hourly-bench">Hourly — </div>
+        <div class="chart-container" id="cc-hourly-bench"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Fullscreen popup -->
+<div class="fs-backdrop" id="fs-backdrop">
+  <div class="fs-modal">
+    <div class="fs-header">
+      <div class="fs-title" id="fs-title">Charts</div>
+      <button class="btn-close" onclick="closeFullscreen()">✕</button>
+    </div>
+    <div class="fs-grid" id="fs-grid">
+      <div class="chart-panel">
+        <div class="chart-panel-label" id="fs-lbl-daily-ticker">Daily — </div>
+        <div class="chart-container" id="fs-cc-daily-ticker"></div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-panel-label" id="fs-lbl-hourly-ticker">Hourly — </div>
+        <div class="chart-container" id="fs-cc-hourly-ticker"></div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-panel-label" id="fs-lbl-daily-bench">Daily — </div>
+        <div class="chart-container" id="fs-cc-daily-bench"></div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-panel-label" id="fs-lbl-hourly-bench">Hourly — </div>
+        <div class="chart-container" id="fs-cc-hourly-bench"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Injected data ─────────────────────────────────────────────────────────────
+const TRADES    = {{ trades_json|safe }};
+const BENCHMARK = {{ benchmark_json|safe }};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedIdx  = -1;
+let activeSeries = {};   // { id: { chart, series } }
+let fsActive     = false;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtPnl(usd, pct) {
+  if (usd == null) return { text: '—', cls: 'pnl-neutral' };
+  const sign = usd >= 0 ? '+' : '';
+  const cls  = usd >= 0 ? 'pnl-pos' : 'pnl-neg';
+  return { text: `${sign}$${usd.toFixed(2)}`, cls };
+}
+
+// ── Determine whether to show Month column ────────────────────────────────────
+const months = new Set(TRADES.map(t => t.month_label));
+const showMonth = months.size > 1;
+
+// ── Build trade list ──────────────────────────────────────────────────────────
+function buildList() {
+  document.getElementById('topbar-count').textContent =
+    `${TRADES.length} trades`;
+
+  const header = document.getElementById('list-header');
+  if (showMonth) {
+    header.classList.add('show-month');
+    header.innerHTML = `
+      <span>Month</span><span>Day</span>
+      <span>Ticker</span>
+      <span style="text-align:right">P&L</span>`;
+  }
+
+  const body = document.getElementById('list-body');
+  TRADES.forEach((t, i) => {
+    const pnl = fmtPnl(t.pnl_usd, t.pnl_pct);
+    const row = document.createElement('div');
+    row.className = 'trade-row' + (showMonth ? ' show-month' : '');
+    row.dataset.idx = i;
+
+    const dotCls = t.status === 'OPEN' ? 'open' : 'closed';
+    const monthCell = showMonth
+      ? `<span class="col-month">${t.month_label.split(' ')[0].slice(0,3)}</span>` : '';
+
+    row.innerHTML = `
+      ${monthCell}
+      <span class="col-day">${t.day_label}</span>
+      <span class="col-ticker">
+        <span class="status-dot ${dotCls}"></span>${t.ticker}
+      </span>
+      <span class="col-pnl ${pnl.cls}">${pnl.text}</span>`;
+
+    row.addEventListener('click', () => selectTrade(i));
+    body.appendChild(row);
+  });
+}
+
+// ── Select a trade ────────────────────────────────────────────────────────────
+function selectTrade(idx) {
+  if (idx < 0 || idx >= TRADES.length) return;
+
+  // Deselect old
+  if (selectedIdx >= 0) {
+    const old = document.querySelector(`.trade-row[data-idx="${selectedIdx}"]`);
+    if (old) old.classList.remove('selected');
+  }
+  selectedIdx = idx;
+  const row = document.querySelector(`.trade-row[data-idx="${idx}"]`);
+  if (row) {
+    row.classList.add('selected');
+    row.scrollIntoView({ block: 'nearest' });
+  }
+
+  const t = TRADES[idx];
+  updateChartTitle(t);
+
+  document.getElementById('chart-placeholder').style.display = 'none';
+  document.getElementById('chart-grid').style.display = '';
+  document.getElementById('fs-btn').style.display = '';
+
+  renderAllCharts(t, false);
+  if (fsActive) renderAllCharts(t, true);
+}
+
+function updateChartTitle(t) {
+  const pnl = fmtPnl(t.pnl_usd, t.pnl_pct);
+  document.getElementById('chart-title').innerHTML =
+    `<span>${t.ticker}</span> &nbsp;${t.day_label} &nbsp;
+     <span class="${pnl.cls}" style="font-size:12px">${pnl.text}</span>
+     &nbsp;<span style="color:#666;font-size:11px">${t.duration}</span>`;
+  const fsTitle = document.getElementById('fs-title');
+  fsTitle.innerHTML = document.getElementById('chart-title').innerHTML;
+}
+
+// ── Keyboard navigation ───────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); selectTrade(selectedIdx + 1); }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); selectTrade(selectedIdx - 1); }
+  if (e.key === 'Escape' && fsActive) closeFullscreen();
+});
+
+// ── Fullscreen ────────────────────────────────────────────────────────────────
+function openFullscreen() {
+  fsActive = true;
+  document.getElementById('fs-backdrop').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  if (selectedIdx >= 0) renderAllCharts(TRADES[selectedIdx], true);
+}
+
+function closeFullscreen() {
+  fsActive = false;
+  document.getElementById('fs-backdrop').classList.remove('open');
+  document.body.style.overflow = '';
+  destroyChartsInScope('fs-');
+}
+
+document.getElementById('fs-backdrop').addEventListener('click', e => {
+  if (e.target === document.getElementById('fs-backdrop')) closeFullscreen();
+});
+
+// ── Chart rendering ───────────────────────────────────────────────────────────
+const CHART_OPTIONS = {
+  layout: { background: { color: '#161616' }, textColor: '#888' },
+  grid: { vertLines: { color: '#1f1f1f' }, horzLines: { color: '#1f1f1f' } },
+  crosshair: { mode: 1 },
+  rightPriceScale: { borderColor: '#2a2a2a' },
+  timeScale: { borderColor: '#2a2a2a', timeVisible: true, secondsVisible: false },
+  handleScroll: true,
+  handleScale: true,
+};
+
+function destroyChartsInScope(prefix) {
+  ['daily-ticker','hourly-ticker','daily-bench','hourly-bench'].forEach(id => {
+    const key = prefix + id;
+    if (activeSeries[key]) {
+      try { activeSeries[key].chart.remove(); } catch(_) {}
+      delete activeSeries[key];
+    }
+  });
+}
+
+async function renderAllCharts(trade, fullscreen) {
+  const prefix = fullscreen ? 'fs-' : '';
+  destroyChartsInScope(prefix);
+
+  const ids = ['daily-ticker','hourly-ticker','daily-bench','hourly-bench'];
+  const configs = [
+    { ticker: trade.ticker,  isHourly: false },
+    { ticker: trade.ticker,  isHourly: true  },
+    { ticker: BENCHMARK,     isHourly: false },
+    { ticker: BENCHMARK,     isHourly: true  },
+  ];
+
+  // Update labels
+  document.getElementById(`${prefix}lbl-daily-ticker`).textContent  = `Daily — ${trade.ticker}`;
+  document.getElementById(`${prefix}lbl-hourly-ticker`).textContent = `Hourly — ${trade.ticker}`;
+  document.getElementById(`${prefix}lbl-daily-bench`).textContent   = `Daily — ${BENCHMARK}`;
+  document.getElementById(`${prefix}lbl-hourly-bench`).textContent  = `Hourly — ${BENCHMARK}`;
+
+  await Promise.all(ids.map(async (id, i) => {
+    const cfg     = configs[i];
+    const el      = document.getElementById(`${prefix}cc-${id}`);
+    const from    = cfg.isHourly ? trade.hourly_from : trade.daily_from;
+    const to      = cfg.isHourly ? trade.hourly_to   : trade.daily_to;
+    const candles = await fetchCandles(cfg.ticker, cfg.isHourly, from, to);
+
+    if (!candles || candles.length === 0) return;
+
+    const chart = LightweightCharts.createChart(el, {
+      ...CHART_OPTIONS,
+      width:  el.clientWidth,
+      height: el.clientHeight,
+    });
+
+    const series = chart.addCandlestickSeries({
+      upColor:          '#22ab94',
+      downColor:        '#ef5350',
+      borderUpColor:    '#22ab94',
+      borderDownColor:  '#ef5350',
+      wickUpColor:      '#22ab94',
+      wickDownColor:    '#ef5350',
+    });
+
+    const data = candles.map(c => ({
+      time:  cfg.isHourly ? c.time : utcTimestampToDate(c.time),
+      open:  c.open,
+      high:  c.high,
+      low:   c.low,
+      close: c.close,
+    }));
+    series.setData(data);
+
+    // Markers only on ticker charts (not benchmark)
+    if (cfg.ticker === trade.ticker) {
+      const markers = buildMarkers(trade, cfg.isHourly);
+      if (markers.length > 0) series.setMarkers(markers);
+    }
+
+    // Fit to window then scroll to show trade period
+    chart.timeScale().fitContent();
+
+    activeSeries[prefix + id] = { chart, series };
+
+    // Resize observer
+    const ro = new ResizeObserver(() => {
+      chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
+    });
+    ro.observe(el);
+  }));
+}
+
+// ── Marker builders ───────────────────────────────────────────────────────────
+function buildMarkers(trade, isHourly) {
+  const markers = [];
+
+  // Entries: one per fill, no dedup
+  for (const m of trade.entry_markers) {
+    markers.push({
+      time:     isHourly ? m.time : utcTimestampToDate(m.time),
+      position: trade.is_long ? 'belowBar' : 'aboveBar',
+      color:    '#22ab94',
+      shape:    trade.is_long ? 'arrowUp' : 'arrowDown',
+      text:     `E +${m.qty} @${m.price.toFixed(2)}`,
+      size:     1,
+    });
+  }
+
+  // Exits: deduped by day (daily chart) or by hour (hourly chart)
+  const exitList = isHourly ? trade.exit_markers_hourly : trade.exit_markers_daily;
+  for (const m of exitList) {
+    markers.push({
+      time:     isHourly ? m.time : utcTimestampToDate(m.time),
+      position: trade.is_long ? 'aboveBar' : 'belowBar',
+      color:    '#ef5350',
+      shape:    trade.is_long ? 'arrowDown' : 'arrowUp',
+      text:     `X ${m.qty} @${m.price.toFixed(2)}`,
+      size:     1,
+    });
+  }
+
+  // lightweight-charts requires markers sorted by time
+  markers.sort((a, b) => {
+    const ta = typeof a.time === 'string' ? a.time : a.time;
+    const tb = typeof b.time === 'string' ? b.time : b.time;
+    return ta < tb ? -1 : ta > tb ? 1 : 0;
+  });
+
+  return markers;
+}
+
+// Convert a UTC unix timestamp to a "YYYY-MM-DD" string for daily charts
+function utcTimestampToDate(ts) {
+  const d = new Date(ts * 1000);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// ── Candle fetch with simple in-memory cache ──────────────────────────────────
+const candleCache = {};
+
+async function fetchCandles(ticker, isHourly, from, to) {
+  const key = `${ticker}:${isHourly}:${from}:${to}`;
+  if (candleCache[key]) return candleCache[key];
+
+  const type = isHourly ? 'hourly' : 'daily';
+  const url  = `/api/candles/${type}/${ticker}?from=${from}&to=${to}`;
+
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    candleCache[key] = data;
+    return data;
+  } catch(e) {
+    console.error('Failed to fetch candles:', e);
+    return [];
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+buildList();
+if (TRADES.length > 0) selectTrade(0);
+</script>
+</body>
+</html>

@@ -6,7 +6,7 @@ use anyhow::Context;
 use axum::response::Html;
 use axum::{Router, routing};
 use chrono::{DateTime, Local, Months, NaiveDate, TimeDelta, Utc};
-use log::{debug, info, trace};
+use tracing::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -14,10 +14,11 @@ use tokio::net::TcpListener;
 
 pub mod config;
 mod etf_map;
-mod html_error;
+pub mod html_error;
 pub mod rrg_util;
 pub mod store;
 pub mod summary;
+pub mod trades;
 pub mod tv;
 pub mod util;
 pub mod yf;
@@ -71,8 +72,11 @@ pub trait StockInfoFetcher {
 }
 
 pub fn init_logger() {
-    env_logger::Builder::new()
-        .parse_filters(&APP_CONFIG.log_config)
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_new(&APP_CONFIG.log_config)
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
         .init();
 }
 

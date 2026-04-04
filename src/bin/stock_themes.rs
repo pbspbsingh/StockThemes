@@ -2,7 +2,7 @@ use anyhow::Context;
 
 use clap::Parser;
 
-use log::{info, warn};
+use tracing::{info, warn};
 
 use std::path::PathBuf;
 use stock_themes::{

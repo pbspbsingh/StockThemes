@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::Parser;
 
-use log::info;
+use tracing::info;
 
 use std::path::{Path, PathBuf};
 use stock_themes::config::APP_CONFIG;

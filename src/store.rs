@@ -9,9 +9,9 @@ use sqlx::{
 
 use crate::util::is_upto_date;
 use crate::yf::Candle;
-use log::warn;
 use std::sync::{Arc, LazyLock, Weak};
 use tokio::sync::Mutex;
+use tracing::warn;
 
 const DB_FILE: &str = "database.sqlite";
 
@@ -263,7 +263,7 @@ impl Store {
     }
 
     pub async fn get_candles(&self, ticker: &str) -> sqlx::Result<Vec<Candle>> {
-        let one_year_ago = Utc::now().date_naive() - TimeDelta::days(2 * 365);
+        let two_year_ago = Utc::now().date_naive() - TimeDelta::days(2 * 365);
         let rows = sqlx::query!(
             r#"
                 SELECT day,
@@ -279,7 +279,7 @@ impl Store {
                 ORDER BY day ASC
             "#,
             ticker,
-            one_year_ago,
+            two_year_ago,
         )
         .map(|row| Candle {
             timestamp: row.day.and_hms_opt(0, 0, 0).unwrap().and_utc(),
@@ -325,10 +325,119 @@ impl Store {
                 volume,
                 candle.last_updated,
             )
-            .execute(&mut *tx) // Execute on the transaction
+                .execute(&mut *tx) // Execute on the transaction
+                .await?;
+        }
+        tx.commit().await
+    }
+
+    pub async fn get_hourly_candles(
+        &self,
+        ticker: &str,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> sqlx::Result<Vec<Candle>> {
+        let rows = sqlx::query!(
+            r#"
+                SELECT hour,
+                       open,
+                       high,
+                       low,
+                       close,
+                       volume,
+                       last_updated as "last_updated: DateTime<Local>"
+                FROM hourly_candles
+                WHERE ticker = $1 AND hour >= $2 AND hour <= $3
+                ORDER BY hour ASC
+            "#,
+            ticker,
+            from,
+            to,
+        )
+        .map(|row| Candle {
+            timestamp: row.hour.and_utc(),
+            open: row.open,
+            high: row.high,
+            low: row.low,
+            close: row.close,
+            adj_close: None,
+            volume: row.volume as u64,
+            last_updated: row.last_updated,
+        })
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn save_hourly_candles(&self, ticker: &str, candles: &[Candle]) -> sqlx::Result<()> {
+        let mut tx = self.pool.begin().await?;
+        for candle in candles {
+            let hour = candle.timestamp.naive_utc();
+            let volume = candle.volume as i64;
+            sqlx::query!(
+                r#"
+                    INSERT INTO hourly_candles (ticker, hour, open, high, low, close, volume, last_updated)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    ON CONFLICT(ticker, hour) DO UPDATE SET
+                        open         = excluded.open,
+                        high         = excluded.high,
+                        low          = excluded.low,
+                        close        = excluded.close,
+                        volume       = excluded.volume,
+                        last_updated = excluded.last_updated
+                "#,
+                ticker,
+                hour,
+                candle.open,
+                candle.high,
+                candle.low,
+                candle.close,
+                volume,
+                candle.last_updated,
+            )
+            .execute(&mut *tx)
             .await?;
         }
         tx.commit().await
+    }
+
+    /// Returns the stored daily candle dates for a ticker in the given range.
+    pub async fn daily_candle_dates(
+        &self,
+        ticker: &str,
+        from: chrono::NaiveDate,
+        to: chrono::NaiveDate,
+    ) -> sqlx::Result<Vec<chrono::NaiveDate>> {
+        let rows = sqlx::query!(
+            "SELECT day FROM daily_candles WHERE ticker = $1 AND day >= $2 AND day <= $3 ORDER BY day ASC",
+            ticker,
+            from,
+            to,
+        )
+        .map(|r| r.day)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Returns the stored hourly candle timestamps for a ticker in the given range.
+    pub async fn hourly_candle_hours(
+        &self,
+        ticker: &str,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> sqlx::Result<Vec<DateTime<Utc>>> {
+        let rows = sqlx::query!(
+            r#"SELECT hour FROM hourly_candles WHERE ticker = $1 AND hour >= $2 AND hour <= $3 ORDER BY hour ASC"#,
+            ticker,
+            from,
+            to,
+        )
+        .map(|r| r.hour.and_utc())
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 }
 

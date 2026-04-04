@@ -12,7 +12,7 @@ use crate::{Group, Stock, StockInfoFetcher};
 use anyhow::Context;
 use chrono::{Local, TimeZone, Utc};
 use de::{ChartResponse, QuoteSummaryResponse};
-use log::warn;
+use tracing::warn;
 use reqwest::{Client, StatusCode, header};
 use std::time::Duration;
 use tokio::sync::OnceCell;
