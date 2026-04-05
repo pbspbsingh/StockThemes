@@ -1,5 +1,5 @@
-use crate::tv::TV_HOME;
 use crate::tv::perf_util::parse_performances;
+use crate::tv::TV_HOME;
 use crate::util::normalize;
 use crate::{Group, Performance, Stock, TickerType};
 use anyhow::{Context, Ok};
@@ -267,7 +267,8 @@ impl<'a> TopStocksFetcher<'a> {
             .sleep()
             .await
             .find_xpath(sort_selector)
-            .await?
+            .await
+            .context("Failed to select sort direction")?
             .click()
             .await?;
         Ok(())
@@ -280,6 +281,7 @@ impl<'a> TopStocksFetcher<'a> {
             .page
             .find_element(format!(r#"table thead th[data-field="{col_name}"]"#))
             .await
+            .with_context(|| format!("Query to search {col_name} column failed"))
             .is_err()
         {
             info!("{col_name} column not present, adding it");
@@ -314,11 +316,15 @@ impl<'a> TopStocksFetcher<'a> {
         for (idx, column) in self
             .page
             .find_elements(r#"table thead th"#)
-            .await?
+            .await
+            .with_context(|| format!("Couldn't find {col_name} column in the result table"))?
             .iter()
             .enumerate()
         {
-            if let Some(data_field) = column.attribute("data-field").await?
+            if let Some(data_field) = column
+                .attribute("data-field")
+                .await
+                .context("Failed to read data-field on table header")?
                 && data_field == col_name
             {
                 return Ok(idx);
