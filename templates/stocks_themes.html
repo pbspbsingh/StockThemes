@@ -624,6 +624,7 @@
                     <button data-mode="daily" title="Daily chart only">D</button>
                     <button data-mode="hourly" title="Daily and Hourly split view">D/H</button>
                     <button data-mode="split" title="Daily and Weekly split view">D/W</button>
+                    <button data-mode="benchmark" title="Daily ticker vs Daily benchmark">D/B</button>
                 </div>
                 <a href="/rrg.html" class="rrg-link" title="Relative Rotation Graph" target="_blank">RRG</a>
             </div>
@@ -678,6 +679,9 @@
     // ============================================================
     // Data Loader
     // ============================================================
+
+    // ── Benchmark symbol for D/B split view ─────────────────────
+    const BENCHMARK_SYMBOL = '{{ base_ticker }}';
 
     // ETF lookup maps built from sectors-data (same shape as rrg.html)
     // sectors-data: [{ sector, sector_etf, industries: [{ name, etf }] }]
@@ -1289,11 +1293,24 @@
             PreviewManager.updateHeader(DataHelpers.findTickerInfo(tickerSymbol));
             Renderers.highlightTickerContext();
 
+            // In benchmark mode, if the split layout is already on screen,
+            // only swap the top (ticker) pane — leave the benchmark bottom untouched.
+            if (AppState.chartMode === 'benchmark') {
+                const existingTop = document.getElementById('tv-daily-main');
+                if (existingTop) {
+                    this._destroy('tv-daily-main');
+                    existingTop.innerHTML = '';
+                    loadTVScript(() => { this.createWidget(tickerSymbol, 'tv-daily-main', 'D'); });
+                    return;
+                }
+            }
+
             // Destroy existing main pane widgets before rebuilding DOM
             this._destroy('tv-daily-main');
             this._destroy('tv-bottom-main');
 
-            const isDaily = AppState.chartMode === 'daily';
+            const isDaily     = AppState.chartMode === 'daily';
+            const isBenchmark = AppState.chartMode === 'benchmark';
             const bottomInterval = AppState.chartMode === 'hourly' ? '60' : 'W';
             container.innerHTML = `
                 <div class="tradingview-widget-container tv-container-split">
@@ -1304,18 +1321,24 @@
 
             loadTVScript(() => {
                 this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
-                if (!isDaily) this.createWidget(tickerSymbol, 'tv-bottom-main', bottomInterval);
+                if (!isDaily) {
+                    if (isBenchmark) {
+                        this.createWidget(BENCHMARK_SYMBOL, 'tv-bottom-main', 'D');
+                    } else {
+                        this.createWidget(tickerSymbol, 'tv-bottom-main', bottomInterval);
+                    }
+                }
             });
         },
 
         // Called on mode toggle only — leaves the top daily chart untouched.
-        swapBottomPane(tickerSymbol, interval) {
+        swapBottomPane(tickerSymbol, interval, symbolOverride) {
             const bottomPane = document.getElementById('tv-bottom-main');
             if (!bottomPane) return;
             this._destroy('tv-bottom-main');
             bottomPane.innerHTML = '';
             loadTVScript(() => {
-                this.createWidget(tickerSymbol, 'tv-bottom-main', interval);
+                this.createWidget(symbolOverride ?? tickerSymbol, 'tv-bottom-main', interval);
             });
         },
 
@@ -1420,13 +1443,16 @@
         updateView() {
             Renderers.renderTickers();
             this.scrollTickerIntoView();
-            // Clear immediately so the old chart doesn't linger on the new ticker
-            const container = PreviewManager.getContainer();
-            container.innerHTML = `
-                <div style="height:100%;display:flex;align-items:center;justify-content:center;">
-                    <div style="width:64px;height:64px;border:3px solid #2a2a2a;border-top-color:#4a9eff;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
-                </div>
-            `;
+            // Clear immediately so the old chart doesn't linger on the new ticker.
+            // In benchmark mode, only wipe the top pane so the benchmark chart stays alive.
+            const spinner = `<div style="height:100%;display:flex;align-items:center;justify-content:center;"><div style="width:64px;height:64px;border:3px solid #2a2a2a;border-top-color:#4a9eff;border-radius:50%;animation:spin 0.7s linear infinite;"></div></div>`;
+            const topPane = document.getElementById('tv-daily-main');
+            if (AppState.chartMode === 'benchmark' && topPane) {
+                TradingViewWidget._destroy('tv-daily-main');
+                topPane.innerHTML = spinner;
+            } else {
+                PreviewManager.getContainer().innerHTML = spinner;
+            }
             clearTimeout(this._chartDebounceTimer);
             this._chartDebounceTimer = setTimeout(() => {
                 const ticker = AppState.currentTickers[AppState.selectedTickerIndex].ticker;
@@ -1616,12 +1642,20 @@
                         // Restore split — daily widget untouched, create bottom
                         if (topPane)    topPane.classList.add('tv-pane-half');
                         if (bottomPane) bottomPane.style.display = '';
-                        const interval = mode === 'hourly' ? '60' : 'W';
-                        TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
+                        if (mode === 'benchmark') {
+                            TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', BENCHMARK_SYMBOL);
+                        } else {
+                            const interval = mode === 'hourly' ? '60' : 'W';
+                            TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
+                        }
                     } else {
-                        // D/H ↔ D/W — both split, just swap bottom widget
-                        const interval = mode === 'hourly' ? '60' : 'W';
-                        TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
+                        // D/H ↔ D/W ↔ D/B — both split, just swap bottom widget
+                        if (mode === 'benchmark') {
+                            TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', BENCHMARK_SYMBOL);
+                        } else {
+                            const interval = mode === 'hourly' ? '60' : 'W';
+                            TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
+                        }
                     }
                 }
             });

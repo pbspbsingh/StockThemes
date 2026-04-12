@@ -4,6 +4,7 @@ use askama::Template;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::config::APP_CONFIG;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Summary {
@@ -93,6 +94,7 @@ impl Summary {
         #[template(path = "./stocks_themes.html")]
         struct Html<'a> {
             summary: &'a Summary,
+            base_ticker: &'a str,
             sectors: Vec<etf_map::Sector>,
             sector_rs: HashMap<String, f64>,
             industry_rs: HashMap<String, f64>,
@@ -114,6 +116,7 @@ impl Summary {
 
         let html = Html {
             summary: self,
+            base_ticker: &APP_CONFIG.base_ticker,
             sectors: etf_map::tv_mapping(),
             sector_rs: create_rs_map(sectors, base),
             industry_rs: create_rs_map(industries, base),
