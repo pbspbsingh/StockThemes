@@ -75,6 +75,7 @@ async fn parse_stocks(
                 .map(|stock| stock.trim().to_uppercase())
         })
         .filter(|s| !s.is_empty())
+        .filter(|s| !s.starts_with('#'))
         .collect();
 
     let total_lines = content.lines().count();
