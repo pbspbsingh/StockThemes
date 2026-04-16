@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><rect x='16.5' y='2' width='13' height='13' rx='1' fill='%232ecc71' opacity='.22'/><rect x='2' y='2' width='13' height='13' rx='1' fill='%234a9eff' opacity='.18'/><rect x='2' y='16.5' width='13' height='13' rx='1' fill='%23e74c3c' opacity='.18'/><rect x='16.5' y='16.5' width='13' height='13' rx='1' fill='%23f39c12' opacity='.18'/><line x1='15.5' y1='2' x2='15.5' y2='30' stroke='%23fff' stroke-width='.6' stroke-opacity='.15'/><line x1='2' y1='15.5' x2='30' y2='15.5' stroke='%23fff' stroke-width='.6' stroke-opacity='.15'/><polyline points='7,22 11,18 15,17 19,13' fill='none' stroke='%232ecc71' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' opacity='.9'/><circle cx='19' cy='13' r='2.5' fill='%232ecc71'/></svg>">
     <title>Relative Rotation Graph — {{ benchmark }}</title>
+    <script src="https://s3.tradingview.com/tv.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -252,6 +253,11 @@
             margin-left: auto;
             font-size: 12px;
             color: #888;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            min-width: 0;
+            max-width: 280px;
         }
         .selected-info strong { color: #d0d0d0; }
 
@@ -357,6 +363,11 @@
             color: #d0d0d0;
             text-transform: uppercase;
             letter-spacing: 0.4px;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
         }
 
         .rs-legend {
@@ -697,7 +708,7 @@
         benchmark: BENCHMARK,
 
         // UI
-        expandedSector: null,   // sector name | null
+        expandedSectors: new Set(),   // set of expanded sector names
         selectedItem: null,     // { name, etf, type: 'sector'|'industry' } | null
 
         // Keyboard navigation
@@ -754,6 +765,20 @@
     // LEFT PANEL — Accordion
     // ════════════════════════════════════════════════════════════
 
+    // Merge industries that share the same ETF into a single item,
+    // joining their names with " / ".
+    function dedupIndustries(industries) {
+        const seen = new Map();
+        for (const ind of industries) {
+            if (seen.has(ind.etf)) {
+                seen.get(ind.etf).name += ' / ' + ind.name;
+            } else {
+                seen.set(ind.etf, { name: ind.name, etf: ind.etf });
+            }
+        }
+        return Array.from(seen.values());
+    }
+
     function renderLeftPanel() {
         const container = document.getElementById('sector-list');
         container.innerHTML = '';
@@ -761,7 +786,7 @@
         State.sectors.forEach(sectorObj => {
             const sName    = sectorObj.sector;
             const sEtf     = sectorObj.sector_etf;
-            const expanded = State.expandedSector === sName;
+            const expanded = State.expandedSectors.has(sName);
             const isSelectedRS = State.selectedItem?.name === sName;
 
             // Sector header
@@ -788,9 +813,9 @@
 </svg></button>
             </div>
             <div class="industry-list ${expanded ? 'open' : ''}" data-sector-industries="${sName}">
-                ${sectorObj.industries.map(ind => {
-                const isSel = State.selectedItem?.name === ind.name;
-                return `<div class="industry-item ${isSel ? 'selected' : ''}" data-industry="${ind.name}" data-etf="${ind.etf}">
+                ${dedupIndustries(sectorObj.industries).map(ind => {
+                const isSel = State.selectedItem?.etf === ind.etf && State.selectedItem?.type === 'industry';
+                return `<div class="industry-item ${isSel ? 'selected' : ''}" data-industry="${ind.name}" data-etf="${ind.etf}" title="${ind.name}">
                         <span class="industry-label">${ind.name}</span>
                         <span class="industry-etf-tag">${ind.etf}</span>
                         <button class="chart-icon-btn" data-chart-etf="${ind.etf}" data-chart-name="${ind.name}" title="Open chart (C)"><svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -821,7 +846,7 @@
             // Chevron click — expand/collapse only
             row.querySelector('.sector-chevron').addEventListener('click', (e) => {
                 e.stopPropagation();
-                onSectorExpand(sName, sEtf);
+                onSectorExpand(sName);
             });
 
             // Industry clicks
@@ -844,7 +869,7 @@
         });
     }
 
-    // Select sector for RS chart without expanding
+    // Select sector for RS chart without changing expansion
     function onSectorSelect(sName, sEtf) {
         State.selectedItem = { name: sName, etf: sEtf, type: 'sector' };
         State.navIndex = buildNavList().findIndex(i => i.type === 'sector' && i.name === sName);
@@ -854,29 +879,15 @@
         animateSelectedDot();
     }
 
-    // Expand/collapse sector accordion (updates RRG plot)
-    function onSectorExpand(sName, sEtf) {
-        const wasExpanded = State.expandedSector === sName;
-        State.expandedSector = wasExpanded ? null : sName;
-        State.selectedItem = { name: sName, etf: sEtf, type: 'sector' };
-        State.navIndex = buildNavList().findIndex(i => i.type === 'sector' && i.name === sName);
+    // Chevron click — toggle expansion only, no selection change
+    function onSectorExpand(sName) {
+        if (State.expandedSectors.has(sName)) {
+            State.expandedSectors.delete(sName);
+        } else {
+            State.expandedSectors.add(sName);
+        }
         renderLeftPanel();
         loadAndRenderRRG();
-        loadAndRenderRS(sEtf, sName);
-        updateSelectedInfo();
-        animateSelectedDot();
-    }
-
-    // Keep onSectorClick for keyboard nav (expand + select together)
-    function onSectorClick(sName, sEtf) {
-        const wasExpanded = State.expandedSector === sName;
-        State.selectedItem = { name: sName, etf: sEtf, type: 'sector' };
-        State.expandedSector = wasExpanded ? null : sName;
-        renderLeftPanel();
-        loadAndRenderRRG();
-        loadAndRenderRS(sEtf, sName);
-        updateSelectedInfo();
-        animateSelectedDot();
     }
 
     function onIndustryClick(iName, iEtf) {
@@ -890,10 +901,11 @@
 
     function updateSelectedInfo() {
         const el = document.getElementById('selected-info');
-        const { selectedItem, expandedSector } = State;
+        const { selectedItem } = State;
 
         if (!selectedItem) {
             el.innerHTML = 'Click ▶ to expand a sector';
+            el.title = '';
             return;
         }
 
@@ -901,6 +913,7 @@
             ? `<strong>${selectedItem.name}</strong> — sector · ${selectedItem.etf}`
             : `<strong>${selectedItem.name}</strong> — industry · ${selectedItem.etf}`;
         el.innerHTML = typeLabel;
+        el.title = selectedItem.name;
     }
 
     // ════════════════════════════════════════════════════════════
@@ -910,9 +923,12 @@
     async function loadAndRenderRRG() {
         // Determine what to show
         let items;
-        if (State.expandedSector) {
-            const sec = State.sectors.find(s => s.sector === State.expandedSector);
-            items = sec ? sec.industries.map(ind => ({ name: ind.name, etf: ind.etf })) : [];
+        if (State.expandedSectors.size > 0) {
+            const raw = [];
+            State.sectors
+                .filter(s => State.expandedSectors.has(s.sector))
+                .forEach(s => s.industries.forEach(ind => raw.push({ name: ind.name, etf: ind.etf })));
+            items = dedupIndustries(raw);
         } else {
             items = State.sectors.map(s => ({ name: s.sector, etf: s.sector_etf }));
         }
@@ -956,6 +972,9 @@
     function animateSelectedDot() {
         if (!State.selectedItem) return;
         const etf = State.selectedItem.etf;
+
+        // Don't animate if the ETF isn't in the current chart data (e.g. stale rrgData)
+        if (!rrgData.some(d => d.etf === etf || d.name === State.selectedItem.name)) return;
 
         if (rrgSoloAnimId !== null) {
             cancelAnimationFrame(rrgSoloAnimId);
@@ -1446,9 +1465,22 @@
             ctx.textAlign    = lb.isLeft ? 'right' : 'left';
             ctx.textBaseline = 'middle';
             ctx.globalAlpha  = dimFactor;
-            ctx.fillText(d.name, Math.round(lb.anchor), labelY);
+            ctx.fillText(truncateLabel(ctx, d.name, 120), Math.round(lb.anchor), labelY);
             ctx.globalAlpha  = 1;
         });
+    }
+
+    function truncateLabel(ctx, text, maxWidth) {
+        if (ctx.measureText(text).width <= maxWidth) return text;
+        const ellipsis = '…';
+        const ellW = ctx.measureText(ellipsis).width;
+        let lo = 0, hi = text.length;
+        while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2);
+            if (ctx.measureText(text.slice(0, mid)).width + ellW <= maxWidth) lo = mid;
+            else hi = mid - 1;
+        }
+        return text.slice(0, lo) + ellipsis;
     }
 
     function computeGridStep(range) {
@@ -1545,7 +1577,7 @@
         if (idx < 0) return;
 
         const d = rrgData[idx];
-        State.selectedItem = { name: d.name, etf: d.etf, type: State.expandedSector ? 'industry' : 'sector' };
+        State.selectedItem = { name: d.name, etf: d.etf, type: State.expandedSectors.size > 0 ? 'industry' : 'sector' };
         State.navIndex = buildNavList().findIndex(i => i.name === d.name);
         renderLeftPanel();
         updateSelectedInfo();
@@ -1562,7 +1594,9 @@
     let rsHoverX    = -1;
 
     async function loadAndRenderRS(etf, name) {
-        document.getElementById('rs-title').textContent = `Relative Strength — ${name}`;
+        const rsTitleEl = document.getElementById('rs-title');
+        rsTitleEl.textContent = `Relative Strength — ${name}`;
+        rsTitleEl.title = name;
         document.getElementById('rs-empty').style.display = 'none';
 
         // Reuse data already in rrgData if this ETF was just fetched
@@ -1787,8 +1821,8 @@
         const list = [];
         State.sectors.forEach(sec => {
             list.push({ type: 'sector', name: sec.sector, etf: sec.sector_etf });
-            if (State.expandedSector === sec.sector) {
-                sec.industries.forEach(ind => {
+            if (State.expandedSectors.has(sec.sector)) {
+                dedupIndustries(sec.industries).forEach(ind => {
                     list.push({ type: 'industry', name: ind.name, etf: ind.etf, sectorName: sec.sector });
                 });
             }
@@ -1843,36 +1877,51 @@
                 break;
             }
             case 'Enter':
-            case ' ':
-            case 'ArrowRight': {
+            case ' ': {
                 e.preventDefault();
                 if (State.navIndex < 0) { State.navIndex = 0; applyNavFocus(navList); break; }
                 const item = navList[State.navIndex];
                 if (item.type === 'sector') {
-                    onSectorClick(item.name, item.etf);
-                    const newList = buildNavList();
-                    State.navIndex = newList.findIndex(i => i.name === item.name && i.type === 'sector');
-                    scrollKbFocusIntoView();
+                    onSectorSelect(item.name, item.etf);
                 } else {
                     onIndustryClick(item.name, item.etf);
                 }
                 break;
             }
+            case 'ArrowRight': {
+                e.preventDefault();
+                if (State.navIndex < 0) { State.navIndex = 0; applyNavFocus(navList); break; }
+                const item = navList[State.navIndex];
+                if (item.type === 'sector' && !State.expandedSectors.has(item.name)) {
+                    State.expandedSectors.add(item.name);
+                    renderLeftPanel();
+                    loadAndRenderRRG();
+                    const newList = buildNavList();
+                    State.navIndex = newList.findIndex(i => i.type === 'sector' && i.name === item.name);
+                    scrollKbFocusIntoView();
+                }
+                break;
+            }
             case 'ArrowLeft': {
                 e.preventDefault();
-                if (!State.expandedSector) break;
-                // Find the sector in the current list before collapsing
-                const sectorName = State.expandedSector;
-                const sectorIdx  = navList.findIndex(i => i.type === 'sector' && i.name === sectorName);
-                State.expandedSector = null;
-                renderLeftPanel();
-                loadAndRenderRRG();
-                // Move focus to the sector that was just collapsed
-                const newList = buildNavList();
-                State.navIndex = sectorIdx >= 0
-                    ? newList.findIndex(i => i.type === 'sector' && i.name === sectorName)
-                    : 0;
-                applyNavFocus(newList);
+                if (State.navIndex < 0) break;
+                const item = navList[State.navIndex];
+                if (item.type === 'industry') {
+                    const sectorName = item.sectorName;
+                    State.expandedSectors.delete(sectorName);
+                    renderLeftPanel();
+                    loadAndRenderRRG();
+                    const newList = buildNavList();
+                    State.navIndex = newList.findIndex(i => i.type === 'sector' && i.name === sectorName);
+                    applyNavFocus(newList);
+                } else if (item.type === 'sector' && State.expandedSectors.has(item.name)) {
+                    State.expandedSectors.delete(item.name);
+                    renderLeftPanel();
+                    loadAndRenderRRG();
+                    const newList = buildNavList();
+                    State.navIndex = newList.findIndex(i => i.type === 'sector' && i.name === item.name);
+                    applyNavFocus(newList);
+                }
                 break;
             }
             case 'c':
@@ -2014,23 +2063,7 @@
     // TV CHART POPUP
     // ════════════════════════════════════════════════════════════
 
-    let tvWidgetDaily  = null;
-    let tvScriptReady  = false;
-    let tvScriptLoading = false;
-
-    function loadTVScript(cb) {
-        if (tvScriptReady) { cb(); return; }
-        if (tvScriptLoading) {
-            document.getElementById('tv-script-tag').addEventListener('load', () => { tvScriptReady = true; cb(); });
-            return;
-        }
-        tvScriptLoading = true;
-        const s = document.createElement('script');
-        s.id  = 'tv-script-tag';
-        s.src = 'https://s3.tradingview.com/tv.js';
-        s.onload = () => { tvScriptReady = true; cb(); };
-        document.head.appendChild(s);
-    }
+    let tvWidgetDaily = null;
 
     function createWidget(tickerSymbol, containerId, interval) {
         const studies = ['MASimple@tv-basicstudies'];
@@ -2070,13 +2103,8 @@
         // Prevent body scroll
         document.body.style.overflow = 'hidden';
 
-        // Load TV script then create widgets
-        loadTVScript(() => {
-            // Clear previous instances
-            document.getElementById('tv-chart-daily').innerHTML  = '';
-
-            tvWidgetDaily  = createWidget(etf, 'tv-chart-daily',  'D');
-        });
+        document.getElementById('tv-chart-daily').innerHTML = '';
+        tvWidgetDaily = createWidget(etf, 'tv-chart-daily', 'D');
     }
 
     function closeChartPopup() {

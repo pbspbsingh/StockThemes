@@ -79,7 +79,7 @@ impl Store {
             .await
             .context("Failed to evict old daily candles")?
             .rows_affected();
-        if stale_stocks > 0 {
+        if old_candles > 0 {
             warn!("Cleaned {old_candles} old candles");
         }
         Ok(())
