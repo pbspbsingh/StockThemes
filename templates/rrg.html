@@ -1884,6 +1884,9 @@
     }
 
     document.addEventListener('keydown', e => {
+        // Escape always closes the popup regardless of focused element
+        if (e.key === 'Escape') { closeChartPopup(); return; }
+
         // Don't hijack when user is interacting with a control
         if (e.target.matches('input, textarea, select, button')) return;
         // Ignore modifier combos
@@ -1965,10 +1968,6 @@
                 } else {
                     openChartPopup(State.selectedItem.etf, State.selectedItem.name);
                 }
-                break;
-            }
-            case 'Escape': {
-                closeChartPopup();
                 break;
             }
         }
