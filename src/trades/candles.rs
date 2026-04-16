@@ -65,7 +65,7 @@ fn has_enough_candles(start: DateTime<Utc>, end: DateTime<Utc>, candles: usize) 
         if !matches!(day.weekday(), Weekday::Sat | Weekday::Sun) {
             work_days += 1;
         }
-        day = day + TimeDelta::days(1);
+        day += TimeDelta::days(1);
     }
 
     let expected_candles = work_days * 7;

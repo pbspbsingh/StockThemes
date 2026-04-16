@@ -199,7 +199,7 @@
             align-items: center;
             gap: 6px;
         }
-        #dim-slider {
+        #period-slider, #dim-slider {
             -webkit-appearance: none;
             appearance: none;
             width: 80px;
@@ -232,7 +232,7 @@
             cursor: pointer;
         }
         #dim-slider:hover::-webkit-slider-thumb { background: #78baff; }
-        #dim-value {
+        #dim-value, #period-value {
             font-size: 11px;
             color: #666;
             min-width: 28px;
@@ -248,6 +248,29 @@
             border: 1px solid #333;
         }
         .benchmark-tag span { color: #4a9eff; font-weight: 600; }
+
+        .benchmark-footer {
+            flex-shrink: 0;
+            background: #1a1a1a;
+            border-top: 1px solid #2a2a2a;
+            padding: 5px 12px;
+            font-size: 11px;
+            color: #666;
+            text-align: center;
+        }
+        .benchmark-footer-val { color: #4a9eff; font-weight: 600; }
+
+        .reset-btn {
+            padding: 3px 8px;
+            border: 1px solid #3a3a3a;
+            background: transparent;
+            color: #666;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 3px;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .reset-btn:hover { color: #e74c3c; border-color: #e74c3c; }
 
         .selected-info {
             margin-left: auto;
@@ -329,13 +352,15 @@
             overflow: hidden;
         }
         .rs-panel.collapsed {
-            height: 32px;
+            height: 33px;
         }
         .rs-panel.collapsed .rs-canvas-wrap {
             pointer-events: none;
         }
 
         .rs-panel-header {
+            height: 33px;
+            box-sizing: border-box;
             background: #252525;
             padding: 6px 12px;
             display: flex;
@@ -568,6 +593,9 @@
     <div class="left-panel">
         <div class="panel-header">Sectors</div>
         <div class="sector-list" id="sector-list"></div>
+        <div class="benchmark-footer">
+            vs <span id="benchmark-label" class="benchmark-footer-val">SPY</span>
+        </div>
     </div>
 
     <!-- ── Right panel ─────────────────────────── -->
@@ -589,14 +617,16 @@
                 </div>
             </div>
             <div class="ctrl-group dim-slider-wrap">
+                <span class="ctrl-label">Period</span>
+                <input type="range" id="period-slider" min="5" max="26" step="1">
+                <span id="period-value">10w</span>
+            </div>
+            <div class="ctrl-group dim-slider-wrap">
                 <span class="ctrl-label">Dim</span>
                 <input type="range" id="dim-slider" min="0" max="1" step="0.05">
                 <span id="dim-value">15%</span>
             </div>
-            <div class="ctrl-group">
-                <span class="ctrl-label">Benchmark</span>
-                <div class="benchmark-tag">vs <span id="benchmark-label">SPY</span></div>
-            </div>
+            <button class="reset-btn" id="reset-btn" title="Reset all settings to defaults">↺ Reset</button>
             <div class="selected-info" id="selected-info">Click ▶ to expand a sector</div>
         </div>
 
@@ -632,8 +662,6 @@
                 <div id="rs-tooltip"></div>
                 <div id="rs-empty">Select a sector or industry to view relative strength</div>
             </div>
-        </div>
-
     </div>
 </div>
 
@@ -719,6 +747,9 @@
         tailLen: 20,
         historyLen: HISTORY_LEN['daily'],  // 200d default; updated on timeframe change
 
+        // SMA period in weeks (5–26, default 10)
+        periodWeeks: parseInt(localStorage.getItem('rrg_period_weeks') ?? '10', 10),
+
         // Dim opacity for non-selected ETF tails/dots (0 = invisible, 1 = full)
         dimOpacity: parseFloat(localStorage.getItem('rrg_dim_opacity') ?? '0.15'),
     };
@@ -740,8 +771,8 @@
      * }
      */
     async function fetchRRG(etf) {
-        const { timeframe, tailLen, historyLen } = State;
-        const url = `/api/rrg/${etf}?timeframe=${timeframe}&tail=${tailLen}&history=${historyLen}`;
+        const { timeframe, tailLen, historyLen, periodWeeks } = State;
+        const url = `/api/rrg/${etf}?timeframe=${timeframe}&tail=${tailLen}&history=${historyLen}&period_weeks=${periodWeeks}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status} for ${etf}`);
         return res.json();
@@ -1325,7 +1356,6 @@
             const dotR   = idx === rrgHoveredIdx ? 7 : 5;
             const isLeft = dotX <= cx;
             const anchor = isLeft ? dotX - dotR - LABEL_PAD_X : dotX + dotR + LABEL_PAD_X;
-            const tw     = ctx.measureText(d.name).width;
             return {
                 idx,
                 name:    d.name,
@@ -1333,7 +1363,6 @@
                 dotR,
                 anchor,                             // fixed x anchor (left edge if right-of-axis, right edge if left)
                 isLeft,
-                tw,
                 y:       dotY,                      // current (possibly nudged) y centre
                 prefY:   dotY,                      // preferred y (dot centre)
             };
@@ -1988,6 +2017,26 @@
         // Render initial tail buttons for the default timeframe
         renderTailButtons(State.timeframe);
 
+        // Period slider
+        const periodSlider = document.getElementById('period-slider');
+        const periodValue  = document.getElementById('period-value');
+
+        function updatePeriodSlider(val) {
+            State.periodWeeks    = val;
+            periodSlider.value   = val;
+            periodSlider.style.setProperty('--val', (val - 5) / 21);
+            periodValue.textContent = State.timeframe === 'daily' ? (val * 5) + 'd' : val + 'w';
+            localStorage.setItem('rrg_period_weeks', val);
+        }
+
+        updatePeriodSlider(State.periodWeeks);
+
+        periodSlider.addEventListener('change', () => {
+            updatePeriodSlider(parseInt(periodSlider.value, 10));
+            loadAndRenderRRG();
+            if (State.selectedItem) loadAndRenderRS(State.selectedItem.etf, State.selectedItem.name);
+        });
+
         // Dim slider
         const dimSlider = document.getElementById('dim-slider');
         const dimValue  = document.getElementById('dim-value');
@@ -2008,6 +2057,26 @@
             updateDimSlider(parseFloat(dimSlider.value));
         });
 
+        // Reset button
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            localStorage.removeItem('rrg_dim_opacity');
+            localStorage.removeItem('rrg_period_weeks');
+
+            State.timeframe   = 'daily';
+            State.historyLen  = HISTORY_LEN['daily'];
+
+            document.querySelectorAll('#tf-group button').forEach(b => {
+                b.classList.toggle('active', b.dataset.tf === 'daily');
+            });
+
+            renderTailButtons('daily');   // resets tailLen to 20
+            updatePeriodSlider(10);
+            updateDimSlider(0.15);
+
+            loadAndRenderRRG();
+            if (State.selectedItem) loadAndRenderRS(State.selectedItem.etf, State.selectedItem.name);
+        });
+
         // Timeframe
         document.getElementById('tf-group').addEventListener('click', e => {
             const btn = e.target.closest('button');
@@ -2018,6 +2087,7 @@
             btn.classList.add('active');
             // Swap tail buttons to match new timeframe and reset to its default
             renderTailButtons(State.timeframe);
+            updatePeriodSlider(State.periodWeeks);
             loadAndRenderRRG();
             if (State.selectedItem) loadAndRenderRS(State.selectedItem.etf, State.selectedItem.name);
         });
@@ -2058,10 +2128,6 @@
     });
     resizeObserver.observe(rrgCanvas.parentElement);
     resizeObserver.observe(rsCanvas.parentElement);
-
-    // ════════════════════════════════════════════════════════════
-    // INIT
-    // ════════════════════════════════════════════════════════════
 
     // ════════════════════════════════════════════════════════════
     // TV CHART POPUP

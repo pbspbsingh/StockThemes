@@ -46,7 +46,14 @@ pub struct RrgQuery {
 
     /// Number of RS-Ratio history points for the bottom chart.
     history: usize,
+
+    /// SMA period expressed in weeks (5–26). Converted to bars internally.
+    /// Defaults to 10 weeks (the JdK standard).
+    #[serde(default = "default_period_weeks")]
+    period_weeks: usize,
 }
+
+fn default_period_weeks() -> usize { 10 }
 
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -98,6 +105,7 @@ pub async fn rrg_handler(
         &params.timeframe,
         params.tail,
         params.history,
+        params.period_weeks.clamp(5, 26),
     )
     .context("Failed to compute rrg")?;
 
@@ -216,6 +224,7 @@ fn compute_rrg(
     timeframe: &str,
     tail_len: usize,
     history_len: usize,
+    period_weeks: usize,
 ) -> Option<RrgResponse> {
     // ── 1. Resample ──────────────────────────────────────────────────────────
     let etf_periods = match timeframe {
@@ -243,8 +252,8 @@ fn compute_rrg(
 
     // ── 4. RS-Ratio: smooth RS, then normalise against its own SMA ───────────
     let sma_period = match timeframe {
-        "daily" => 50, // 10 weeks × 5 days
-        _ => 10,       // 10 weeks (weekly default)
+        "daily" => period_weeks * 5,
+        _ => period_weeks,
     };
 
     let rs_smooth = sma(&rs, sma_period);
