@@ -1,7 +1,8 @@
 {
   "_meta": {
     "source": "TradingView FactSet Industries & Economic Sectors — USA",
-    "verified": "2026-02-28",
+    "taxonomy": "TradingView uses FactSet's Economic Sector / Industry classification — NOT GICS (S&P/MSCI), NOT ICB (FTSE), NOT SIC. Sector and industry names, groupings, and stock assignments will often differ materially from what other screeners, brokers, or data providers show. Examples: Aerospace & Defense lives in Electronic Technology (not Industrials); REITs live in Finance (not Real Estate); Media/Entertainment lives in Consumer Services (not Communications); Communications is pure telecom only. Always use TradingView URLs to verify stock classification before assuming standard industry groupings apply.",
+    "verified": "2026-04-15",
     "notes": [
       "All sector and industry names verified directly from tradingview.com/markets/stocks-usa/sectorandindustry-sector/*/industries/",
       "Coal: No dedicated US-listed coal ETF exists (KOL was delisted 2020). XLE used as fallback.",
@@ -9,7 +10,10 @@
       "Textiles: No dedicated ETF. XLB (sector) used as fallback.",
       "Electronic Production Equipment: No dedicated fab-equipment-only ETF. SMH used (includes AMAT, LRCX, KLAC).",
       "Forest Products / Construction Materials: No dedicated ETFs. XME / XLB used as fallbacks.",
-      "Communications sector in TradingView FactSet = pure telecom only (3 industries). Media/Entertainment live in Consumer Services."
+      "Communications sector in TradingView FactSet = pure telecom only (3 industries). Media/Entertainment live in Consumer Services.",
+      "BDRY replaced by BOAT (Apr 2026): BDRY is a freight futures pool (commodity), not a shipping equity ETF. BOAT (SonicShares Global Shipping) holds maritime shipping equities.",
+      "CARZ replaced by DRIV (Apr 2026): CARZ rebranded to 'First Trust S-Network Future Vehicles & Technology ETF' and pivoted to EV/semiconductor ecosystem — top holdings are Samsung, TSMC, AMD, Apple. DRIV (Global X Autonomous & Electric Vehicles) holds actual OEMs (TSLA, GM, F, TM) alongside EV tech.",
+      "Liquidity watch (Apr 2026): EATZ ~$1.9M AUM (~2,240 shares/day avg — near closure risk; fallback: PEJ). BJK ~$20M AUM with heavy 3-year outflows. FTXG ~$21M AUM. ONLN ~$58M AUM but steady outflows."
     ]
   },
   "TradingView_Master_Mapping": [
@@ -32,7 +36,7 @@
       "sector": "Technology Services",
       "sector_etf": "VGT",
       "industries": [
-        { "name": "Internet Software/Services",       "etf": "SKYY", "note": "Cloud computing — AMZN, GOOGL, MSFT, CRM" },
+        { "name": "Internet Software/Services",       "etf": "SKYY", "note": "Cloud computing — equal-weight methodology; top holdings are Nutanix, Oracle, IBM, DigitalOcean, Arista (AMZN/GOOGL/MSFT are capped). Best proxy for cloud/SaaS names in this industry." },
         { "name": "Packaged Software",                "etf": "IGV",  "note": "MSFT, ORCL, SAP, ADBE, CRM" },
         { "name": "Information Technology Services",  "etf": "VGT",  "note": "Accenture, IBM, CACI, Leidos" },
         { "name": "Data Processing Services",         "etf": "VGT",  "note": "ADP, Paychex, Fiserv, Broadridge. FINX (FinTech) is wrong category." }
@@ -99,7 +103,7 @@
       "sector": "Consumer Durables",
       "sector_etf": "XLY",
       "industries": [
-        { "name": "Motor Vehicles",          "etf": "CARZ", "note": "TSLA, TM, GM, F, BMW — First Trust Global Auto ETF" },
+        { "name": "Motor Vehicles",          "etf": "DRIV", "note": "Global X Autonomous & Electric Vehicles ETF — includes TSLA, GM, F, TM, BMW alongside EV/autonomous tech. Replaces CARZ, which rebranded to 'First Trust S-Network Future Vehicles & Technology ETF' and now holds Samsung, TSMC, AMD, Apple as top positions (no longer a motor vehicle proxy)." },
         { "name": "Homebuilding",            "etf": "ITB",  "note": "DHI, LEN, NVR, PHM — homebuilders" },
         { "name": "Recreational Products",  "etf": "XLY",  "note": "Polaris, Brunswick, YETI, Callaway — no dedicated ETF" },
         { "name": "Tools & Hardware",        "etf": "XLI",  "note": "SWK, SNA, Snap-on — TradingView name is 'Tools & Hardware'" },
@@ -241,9 +245,9 @@
         { "name": "Railroads",         "etf": "IYT",  "note": "UNP, CSX, NSC, CP, CN" },
         { "name": "Air Freight/Couriers","etf": "IYT", "note": "UPS, FedEx, XPO, GXO, SAIA" },
         { "name": "Other Transportation","etf": "IYT", "note": "Waste + misc transport" },
-        { "name": "Airlines",          "etf": "JETS", "note": "Invesco Airlines ETF — AAL, DAL, UAL, LUV, SAVE" },
+        { "name": "Airlines",          "etf": "JETS", "note": "Invesco Airlines ETF — AAL, DAL, UAL, LUV" },
         { "name": "Trucking",          "etf": "IYT",  "note": "Old Dominion, Knight-Swift, J.B. Hunt" },
-        { "name": "Marine Shipping",   "etf": "BDRY", "note": "Breakwave Dry Bulk Shipping ETF — Matson, Frontline, Danaos" }
+        { "name": "Marine Shipping",   "etf": "BOAT", "note": "SonicShares Global Shipping ETF — equity-based (container, tanker, dry bulk). Holds Matson, Frontline, Danaos and peers. Replaces BDRY (freight futures pool, not equity-based)." }
       ]
     },
     {
