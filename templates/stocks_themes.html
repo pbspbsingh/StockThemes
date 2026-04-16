@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
     <title>Stock Sector Explorer</title>
+    <script src="https://s3.tradingview.com/tv.js"></script>
     <style>
         * {
             margin: 0;
@@ -1300,7 +1301,7 @@
                 if (existingTop) {
                     this._destroy('tv-daily-main');
                     existingTop.innerHTML = '';
-                    loadTVScript(() => { this.createWidget(tickerSymbol, 'tv-daily-main', 'D'); });
+                    this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
                     return;
                 }
             }
@@ -1319,16 +1320,14 @@
                 </div>
             `;
 
-            loadTVScript(() => {
-                this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
-                if (!isDaily) {
-                    if (isBenchmark) {
-                        this.createWidget(BENCHMARK_SYMBOL, 'tv-bottom-main', 'D');
-                    } else {
-                        this.createWidget(tickerSymbol, 'tv-bottom-main', bottomInterval);
-                    }
+            this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
+            if (!isDaily) {
+                if (isBenchmark) {
+                    this.createWidget(BENCHMARK_SYMBOL, 'tv-bottom-main', 'D');
+                } else {
+                    this.createWidget(tickerSymbol, 'tv-bottom-main', bottomInterval);
                 }
-            });
+            }
         },
 
         // Called on mode toggle only — leaves the top daily chart untouched.
@@ -1337,9 +1336,7 @@
             if (!bottomPane) return;
             this._destroy('tv-bottom-main');
             bottomPane.innerHTML = '';
-            loadTVScript(() => {
-                this.createWidget(symbolOverride ?? tickerSymbol, 'tv-bottom-main', interval);
-            });
+            this.createWidget(symbolOverride ?? tickerSymbol, 'tv-bottom-main', interval);
         },
 
         createWidget(tickerSymbol, containerId, interval) {
@@ -1477,22 +1474,7 @@
     // ============================================================
     // TV CHART POPUP
     // ============================================================
-    let tvScriptReady  = false;
-    let tvScriptLoading = false;
 
-    function loadTVScript(cb) {
-        if (tvScriptReady) { cb(); return; }
-        if (tvScriptLoading) {
-            document.getElementById('tv-script-tag').addEventListener('load', () => { tvScriptReady = true; cb(); });
-            return;
-        }
-        tvScriptLoading = true;
-        const s = document.createElement('script');
-        s.id  = 'tv-script-tag';
-        s.src = 'https://s3.tradingview.com/tv.js';
-        s.onload = () => { tvScriptReady = true; cb(); };
-        document.head.appendChild(s);
-    }
 
     function openChartPopup(info) {
         AppState.popupInfo = info;
@@ -1511,26 +1493,24 @@
         document.getElementById('tv-popup-backdrop').classList.add('open');
         document.body.style.overflow = 'hidden';
 
-        loadTVScript(() => {
-            TradingViewWidget._destroy('tv-chart-sector');
-            TradingViewWidget._destroy('tv-chart-industry');
-            const sectorContainer  = document.getElementById('tv-chart-sector');
-            const industryContainer = document.getElementById('tv-chart-industry');
-            sectorContainer.innerHTML  = '';
-            industryContainer.innerHTML = '';
+        TradingViewWidget._destroy('tv-chart-sector');
+        TradingViewWidget._destroy('tv-chart-industry');
+        const sectorContainer  = document.getElementById('tv-chart-sector');
+        const industryContainer = document.getElementById('tv-chart-industry');
+        sectorContainer.innerHTML  = '';
+        industryContainer.innerHTML = '';
 
-            if (info.sectorEtf) {
-                TradingViewWidget.createWidget(info.sectorEtf, 'tv-chart-sector', 'D');
-            } else {
-                sectorContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.sector}</div>`;
-            }
+        if (info.sectorEtf) {
+            TradingViewWidget.createWidget(info.sectorEtf, 'tv-chart-sector', 'D');
+        } else {
+            sectorContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.sector}</div>`;
+        }
 
-            if (info.industryEtf) {
-                TradingViewWidget.createWidget(info.industryEtf, 'tv-chart-industry', 'D');
-            } else {
-                industryContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.industry}</div>`;
-            }
-        });
+        if (info.industryEtf) {
+            TradingViewWidget.createWidget(info.industryEtf, 'tv-chart-industry', 'D');
+        } else {
+            industryContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.industry}</div>`;
+        }
     }
 
     function closeChartPopup() {
