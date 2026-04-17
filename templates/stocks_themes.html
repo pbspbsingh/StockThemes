@@ -34,7 +34,7 @@
             overflow-y: auto;
             display: flex;
             flex-direction: column;
-            scroll-padding-top: 40px;
+            scroll-padding-top: 42px;
         }
 
         .column-header {
@@ -43,6 +43,7 @@
             background: #2d2d2d;
             color: #e0e0e0;
             padding: 11px 10px;
+            min-height: 42px;
             font-weight: 600;
             font-size: 14px;
             text-transform: uppercase;
@@ -173,15 +174,16 @@
             gap: 2px;
             background: #1a1a1a;
             border-radius: 4px;
-            padding: 2px;
+            padding: 1px;
         }
 
         .chart-toggle button {
-            padding: 4px 10px;
+            padding: 3px 10px;
             border: none;
             background: transparent;
             color: #888;
             font-size: 12px;
+            line-height: 1;
             font-weight: 600;
             cursor: pointer;
             border-radius: 3px;
@@ -192,7 +194,7 @@
             color: #d0d0d0;
         }
 
-        #chart-toggle { display: none; }
+        #chart-toggle { visibility: hidden; }
 
         .chart-toggle button.active {
             background: #4a9eff;
@@ -200,7 +202,7 @@
         }
 
         .rrg-link {
-            padding: 5px 10px;
+            padding: 3px 10px;
             font-size: 12px;
             font-weight: 600;
             line-height: 1;
@@ -458,7 +460,7 @@
 
         /* CSS tooltip on the chart icon button */
         .chart-icon-btn::after {
-            content: attr(data-etf);
+            content: 'Charts';
             position: absolute;
             top: calc(100% + 6px);
             left: 50%;
@@ -1097,31 +1099,32 @@
             const toggleElement = document.getElementById('chart-toggle');
 
             if (tickerInfo) {
-                const sectorChartBtn = tickerInfo.sectorEtf
-                    ? `<button class="chart-icon-btn" data-etf="${tickerInfo.sectorEtf}" data-name="${tickerInfo.sector}">${CANDLE_SVG}</button>`
-                    : '';
-                const industryChartBtn = tickerInfo.industryEtf
-                    ? `<button class="chart-icon-btn" data-etf="${tickerInfo.industryEtf}" data-name="${tickerInfo.industry}">${CANDLE_SVG}</button>`
+                const hasEtf = tickerInfo.sectorEtf || tickerInfo.industryEtf;
+                const chartBtn = hasEtf
+                    ? `<button class="chart-icon-btn">${CANDLE_SVG}</button>`
                     : '';
 
                 titleElement.innerHTML =
-                    `<a href="${tickerInfo.sectorUrl}" target="_blank">${tickerInfo.sector}</a>${sectorChartBtn}` +
-                    ` \\ <a href="${tickerInfo.industryUrl}" target="_blank">${tickerInfo.industry}</a>${industryChartBtn}` +
-                    ` \\ <a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank">${tickerInfo.ticker}</a>`;
+                    `<a href="${tickerInfo.sectorUrl}" target="_blank">${tickerInfo.sector}</a>` +
+                    ` \\ <a href="${tickerInfo.industryUrl}" target="_blank">${tickerInfo.industry}</a>` +
+                    ` \\ <a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank">${tickerInfo.ticker}</a>${chartBtn}`;
 
-                // Attach click handlers to the icon buttons
-                titleElement.querySelectorAll('.chart-icon-btn').forEach(btn => {
-                    btn.addEventListener('click', e => {
+                // Attach click handler to the icon button
+                const chartIconBtn = titleElement.querySelector('.chart-icon-btn');
+                if (chartIconBtn) {
+                    chartIconBtn.addEventListener('click', e => {
                         e.preventDefault();
                         const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
                         if (info) openChartPopup(info);
                     });
-                });
+                }
 
-                toggleElement.style.display = 'flex';
+                toggleElement.style.visibility = 'visible';
+                toggleElement.style.pointerEvents = '';
             } else {
                 titleElement.textContent = 'Preview';
-                toggleElement.style.display = 'none';
+                toggleElement.style.visibility = 'hidden';
+                toggleElement.style.pointerEvents = 'none';
             }
         },
 
