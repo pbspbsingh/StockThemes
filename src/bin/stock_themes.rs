@@ -1,5 +1,3 @@
-use anyhow::Context;
-
 use clap::Parser;
 
 use tracing::{info, warn};
