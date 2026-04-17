@@ -423,6 +423,19 @@
             height: 50%;
         }
 
+        .tv-divider {
+            width: 100%;
+            height: 2px;
+            background: #111;
+            cursor: ns-resize;
+            flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        .tv-divider:hover,
+        .tv-divider.dragging {
+            background: #4a9eff;
+        }
+
         /* ── Chart icon button (header breadcrumb) ──────────────── */
         .chart-icon-btn {
             display: inline-flex;
@@ -1316,12 +1329,17 @@
             const isDaily     = AppState.chartMode === 'daily';
             const isBenchmark = AppState.chartMode === 'benchmark';
             const bottomInterval = AppState.chartMode === 'hourly' ? '60' : 'W';
+            const savedRatio  = parseFloat(localStorage.getItem('splitRatio')) || 50;
             container.innerHTML = `
                 <div class="tradingview-widget-container tv-container-split">
-                    <div id="tv-daily-main"  class="tv-pane ${isDaily ? '' : 'tv-pane-half'}"></div>
-                    <div id="tv-bottom-main" class="tv-pane tv-pane-half" ${isDaily ? 'style="display:none"' : ''}></div>
+                    <div id="tv-daily-main" class="tv-pane" style="${isDaily ? 'flex:1' : `flex:0 0 ${savedRatio}%`}"></div>
+                    ${!isDaily ? '<div class="tv-divider"></div>' : ''}
+                    <div id="tv-bottom-main" class="tv-pane" style="${isDaily ? 'display:none' : 'flex:1;min-height:0'}"></div>
                 </div>
             `;
+            if (!isDaily) {
+                initSplitDrag(container.querySelector('.tv-container-split'));
+            }
 
             this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
             if (!isDaily) {
@@ -1617,14 +1635,27 @@
                     const bottomPane = document.getElementById('tv-bottom-main');
 
                     if (isDaily) {
-                        // Hide bottom pane, expand top — daily widget untouched
+                        // Hide bottom pane and divider, expand top — daily widget untouched
                         TradingViewWidget._destroy('tv-bottom-main');
                         if (bottomPane) { bottomPane.style.display = 'none'; bottomPane.innerHTML = ''; }
-                        if (topPane)    topPane.classList.remove('tv-pane-half');
+                        if (topPane)    topPane.style.flex = '1';
+                        const divider = document.querySelector('.tv-divider');
+                        if (divider)    divider.style.display = 'none';
                     } else if (wasDaily) {
                         // Restore split — daily widget untouched, create bottom
-                        if (topPane)    topPane.classList.add('tv-pane-half');
-                        if (bottomPane) bottomPane.style.display = '';
+                        const savedRatio = parseFloat(localStorage.getItem('splitRatio')) || 50;
+                        if (topPane)    topPane.style.flex = `0 0 ${savedRatio}%`;
+                        if (bottomPane) { bottomPane.style.display = ''; bottomPane.style.flex = '1'; bottomPane.style.minHeight = '0'; }
+                        // Show existing divider or create one if coming from initial daily load
+                        let divider = document.querySelector('.tv-divider');
+                        if (divider) {
+                            divider.style.display = '';
+                        } else if (topPane) {
+                            divider = document.createElement('div');
+                            divider.className = 'tv-divider';
+                            topPane.insertAdjacentElement('afterend', divider);
+                            initSplitDrag(topPane.closest('.tv-container-split'));
+                        }
                         if (mode === 'benchmark') {
                             TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', BENCHMARK_SYMBOL);
                         } else {
@@ -1642,6 +1673,38 @@
                     }
                 }
             });
+        });
+    }
+
+    // ============================================================
+    // SPLIT PANE DRAG
+    // ============================================================
+    function initSplitDrag(splitContainer) {
+        const divider = splitContainer.querySelector('.tv-divider');
+        const topPane = splitContainer.querySelector('#tv-daily-main');
+        if (!divider || !topPane) return;
+
+        divider.addEventListener('mousedown', e => {
+            e.preventDefault();
+            divider.classList.add('dragging');
+            const rect = splitContainer.getBoundingClientRect();
+
+            function onMouseMove(e) {
+                const pct = Math.min(80, Math.max(20, (e.clientY - rect.top) / rect.height * 100));
+                topPane.style.flex = `0 0 ${pct}%`;
+            }
+
+            function onMouseUp() {
+                divider.classList.remove('dragging');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                const topHeight   = topPane.getBoundingClientRect().height;
+                const totalHeight = splitContainer.getBoundingClientRect().height;
+                localStorage.setItem('splitRatio', ((topHeight / totalHeight) * 100).toFixed(1));
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
         });
     }
 
