@@ -53,7 +53,9 @@ pub struct RrgQuery {
     period_weeks: usize,
 }
 
-fn default_period_weeks() -> usize { 10 }
+fn default_period_weeks() -> usize {
+    10
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 

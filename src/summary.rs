@@ -1,10 +1,10 @@
+use crate::config::APP_CONFIG;
 use crate::util::compute_rs;
 use crate::{Performance, Stock, Ticker, etf_map};
 use askama::Template;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::config::APP_CONFIG;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Summary {

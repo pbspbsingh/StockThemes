@@ -158,7 +158,7 @@ pub async fn fetch_stock_perf(
     if APP_CONFIG.use_tv_perf_when_available {
         match store.get_performance(ticker, TickerType::Stock).await? {
             Some(perf) => Ok(perf),
-            None => compute_perf().await
+            None => compute_perf().await,
         }
     } else {
         compute_perf().await

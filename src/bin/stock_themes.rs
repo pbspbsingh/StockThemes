@@ -13,9 +13,6 @@ use stock_themes::{
 use stock_themes::summary::Summary;
 use stock_themes::tv::tv_manager::TvManager;
 use stock_themes::yf::YFinance;
-use tokio::fs;
-
-const HTML_FILE: &str = "stocks_themes.html";
 
 #[derive(Parser, Debug)]
 #[command(name = "stock_themes")]
@@ -64,14 +61,6 @@ async fn main() -> anyhow::Result<()> {
 
     let summary = Summary::summarize(stocks);
     let html = summary.render(sectors, industries, stock_perfs, &base_perf);
-
-    fs::write(HTML_FILE, &html)
-        .await
-        .with_context(|| format!("Failed to write {HTML_FILE}"))?;
-    info!(
-        "Done! Wrote html to {:?}",
-        fs::canonicalize(HTML_FILE).await?
-    );
 
     start_http_server(html).await
 }
