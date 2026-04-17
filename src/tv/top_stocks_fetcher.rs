@@ -1,8 +1,8 @@
-use crate::tv::perf_util::parse_performances;
 use crate::tv::TV_HOME;
+use crate::tv::perf_util::parse_performances;
 use crate::util::normalize;
 use crate::{Group, Performance, Stock, TickerType};
-use anyhow::{Context, Ok};
+use anyhow::Context;
 use chrome_driver::{Element, Page, PageFeatures};
 use chrono::Local;
 use tracing::{debug, info, trace};
@@ -311,6 +311,17 @@ impl<'a> TopStocksFetcher<'a> {
                 .with_context(|| format!("Couldn't find {col_name} column in the add form"))?
                 .click()
                 .await?;
+
+            if let Ok(confirm_btn) = self
+                .page
+                .find_element(
+                    r#"div[data-qa-id="overlap-manager-root"] button[data-qa-id="apply-btn"]"#,
+                )
+                .await
+            {
+                info!("Clicking on confirmation button");
+                confirm_btn.click().await?;
+            }
             self.page.sleep().await;
         }
         for (idx, column) in self
