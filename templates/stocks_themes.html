@@ -648,6 +648,25 @@
         }
 
         .chart-icon-btn.rrg-icon-btn::after { content: 'RRG'; }
+
+        .rrg-ticker-toggle {
+            padding: 2px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            border: 1px solid #3a3a3a;
+            border-radius: 3px;
+            background: transparent;
+            color: #555;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+            flex-shrink: 0;
+        }
+        .rrg-ticker-toggle.active {
+            background: rgba(198,120,221,0.15);
+            color: #c678dd;
+            border-color: #c678dd;
+        }
+        .rrg-ticker-toggle:hover { border-color: #c678dd; color: #c678dd; }
     </style>
 </head>
 
@@ -714,6 +733,7 @@
     <div class="rrg-popup-modal">
         <div class="tv-popup-header">
             <div class="tv-popup-title" id="rrg-popup-title">Relative Rotation Graph</div>
+            <button class="rrg-ticker-toggle active" id="rrg-ticker-toggle" title="Show/hide ticker line">Ticker</button>
             <span class="tv-popup-hint">Esc to close</span>
             <button class="tv-popup-close" id="rrg-popup-close" title="Close (Esc)">✕</button>
         </div>
@@ -1639,7 +1659,8 @@
     // ============================================================
     // RRG POPUP
     // ============================================================
-    let _rrgAnimFrame = null;
+    let _rrgAnimFrame  = null;
+    let _rrgShowTicker = localStorage.getItem('rrgShowTicker') !== 'false';
     const RRG_PARAMS = 'timeframe=daily&tail=20&history=200&period_weeks=10';
 
     function openRrgPopup(info) {
@@ -1647,7 +1668,11 @@
 
         document.getElementById('rrg-popup-title').innerHTML =
             `<span style="color:#4a9eff;font-weight:600">${info.ticker}</span>` +
-            `<span style="color:#555;font-weight:400;font-size:11px;margin-left:6px">Relative Rotation</span>`;
+            `<span style="color:#555;font-weight:400;font-size:11px;margin-left:6px">Relative Rotation</span>` +
+            `<span style="color:#444;font-weight:400;font-size:11px;margin-left:10px">vs ${BENCHMARK_SYMBOL}</span>`;
+
+        const toggleBtn = document.getElementById('rrg-ticker-toggle');
+        toggleBtn.classList.toggle('active', _rrgShowTicker);
 
         const backdrop = document.getElementById('rrg-popup-backdrop');
         backdrop.classList.add('open');
@@ -1688,14 +1713,18 @@
         if (_rrgAnimFrame) { cancelAnimationFrame(_rrgAnimFrame); _rrgAnimFrame = null; }
     }
 
-    async function fetchAndDrawRrg(info, canvas) {
+    async function fetchAndDrawRrg(info, canvas, { animate = true } = {}) {
         const samEtf = info.sectorEtf && info.sectorEtf === info.industryEtf;
-        const etfs = samEtf
-            ? [{ etf: info.sectorEtf, name: `${info.sector} / ${info.industry}`, color: '#4a9eff' }]
-            : [
-                info.sectorEtf   ? { etf: info.sectorEtf,   name: info.sector,   color: '#4a9eff' } : null,
-                info.industryEtf ? { etf: info.industryEtf, name: info.industry, color: '#f39c12' } : null,
-              ].filter(Boolean);
+        const etfs = [
+            ...(samEtf
+                ? [{ etf: info.sectorEtf, name: `${info.sector} / ${info.industry}`, color: '#f39c12' }]
+                : [
+                    info.sectorEtf   ? { etf: info.sectorEtf,   name: info.sector,   color: '#f39c12' } : null,
+                    info.industryEtf ? { etf: info.industryEtf, name: info.industry, color: '#4a9eff' } : null,
+                  ].filter(Boolean)
+            ),
+            { etf: info.ticker, name: info.ticker, color: '#c678dd', isTicker: true },
+        ];
 
         let datasets;
         try {
@@ -1703,7 +1732,7 @@
                 etfs.map(e =>
                     fetch(`/api/rrg/${e.etf}?${RRG_PARAMS}`)
                         .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-                        .then(d => ({ ...d, name: e.name, etf: e.etf, color: e.color }))
+                        .then(d => ({ ...d, name: e.name, etf: e.etf, color: e.color, isTicker: e.isTicker ?? false }))
                 )
             );
         } catch (_) {
@@ -1722,10 +1751,11 @@
         }
 
         if (!document.getElementById('rrg-popup-backdrop').classList.contains('open')) return;
-        drawRrgAnimated(canvas, datasets);
+        const visible = _rrgShowTicker ? datasets : datasets.filter(d => !d.isTicker);
+        drawRrgAnimated(canvas, visible, { animate });
     }
 
-    function drawRrgAnimated(canvas, datasets) {
+    function drawRrgAnimated(canvas, datasets, { animate = true } = {}) {
         if (_rrgAnimFrame) { cancelAnimationFrame(_rrgAnimFrame); _rrgAnimFrame = null; }
 
         const ctx = canvas.getContext('2d');
@@ -1741,6 +1771,7 @@
             ],
             label: d.name,
             sublabel: d.etf !== d.name ? d.etf : null,
+            isTicker: d.isTicker,
             color: d.color,
         }));
 
@@ -1764,17 +1795,20 @@
         function toX(v) { return M.left + (v - minX) / (maxX - minX) * plotW; }
         function toY(v) { return M.top  + (maxY - v) / (maxY - minY) * plotH; }
 
-        // Pre-compute canvas coords for every sequence
-        const seqs = sequences.map(s => ({
-            cpts: s.pts.map(p => [toX(p.x), toY(p.y)]),
-            label: s.label,
-            sublabel: s.sublabel,
-            color: s.color,
-        }));
+        // Pre-compute canvas coords — ETFs first, ticker last so it renders on top
+        const seqs = sequences
+            .slice().sort((a, b) => (a.isTicker ? 1 : 0) - (b.isTicker ? 1 : 0))
+            .map(s => ({
+                cpts: s.pts.map(p => [toX(p.x), toY(p.y)]),
+                label: s.label,
+                sublabel: s.sublabel,
+                color: s.color,
+                isTicker: s.isTicker,
+            }));
 
         const cxC = toX(100), cyC = toY(100);  // crosshair center
 
-        const DURATION = 750;
+        const DURATION  = animate ? 750 : 0;
         const startTime = performance.now();
 
         function easeInOut(t) {
@@ -1883,7 +1917,7 @@
                     // Arrowhead pointing in the direction of travel
                     if (pts.length >= 2) {
                         const angle = Math.atan2(last[1] - prev[1], last[0] - prev[0]);
-                        const aLen  = 9;
+                        const aLen  = seq.isTicker ? 12 : 9;
                         ctx.fillStyle = seq.color;
                         ctx.beginPath();
                         ctx.moveTo(last[0], last[1]);
@@ -1927,6 +1961,17 @@
 
         _rrgAnimFrame = requestAnimationFrame(drawFrame);
     }
+
+    // Ticker toggle
+    document.getElementById('rrg-ticker-toggle').addEventListener('click', () => {
+        _rrgShowTicker = !_rrgShowTicker;
+        localStorage.setItem('rrgShowTicker', _rrgShowTicker);
+        document.getElementById('rrg-ticker-toggle').classList.toggle('active', _rrgShowTicker);
+        const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
+        if (!info) return;
+        const canvas = document.getElementById('rrg-popup-canvas');
+        fetchAndDrawRrg(info, canvas);
+    });
 
     // Close on backdrop click (outside modal)
     document.getElementById('rrg-popup-backdrop').addEventListener('click', e => {
