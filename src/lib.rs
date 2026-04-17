@@ -148,12 +148,20 @@ pub async fn fetch_stock_perf(
     yf: &YFinance,
     ticker: &str,
 ) -> anyhow::Result<Performance> {
-    match store.get_performance(ticker, TickerType::Stock).await? {
-        Some(perf) => Ok(perf),
-        None => {
-            let candles = fetch_candles(store, yf, ticker).await?;
-            Ok(Performance::compute(ticker, TickerType::Stock, &candles))
+    let compute_perf = async || {
+        let candles = fetch_candles(store, yf, ticker)
+            .await
+            .with_context(|| format!("Failed to retrieved candles for {ticker}"))?;
+        Ok::<_, anyhow::Error>(Performance::compute(ticker, TickerType::Stock, &candles))
+    };
+
+    if APP_CONFIG.use_tv_perf_when_available {
+        match store.get_performance(ticker, TickerType::Stock).await? {
+            Some(perf) => Ok(perf),
+            None => compute_perf().await
         }
+    } else {
+        compute_perf().await
     }
 }
 

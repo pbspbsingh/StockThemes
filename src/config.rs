@@ -17,6 +17,7 @@ pub struct Config {
     pub chrome_args: Vec<String>,
     pub launch_chrome_if_needed: bool,
     pub base_ticker: String,
+    pub use_tv_perf_when_available: bool,
     pub market_hours: (NaiveTime, NaiveTime),
     #[serde(default)]
     pub ignored_stocks: Vec<String>,
@@ -55,31 +56,5 @@ impl Default for TradeAnalysisConfig {
             hourly_chart_days: 15,
             hourly_chart_post_days: 1,
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::config::Config;
-    use chrono::NaiveTime;
-
-    #[test]
-    fn print_config() {
-        let config = Config {
-            log_config: "".into(),
-            chrome_path: "".into(),
-            user_data_dir: "".into(),
-            chrome_args: Vec::new(),
-            launch_chrome_if_needed: false,
-            market_hours: (
-                NaiveTime::from_hms_opt(6, 30, 0).unwrap(),
-                NaiveTime::from_hms_opt(11, 00, 0).unwrap(),
-            ),
-            base_ticker: "QQQ".into(),
-            ignored_stocks: Vec::new(),
-            http_port: 8000,
-            trade_analysis: Default::default(),
-        };
-        eprintln!("Config:\n:{}", toml::to_string_pretty(&config).unwrap());
     }
 }

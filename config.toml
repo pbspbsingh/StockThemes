@@ -7,7 +7,7 @@ log_config = "info,chromiumoxide=error,stock_themes=debug"
 
 base_ticker = "QQQ"
 market_hours = ["06:30", "13:00"]
-
+use_tv_perf_when_available = false
 ignored_stocks = []
 
 http_port = 8000

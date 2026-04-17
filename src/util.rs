@@ -76,6 +76,7 @@ async fn parse_stocks(
         })
         .filter(|s| !s.is_empty())
         .filter(|s| !s.starts_with('#'))
+        .filter(|s| !s.ends_with("/WS"))
         .collect();
 
     let total_lines = content.lines().count();
