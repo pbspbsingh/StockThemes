@@ -1519,8 +1519,13 @@
                 }
                 const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
                 if (!info) return;
-                if (event.key === 'ArrowLeft') openChartPopup(info);
-                else openRrgPopup(info);
+                if (event.key === 'ArrowLeft') {
+                    if (!document.getElementById('tv-popup-backdrop').classList.contains('open'))
+                        openChartPopup(info);
+                } else {
+                    if (!document.getElementById('rrg-popup-backdrop').classList.contains('open'))
+                        openRrgPopup(info);
+                }
                 return;
             }
 
@@ -1597,16 +1602,22 @@
         closeRrgPopup();
         AppState.popupInfo = info;
 
+        const sameEtf = !!(info.sectorEtf && info.sectorEtf === info.industryEtf);
+
         document.getElementById('tv-popup-title').innerHTML =
             `<span style="color:#4a9eff;font-weight:600">${info.ticker}</span>` +
             `<span style="color:#555;font-weight:400;font-size:11px;margin-left:6px">Sector &amp; Industry</span>`;
 
         document.getElementById('tv-sector-label').innerHTML = info.sectorEtf
-            ? `<span style="color:#d0d0d0">${info.sectorEtf}</span> <span style="color:#555">— ${info.sector}</span>`
+            ? `<span style="color:#d0d0d0">${info.sectorEtf}</span> <span style="color:#555">— ${sameEtf ? `${info.sector} / ${info.industry}` : info.sector}</span>`
             : `<span style="color:#555">${info.sector}</span>`;
         document.getElementById('tv-industry-label').innerHTML = info.industryEtf
             ? `<span style="color:#d0d0d0">${info.industryEtf}</span> <span style="color:#555">— ${info.industry}</span>`
             : `<span style="color:#555">${info.industry}</span>`;
+
+        // Show/hide second panel based on whether ETFs are the same
+        const industryPanel = document.getElementById('tv-chart-industry').closest('.tv-chart-panel');
+        industryPanel.style.display = sameEtf ? 'none' : '';
 
         document.getElementById('tv-popup-backdrop').classList.add('open');
         document.body.style.overflow = 'hidden';
@@ -1624,10 +1635,12 @@
             sectorContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.sector}</div>`;
         }
 
-        if (info.industryEtf) {
-            TradingViewWidget.createWidget(info.industryEtf, 'tv-chart-industry', 'D');
-        } else {
-            industryContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.industry}</div>`;
+        if (!sameEtf) {
+            if (info.industryEtf) {
+                TradingViewWidget.createWidget(info.industryEtf, 'tv-chart-industry', 'D');
+            } else {
+                industryContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.industry}</div>`;
+            }
         }
     }
 
