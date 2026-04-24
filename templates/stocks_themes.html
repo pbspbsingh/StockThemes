@@ -444,7 +444,7 @@
 
         .tv-divider {
             width: 100%;
-            height: 2px;
+            height: 1px;
             background: #111;
             cursor: ns-resize;
             flex-shrink: 0;
@@ -2141,6 +2141,14 @@
         divider.addEventListener('mousedown', e => {
             e.preventDefault();
             divider.classList.add('dragging');
+            document.body.style.cursor = 'ns-resize';
+            document.body.style.userSelect = 'none';
+
+            // Overlay to block iframe from stealing mouse events
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:ns-resize;';
+            document.body.appendChild(overlay);
+
             const rect = splitContainer.getBoundingClientRect();
 
             function onMouseMove(e) {
@@ -2150,6 +2158,9 @@
 
             function onMouseUp() {
                 divider.classList.remove('dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                overlay.remove();
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
                 const topHeight   = topPane.getBoundingClientRect().height;
