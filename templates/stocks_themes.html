@@ -1312,6 +1312,9 @@
         },
 
         updatePreview() {
+            // If a ticker chart is already showing, leave it alone.
+            if (AppState.currentTickerSymbol !== null) return;
+
             const { selectedSectors, selectedIndustries, sortedSectors } = AppState;
 
             AppState.currentTickerSymbol = null;
