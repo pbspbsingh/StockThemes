@@ -220,6 +220,11 @@
             color: white;
         }
 
+        .chart-toggle button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
         .rrg-link {
             padding: 3px 10px;
             font-size: 12px;
@@ -718,6 +723,7 @@
                     <button data-mode="hourly" title="Daily and Hourly split view">D/H</button>
                     <button data-mode="split" title="Daily and Weekly split view">D/W</button>
                     <button data-mode="benchmark" title="Daily ticker vs Daily benchmark">D/B</button>
+                    <button data-mode="industry" title="Daily ticker vs Industry ETF (falls back to Sector ETF)">D/I</button>
                 </div>
                 <a href="/rrg.html" class="rrg-link" title="Relative Rotation Graph" target="_blank">RRG</a>
             </div>
@@ -1245,6 +1251,19 @@
 
                 toggleElement.style.visibility = 'visible';
                 toggleElement.style.pointerEvents = '';
+
+                const diBtn = toggleElement.querySelector('[data-mode="industry"]');
+                if (diBtn) {
+                    const hasEtf = !!(tickerInfo.industryEtf || tickerInfo.sectorEtf);
+                    diBtn.disabled = !hasEtf;
+                    if (!hasEtf && AppState.chartMode === 'industry') {
+                        AppState.chartMode = 'split';
+                        localStorage.setItem('chartMode', 'split');
+                        toggleElement.querySelectorAll('button').forEach(b =>
+                            b.classList.toggle('active', b.getAttribute('data-mode') === 'split')
+                        );
+                    }
+                }
             } else {
                 titleElement.textContent = 'Preview';
                 toggleElement.style.visibility = 'hidden';
@@ -1442,6 +1461,7 @@
 
             const isDaily     = AppState.chartMode === 'daily';
             const isBenchmark = AppState.chartMode === 'benchmark';
+            const isIndustry  = AppState.chartMode === 'industry';
             const bottomInterval = AppState.chartMode === 'hourly' ? '60' : 'W';
             const savedRatio  = parseFloat(localStorage.getItem('splitRatio')) || 50;
             container.innerHTML = `
@@ -1459,6 +1479,12 @@
             if (!isDaily) {
                 if (isBenchmark) {
                     this.createWidget(BENCHMARK_SYMBOL, 'tv-bottom-main', 'D');
+                } else if (isIndustry) {
+                    const _info = DataHelpers.findTickerInfo(tickerSymbol);
+                    const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
+                    if (_etf) {
+                        this.createWidget(_etf, 'tv-bottom-main', 'D');
+                    }
                 } else {
                     this.createWidget(tickerSymbol, 'tv-bottom-main', bottomInterval);
                 }
@@ -2115,14 +2141,22 @@
                         }
                         if (mode === 'benchmark') {
                             TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', BENCHMARK_SYMBOL);
+                        } else if (mode === 'industry') {
+                            const _info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
+                            const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
+                            if (_etf) TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', _etf);
                         } else {
                             const interval = mode === 'hourly' ? '60' : 'W';
                             TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
                         }
                     } else {
-                        // D/H ↔ D/W ↔ D/B — both split, just swap bottom widget
+                        // D/H ↔ D/W ↔ D/B ↔ D/I — both split, just swap bottom widget
                         if (mode === 'benchmark') {
                             TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', BENCHMARK_SYMBOL);
+                        } else if (mode === 'industry') {
+                            const _info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
+                            const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
+                            if (_etf) TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', _etf);
                         } else {
                             const interval = mode === 'hourly' ? '60' : 'W';
                             TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
