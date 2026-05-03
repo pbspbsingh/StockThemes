@@ -93,26 +93,6 @@ impl TvManager {
         Self::fetch_stocks(store, fetcher, time_frames).await
     }
 
-    pub async fn fetch_top_stocks_with_industries_filter(
-        &mut self,
-        base_screen_url: &str,
-        top_count: usize,
-        industries: &[String],
-        time_frames: impl Iterator<Item = String>,
-    ) -> anyhow::Result<(Vec<Stock>, Vec<Performance>)> {
-        let store = self.store.clone();
-
-        let fetcher = TopStocksFetcher::load_screen_with_industries(
-            self.get_or_init_page().await?,
-            base_screen_url,
-            top_count,
-            industries,
-        )
-        .await?;
-
-        Self::fetch_stocks(store, fetcher, time_frames).await
-    }
-
     async fn fetch_stocks<'a>(
         store: Arc<Store>,
         fetcher: TopStocksFetcher<'a>,
