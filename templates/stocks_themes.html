@@ -723,7 +723,7 @@
                     <button data-mode="hourly" title="Daily and Hourly split view">D/H</button>
                     <button data-mode="split" title="Daily and Weekly split view">D/W</button>
                     <button data-mode="benchmark" title="Daily ticker vs Daily benchmark">D/B</button>
-                    <button data-mode="industry" title="Daily ticker vs Industry ETF (falls back to Sector ETF)">D/I</button>
+                    <button data-mode="industry" title="Daily ticker vs Industry ETF (falls back to Sector ETF)">D/G</button>
                 </div>
                 <a href="/rrg.html" class="rrg-link" title="Relative Rotation Graph" target="_blank">RRG</a>
             </div>
@@ -1427,6 +1427,7 @@
     // ============================================================
     const TradingViewWidget = {
         _instances: {},  // containerId → widget instance
+        _bottomEtf: null,
 
         _destroy(containerId) {
             const w = this._instances[containerId];
@@ -1434,6 +1435,7 @@
                 try { w.remove(); } catch (e) {}
                 delete this._instances[containerId];
             }
+            if (containerId === 'tv-bottom-main') this._bottomEtf = null;
         },
 
         show(tickerSymbol) {
@@ -1448,6 +1450,20 @@
             if (AppState.chartMode === 'benchmark') {
                 const existingTop = document.getElementById('tv-daily-main');
                 if (existingTop) {
+                    this._destroy('tv-daily-main');
+                    existingTop.innerHTML = '';
+                    this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
+                    return;
+                }
+            }
+
+            // Same optimisation for industry mode: skip reloading the bottom ETF chart
+            // when the new ticker belongs to the same industry/sector ETF.
+            if (AppState.chartMode === 'industry') {
+                const _info = DataHelpers.findTickerInfo(tickerSymbol);
+                const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
+                const existingTop = document.getElementById('tv-daily-main');
+                if (existingTop && _etf && _etf === this._bottomEtf) {
                     this._destroy('tv-daily-main');
                     existingTop.innerHTML = '';
                     this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
@@ -1483,6 +1499,7 @@
                     const _info = DataHelpers.findTickerInfo(tickerSymbol);
                     const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
                     if (_etf) {
+                        this._bottomEtf = _etf;
                         this.createWidget(_etf, 'tv-bottom-main', 'D');
                     }
                 } else {
@@ -1611,7 +1628,16 @@
             // In benchmark mode, only wipe the top pane so the benchmark chart stays alive.
             const spinner = `<div style="height:100%;display:flex;align-items:center;justify-content:center;"><div style="width:64px;height:64px;border:3px solid #2a2a2a;border-top-color:#4a9eff;border-radius:50%;animation:spin 0.7s linear infinite;"></div></div>`;
             const topPane = document.getElementById('tv-daily-main');
-            if (AppState.chartMode === 'benchmark' && topPane) {
+            let topPaneOnly = AppState.chartMode === 'benchmark' && !!topPane;
+            if (!topPaneOnly && AppState.chartMode === 'industry' && topPane) {
+                const nextTicker = AppState.currentTickers[AppState.selectedTickerIndex]?.ticker;
+                if (nextTicker) {
+                    const _info = DataHelpers.findTickerInfo(nextTicker);
+                    const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
+                    topPaneOnly = !!(_etf && _etf === TradingViewWidget._bottomEtf);
+                }
+            }
+            if (topPaneOnly) {
                 TradingViewWidget._destroy('tv-daily-main');
                 topPane.innerHTML = spinner;
             } else {
