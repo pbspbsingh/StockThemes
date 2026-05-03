@@ -6,7 +6,7 @@ use crate::store::Store;
 use crate::yf::{BarSize, TimeSpec, YFinance};
 
 /// Maximum look-back Yahoo Finance supports for hourly candles
-const HOURLY_MAX_LOOKBACK_DAYS: i64 = 200;
+pub const HOURLY_MAX_LOOKBACK_DAYS: i64 = 200;
 const TIME_FMT: &str = "%Y-%m-%d %H:%M";
 const MID_NIGHT: NaiveTime = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
 

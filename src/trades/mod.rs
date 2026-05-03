@@ -71,6 +71,10 @@ impl Trade {
         if self.is_open() {
             return None;
         }
+        let has_open_fills = self.fills.iter().any(|f| f.pos_effect == PosEffect::Open);
+        if !has_open_fills {
+            return None;
+        }
         let sell: f64 = self
             .fills
             .iter()

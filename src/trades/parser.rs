@@ -261,7 +261,7 @@ pub fn parse_tos_csv(content: &str) -> Vec<Trade> {
                 ticker: symbol.clone(),
                 open_time,
                 close_time: None,
-                qty: open_qty,
+                qty: net.unsigned_abs() as u32,
                 fills: current,
                 fees: 0.0,
             });

@@ -80,8 +80,20 @@ impl Store {
             .context("Failed to evict old daily candles")?
             .rows_affected();
         if old_candles > 0 {
-            warn!("Cleaned {old_candles} old candles");
+            warn!("Cleaned {old_candles} old daily candles");
         }
+
+        // Evict hourly candles beyond Yahoo Finance's look-back limit
+        let cutoff = (Utc::now() - TimeDelta::days(crate::trades::candles::HOURLY_MAX_LOOKBACK_DAYS)).naive_utc();
+        let old_hourly = sqlx::query!("DELETE FROM hourly_candles WHERE hour < $1", cutoff)
+            .execute(pool)
+            .await
+            .context("Failed to evict old hourly candles")?
+            .rows_affected();
+        if old_hourly > 0 {
+            warn!("Cleaned {old_hourly} old hourly candles");
+        }
+
         Ok(())
     }
     // ── Stock methods ────────────────────────────────────────────────────────
