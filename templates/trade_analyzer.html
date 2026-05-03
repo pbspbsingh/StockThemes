@@ -270,7 +270,10 @@ body {
     <div class="chart-toolbar">
       <div class="chart-title" id="chart-title">Select a trade to view charts</div>
       <div style="display:flex;gap:6px">
+        <button class="btn" id="marker-btn" onclick="toggleMarkers()">Marker</button>
+        <button class="btn" id="lines-btn" onclick="toggleLines()">Lines</button>
         <button class="btn" id="hourly-btn" onclick="toggleHourly()">Hourly</button>
+        <button class="btn" id="benchmark-btn" onclick="toggleBenchmark()">Benchmark</button>
         <button class="btn" id="fs-btn" onclick="openFullscreen()" style="display:none">⛶ Fullscreen</button>
       </div>
     </div>
@@ -338,6 +341,9 @@ let sortCol       = 'date';
 let sortDir       = 'asc';
 let sortedIndices = [];
 let showHourly    = localStorage.getItem('ta:show-hourly') !== 'false';
+let showMarkers   = localStorage.getItem('ta:show-markers') !== 'false';
+let showLines     = localStorage.getItem('ta:show-lines') !== 'false';
+let showBenchmark = localStorage.getItem('ta:show-benchmark') !== 'false';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtPnl(usd, pct) {
@@ -544,7 +550,8 @@ function hideSpinner(el) {
 
 function resizeAllCharts() {
   Object.values(activeSeries).forEach(({ chart, el }) => {
-    chart.resize(el.clientWidth, el.clientHeight);
+    if (el.clientWidth > 0 && el.clientHeight > 0)
+      chart.resize(el.clientWidth, el.clientHeight);
   });
 }
 
@@ -557,7 +564,7 @@ function applyHourlyVisibility(prefix) {
     visible ? '' : 'none';
   gridEl.style.gridTemplateColumns = visible ? '' : '1fr';
   document.getElementById('hourly-btn').classList.toggle('active', showHourly);
-  requestAnimationFrame(resizeAllCharts);
+  requestAnimationFrame(() => requestAnimationFrame(resizeAllCharts));
 }
 
 function toggleHourly() {
@@ -565,6 +572,46 @@ function toggleHourly() {
   localStorage.setItem('ta:show-hourly', showHourly);
   applyHourlyVisibility('');
   if (fsActive) applyHourlyVisibility('fs-');
+}
+
+function applyBenchmarkVisibility(prefix) {
+  document.getElementById(`${prefix}cc-daily-bench`).closest('.chart-panel').style.display =
+    showBenchmark ? '' : 'none';
+  const gridEl = document.getElementById(prefix ? 'fs-grid' : 'chart-grid');
+  gridEl.style.gridTemplateRows = showBenchmark ? '' : '1fr';
+  document.getElementById('benchmark-btn').classList.toggle('active', showBenchmark);
+  requestAnimationFrame(() => requestAnimationFrame(resizeAllCharts));
+}
+
+function toggleBenchmark() {
+  showBenchmark = !showBenchmark;
+  localStorage.setItem('ta:show-benchmark', showBenchmark);
+  applyBenchmarkVisibility('');
+  if (fsActive) applyBenchmarkVisibility('fs-');
+}
+
+function toggleMarkers() {
+  showMarkers = !showMarkers;
+  localStorage.setItem('ta:show-markers', showMarkers);
+  document.getElementById('marker-btn').classList.toggle('active', showMarkers);
+  Object.values(activeSeries).forEach(entry => {
+    if (entry.markers) entry.series.setMarkers(showMarkers ? entry.markers : []);
+  });
+}
+
+function toggleLines() {
+  showLines = !showLines;
+  localStorage.setItem('ta:show-lines', showLines);
+  document.getElementById('lines-btn').classList.toggle('active', showLines);
+  Object.values(activeSeries).forEach(entry => {
+    if (!entry.priceLineSpecs) return;
+    if (showLines) {
+      entry.activePriceLines = entry.priceLineSpecs.map(spec => entry.series.createPriceLine(spec));
+    } else {
+      entry.activePriceLines.forEach(pl => entry.series.removePriceLine(pl));
+      entry.activePriceLines = [];
+    }
+  });
 }
 
 function destroyChartsInScope(prefix) {
@@ -581,6 +628,16 @@ async function renderAllCharts(trade, fullscreen) {
   const prefix = fullscreen ? 'fs-' : '';
   destroyChartsInScope(prefix);
   const gen = ++renderGen[prefix];
+
+  // Reset grid layout and show all panels so containers have valid dimensions
+  // when charts are created after the async fetch. applyHourlyVisibility /
+  // applyBenchmarkVisibility re-apply the correct state at the end.
+  const gridEl = document.getElementById(prefix ? 'fs-grid' : 'chart-grid');
+  gridEl.style.gridTemplateColumns = '';
+  gridEl.style.gridTemplateRows = '';
+  ['daily-ticker', 'hourly-ticker', 'daily-bench'].forEach(id => {
+    document.getElementById(`${prefix}cc-${id}`).closest('.chart-panel').style.display = '';
+  });
 
   const ids = ['daily-ticker','hourly-ticker','daily-bench'];
   const configs = [
@@ -651,7 +708,23 @@ async function renderAllCharts(trade, fullscreen) {
     });
 
     const markers = buildMarkers(trade, cfg.isHourly);
-    if (markers.length > 0) series.setMarkers(markers);
+    if (showMarkers && markers.length > 0) series.setMarkers(markers);
+
+    // Horizontal price lines at fill prices (ticker charts only)
+    const priceLineSpecs = [];
+    if (cfg.ticker === trade.ticker) {
+      const entryColor = trade.is_long ? '#22ab94' : '#ef5350';
+      const exitColor  = trade.is_long ? '#ef5350' : '#22ab94';
+      const entryList  = cfg.isHourly ? trade.entry_markers_hourly : trade.entry_markers;
+      const exitList   = cfg.isHourly ? trade.exit_markers_hourly  : trade.exit_markers_daily;
+      new Set(entryList.map(m => m.price)).forEach(price =>
+        priceLineSpecs.push({ price, color: entryColor, lineWidth: 1, lineStyle: 0, axisLabelVisible: false })
+      );
+      new Set(exitList.map(m => m.price)).forEach(price =>
+        priceLineSpecs.push({ price, color: exitColor, lineWidth: 1, lineStyle: 0, axisLabelVisible: false })
+      );
+    }
+    const activePriceLines = showLines ? priceLineSpecs.map(spec => series.createPriceLine(spec)) : [];
 
     try {
       const from = cfg.isHourly ? trade.hourly_from + TZ_OFFSET_SECS : utcTimestampToDate(trade.daily_from);
@@ -661,12 +734,13 @@ async function renderAllCharts(trade, fullscreen) {
       chart.timeScale().fitContent();
     }
 
-    activeSeries[prefix + id] = { chart, series, count: data.length, el };
+    activeSeries[prefix + id] = { chart, series, count: data.length, el, markers, priceLineSpecs, activePriceLines };
   }));
 
   if (renderGen[prefix] !== gen) return;
 
   applyHourlyVisibility(prefix);
+  applyBenchmarkVisibility(prefix);
 }
 
 // ── Marker builders ───────────────────────────────────────────────────────────
@@ -745,7 +819,10 @@ async function fetchCandles(ticker, isHourly, from, to) {
 window.addEventListener('resize', resizeAllCharts);
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+document.getElementById('marker-btn').classList.toggle('active', showMarkers);
+document.getElementById('lines-btn').classList.toggle('active', showLines);
 document.getElementById('hourly-btn').classList.toggle('active', showHourly);
+document.getElementById('benchmark-btn').classList.toggle('active', showBenchmark);
 renderHeader();
 renderList();
 if (TRADES.length > 0) selectTrade(sortedIndices[0]);
