@@ -3,8 +3,11 @@ use crate::store::Store;
 use crate::util::is_upto_date;
 use crate::yf::{BarSize, Candle, Range, TimeSpec, YFinance};
 use anyhow::Context;
+use axum::http::header::{CACHE_CONTROL, HeaderValue};
+use axum::middleware::Next;
 use axum::response::Html;
-use axum::{Router, routing};
+use axum::response::Response;
+use axum::{Router, middleware, routing};
 use chrono::{DateTime, Local, Months, NaiveDate, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -94,10 +97,19 @@ pub async fn start_http_server(home: String) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", routing::get(async || Html(home)))
         .route("/rrg.html", routing::get(rrg_util::rrg_home))
-        .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler));
+        .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler))
+        .layer(middleware::from_fn(no_cache));
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+pub async fn no_cache(request: axum::extract::Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
 }
 
 pub async fn fetch_candles(

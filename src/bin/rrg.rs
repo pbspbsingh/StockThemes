@@ -1,7 +1,7 @@
 use anyhow::Context;
-use axum::{Router, routing};
+use axum::{Router, middleware, routing};
 use stock_themes::config::APP_CONFIG;
-use stock_themes::{init_logger, rrg_util};
+use stock_themes::{init_logger, no_cache, rrg_util};
 use tokio::net::TcpListener;
 use tracing::info;
 
@@ -18,7 +18,8 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", routing::get(rrg_util::rrg_home))
         .route("/rrg.html", routing::get(rrg_util::rrg_home))
-        .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler));
+        .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler))
+        .layer(middleware::from_fn(no_cache));
     axum::serve(listener, app).await?;
 
     Ok(())

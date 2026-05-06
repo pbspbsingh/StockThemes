@@ -3,6 +3,7 @@ use askama::Template;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
+    middleware,
     response::{Html, IntoResponse},
     routing,
 };
@@ -16,6 +17,7 @@ use tracing::info;
 use super::candles::fetch_hourly_candles;
 use crate::config::APP_CONFIG;
 use crate::html_error::HtmlError;
+use crate::no_cache;
 use crate::store::Store;
 use crate::trades::TradeView;
 use crate::yf::YFinance;
@@ -224,7 +226,8 @@ pub async fn start_server(
         .route("/", routing::get(home))
         .route("/api/candles/daily/{ticker}", routing::get(daily_candles))
         .route("/api/candles/hourly/{ticker}", routing::get(hourly_candles))
-        .with_state(state);
+        .with_state(state)
+        .layer(middleware::from_fn(no_cache));
 
     let addr = format!("127.0.0.1:{}", APP_CONFIG.http_port);
     let listener = TcpListener::bind(&addr)
