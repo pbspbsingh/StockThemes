@@ -12,7 +12,9 @@ use chrono::{DateTime, Local, Months, NaiveDate, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::sync::{Arc, LazyLock, Mutex};
 use tokio::net::TcpListener;
+use tokio::sync::Mutex as AsyncMutex;
 use tracing::{debug, info, trace};
 
 pub mod config;
@@ -112,11 +114,19 @@ pub async fn no_cache(request: axum::extract::Request, next: Next) -> Response {
     response
 }
 
+static FETCH_LOCKS: LazyLock<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
 pub async fn fetch_candles(
     store: &Store,
     yf: &YFinance,
     ticker: &str,
 ) -> anyhow::Result<Vec<Candle>> {
+    let lock = {
+        let mut map = FETCH_LOCKS.lock().expect("lock poison");
+        Arc::clone(map.entry(ticker.to_string()).or_default())
+    };
+    let _guard = lock.lock().await;
+
     let mut candles = store.get_candles(ticker).await?;
     if candles.is_empty() {
         let candles = yf

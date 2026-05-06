@@ -84,7 +84,9 @@ impl Store {
         }
 
         // Evict hourly candles beyond Yahoo Finance's look-back limit
-        let cutoff = (Utc::now() - TimeDelta::days(crate::trades::candles::HOURLY_MAX_LOOKBACK_DAYS)).naive_utc();
+        let cutoff = (Utc::now()
+            - TimeDelta::days(crate::trades::candles::HOURLY_MAX_LOOKBACK_DAYS))
+        .naive_utc();
         let old_hourly = sqlx::query!("DELETE FROM hourly_candles WHERE hour < $1", cutoff)
             .execute(pool)
             .await
