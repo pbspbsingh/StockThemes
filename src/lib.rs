@@ -18,9 +18,10 @@ use tokio::sync::Mutex as AsyncMutex;
 use tracing::{debug, info, trace};
 
 pub mod config;
-mod etf_map;
+pub mod etf_map;
 pub mod html_error;
 pub mod rrg_util;
+pub mod rs;
 pub mod store;
 pub mod summary;
 pub mod trades;

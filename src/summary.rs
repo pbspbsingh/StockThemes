@@ -1,6 +1,5 @@
 use crate::config::APP_CONFIG;
-use crate::util::compute_rs;
-use crate::{Performance, Stock, Ticker, etf_map};
+use crate::{Stock, Ticker, etf_map};
 use askama::Template;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -85,10 +84,9 @@ impl Summary {
 
     pub fn render(
         &self,
-        sectors: impl IntoIterator<Item = Performance>,
-        industries: impl IntoIterator<Item = Performance>,
-        stocks: impl IntoIterator<Item = Performance>,
-        base: &Performance,
+        sector_rs: HashMap<String, f64>,
+        industry_rs: HashMap<String, f64>,
+        stock_rs: HashMap<String, f64>,
     ) -> String {
         #[derive(Template)]
         #[template(path = "./stocks_themes.html")]
@@ -101,26 +99,13 @@ impl Summary {
             stock_rs: HashMap<String, f64>,
         }
 
-        fn create_rs_map(
-            perfs: impl IntoIterator<Item = Performance>,
-            base: &Performance,
-        ) -> HashMap<String, f64> {
-            perfs
-                .into_iter()
-                .map(|p| {
-                    let rs = (compute_rs(&p, base) * 100.0).round() / 100.0;
-                    (p.ticker, rs)
-                })
-                .collect()
-        }
-
         let html = Html {
             summary: self,
             base_ticker: &APP_CONFIG.base_ticker,
             sectors: etf_map::tv_mapping(),
-            sector_rs: create_rs_map(sectors, base),
-            industry_rs: create_rs_map(industries, base),
-            stock_rs: create_rs_map(stocks, base),
+            sector_rs,
+            industry_rs,
+            stock_rs,
         };
 
         html.render().expect("Failed to render html")

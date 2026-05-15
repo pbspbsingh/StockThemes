@@ -9,6 +9,13 @@ use serde::{Deserialize, Serialize};
 
 const CONFIG_FILE: &str = "config.toml";
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+pub enum PerfMode {
+    TradingView,
+    EtfBuckets,
+    EtfCandles,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub log_config: String,
@@ -18,6 +25,7 @@ pub struct Config {
     pub launch_chrome_if_needed: bool,
     pub base_ticker: String,
     pub market_hours: (NaiveTime, NaiveTime),
+    pub perf_mode: PerfMode,
     #[serde(default)]
     pub ignored_stocks: Vec<String>,
     pub http_port: u16,

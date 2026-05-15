@@ -15,6 +15,7 @@ use rand::seq::SliceRandom;
 
 use crate::Performance;
 use crate::config::APP_CONFIG;
+use crate::yf::Candle;
 
 pub async fn read_stocks(
     files: &[PathBuf],
@@ -183,4 +184,30 @@ pub fn compute_rs(perf: &Performance, base: &Performance) -> f64 {
     }
 
     multiplier(perf) / multiplier(base)
+}
+
+pub fn compute_rs_candles(candles: &[Candle], base: &[Candle]) -> anyhow::Result<f64> {
+    const IBD_QUARTER_BARS: usize = 63;
+    const IBD_WEIGHTS: [f64; 4] = [0.4, 0.2, 0.2, 0.2];
+    const IBD_MIN_BARS: usize = 1 + IBD_WEIGHTS.len() * IBD_QUARTER_BARS;
+
+    fn multiplier(candles: &[Candle]) -> anyhow::Result<f64> {
+        let n = candles.len();
+        anyhow::ensure!(
+            n >= IBD_MIN_BARS,
+            "IBD RS needs at least {IBD_MIN_BARS} bars, got {n}"
+        );
+        let q = |i: usize| -> f64 {
+            let end = candles[n - 1 - i * IBD_QUARTER_BARS].close;
+            let start = candles[n - 1 - (i + 1) * IBD_QUARTER_BARS].close;
+            (end - start) / start
+        };
+        Ok(1.0
+            + IBD_WEIGHTS
+                .iter()
+                .enumerate()
+                .map(|(i, w)| w * q(i))
+                .sum::<f64>())
+    }
+    Ok(multiplier(candles)? / multiplier(base)?)
 }

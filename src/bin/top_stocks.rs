@@ -4,12 +4,11 @@ use clap::Parser;
 use tracing::info;
 
 use std::path::{Path, PathBuf};
-use stock_themes::config::APP_CONFIG;
 use stock_themes::store::Store;
 use stock_themes::summary::Summary;
 use stock_themes::tv::tv_manager::TvManager;
 use stock_themes::yf::YFinance;
-use stock_themes::{Stock, fetch_stock_perf, init_logger, start_http_server, time_frames};
+use stock_themes::{Stock, init_logger, rs, start_http_server, time_frames};
 
 #[derive(Parser, Debug)]
 #[command(name = "top_stocks")]
@@ -46,20 +45,7 @@ async fn main() -> anyhow::Result<()> {
     let yf = YFinance::new();
     let store = Store::load_store().await?;
 
-    let base_perf = fetch_stock_perf(&store, &yf, &APP_CONFIG.base_ticker).await?;
-    info!("Fetched baseline: {base_perf}");
-
     let mut tv_manager = TvManager::new(store.clone());
-
-    let sectors = tv_manager.fetch_sectors().await?;
-    info!("Fetched {} sectors", sectors.len());
-
-    let industries = tv_manager.fetch_industries().await?;
-    info!("Fetched {} industry groups", industries.len());
-
-    if industries.is_empty() {
-        anyhow::bail!("No industry groups found");
-    }
 
     let (stocks, stock_perfs) = tv_manager
         .fetch_top_stocks(
@@ -69,14 +55,21 @@ async fn main() -> anyhow::Result<()> {
             time_frames(&args.time_frames),
         )
         .await?;
+    info!("Total {} unique stocks fetched", stocks.len());
+
+    let rs_maps = rs::build_rs_maps(&store, &yf, &mut tv_manager, &stock_perfs).await?;
+
+    if rs_maps.sectors.is_empty() || rs_maps.industries.is_empty() {
+        anyhow::bail!("No sector/industry RS computed");
+    }
+
     drop(tv_manager);
     drop(yf);
-    info!("Total {} unique stocks fetched", stocks.len());
 
     save_csv(&args.output_file, &args.tv_screen_url, &stocks).await?;
 
     let summary = Summary::summarize(stocks);
-    let html = summary.render(sectors, industries, stock_perfs, &base_perf);
+    let html = summary.render(rs_maps.sectors, rs_maps.industries, rs_maps.stocks);
     start_http_server(html).await
 }
 
