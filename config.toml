@@ -1,5 +1,8 @@
-chrome_path = "/usr/bin/google-chrome"
-user_data_dir = "/home/pbs/Workspace/ChromeData"
+# chrome_path = "/usr/bin/google-chrome"
+# user_data_dir = "/home/pbs/Workspace/ChromeData"
+
+chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+user_data_dir = "/Users/singhpra/Trading/ChromeDataDir"
 chrome_args = []
 launch_chrome_if_needed = true
 

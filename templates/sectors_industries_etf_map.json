@@ -2,7 +2,8 @@
   "_meta": {
     "source": "TradingView FactSet Industries & Economic Sectors — USA",
     "taxonomy": "TradingView uses FactSet's Economic Sector / Industry classification — NOT GICS (S&P/MSCI), NOT ICB (FTSE), NOT SIC. Sector and industry names, groupings, and stock assignments will often differ materially from what other screeners, brokers, or data providers show. Examples: Aerospace & Defense lives in Electronic Technology (not Industrials); REITs live in Finance (not Real Estate); Media/Entertainment lives in Consumer Services (not Communications); Communications is pure telecom only. Always use TradingView URLs to verify stock classification before assuming standard industry groupings apply.",
-    "verified": "2026-04-15",
+    "verified": "2026-05-13",
+    "previous_verification": "2026-04-15",
     "notes": [
       "All sector and industry names verified directly from tradingview.com/markets/stocks-usa/sectorandindustry-sector/*/industries/",
       "Coal: No dedicated US-listed coal ETF exists (KOL was delisted 2020). XLE used as fallback.",
@@ -11,9 +12,13 @@
       "Electronic Production Equipment: No dedicated fab-equipment-only ETF. SMH used (includes AMAT, LRCX, KLAC).",
       "Forest Products / Construction Materials: No dedicated ETFs. XME / XLB used as fallbacks.",
       "Communications sector in TradingView FactSet = pure telecom only (3 industries). Media/Entertainment live in Consumer Services.",
-      "BDRY replaced by BOAT (Apr 2026): BDRY is a freight futures pool (commodity), not a shipping equity ETF. BOAT (SonicShares Global Shipping) holds maritime shipping equities.",
-      "CARZ replaced by DRIV (Apr 2026): CARZ rebranded to 'First Trust S-Network Future Vehicles & Technology ETF' and pivoted to EV/semiconductor ecosystem — top holdings are Samsung, TSMC, AMD, Apple. DRIV (Global X Autonomous & Electric Vehicles) holds actual OEMs (TSLA, GM, F, TM) alongside EV tech.",
-      "Liquidity watch (Apr 2026): EATZ ~$1.9M AUM (~2,240 shares/day avg — near closure risk; fallback: PEJ). BJK ~$20M AUM with heavy 3-year outflows. FTXG ~$21M AUM. ONLN ~$58M AUM but steady outflows."
+      "BDRY replaced by BOAT (Apr 2026): BDRY is a freight futures pool (commodity), not a shipping equity ETF. BOAT (SonicShares Global Shipping, ~$82M AUM) holds maritime shipping equities.",
+      "CARZ replaced by DRIV (Apr 2026): CARZ rebranded to 'First Trust S-Network Future Vehicles & Technology ETF' and pivoted to EV/semiconductor ecosystem — top holdings are AMD, TSLA, MSFT, INTC, NVDA. DRIV used as the best-available auto proxy, but note that DRIV has also drifted toward EV-tech/energy (top holdings: Bloom Energy, GOOGL, TSLA, INTC, NVDA, Toyota); GM and Ford are no longer in DRIV's top 10. No clean US-listed pure-OEM ETF exists.",
+      "EATZ replaced by PEJ (May 2026): EATZ (AdvisorShares Restaurant ETF) was liquidated on May 7, 2026 (last trading day April 30, 2026) after AUM fell to ~$1.9M. PEJ (Invesco Leisure & Entertainment) is the listed fallback for Restaurants; note PEJ is broader, also covering hotels/cruise lines.",
+      "BJK replaced by XLY (May 2026): On April 9, 2026, VanEck rebranded BJK to GENZ ('VanEck Digital Native Economy ETF'). GENZ is no longer a casino/gaming ETF — same pivot pattern as CARZ. No US-listed pure-gaming ETF currently exists; XLY (Consumer Discretionary sector) used as fallback. Individual stocks: MGM, WYNN, CZR, LVS, DKNG, PENN.",
+      "SKYY methodology has changed (verified May 2026): Top holdings now DigitalOcean (6.2%), Everpure (4.3%), Oracle (4.2%), AMZN (4.1%), GOOGL (4.0%), CoreWeave (3.8%), Nutanix (3.7%), MSFT (3.3%), Akamai (3.3%), Arista (3.2%). Mega-caps are no longer capped; IBM has dropped out of top 10; CoreWeave (post-IPO 2025) is now a top holding. Still the best cloud/SaaS proxy for Internet Software/Services.",
+      "MADE (iShares U.S. Manufacturing ETF, launched July 2024): Broad manufacturing exposure (top: ETN, CAT, VRT, APH, CMI, DE, HON, PH, GM, TEL) — includes GM at 3.3% and Ford at 2.3% as OEM auto exposure. Not a pure auto-parts ETF; APTV/BWA/LEA do not appear in top 25. Best available proxy for Auto Parts: OEM but XLI is a defensible alternative.",
+      "Liquidity watch (May 2026): FTXG ~$21M AUM (stable). ONLN ~$66M AUM (slightly up from prior $58M). No imminent closure risk among remaining ETFs."
     ]
   },
   "TradingView_Master_Mapping": [
@@ -36,7 +41,7 @@
       "sector": "Technology Services",
       "sector_etf": "VGT",
       "industries": [
-        { "name": "Internet Software/Services",       "etf": "SKYY", "note": "Cloud computing — equal-weight methodology; top holdings are Nutanix, Oracle, IBM, DigitalOcean, Arista (AMZN/GOOGL/MSFT are capped). Best proxy for cloud/SaaS names in this industry." },
+        { "name": "Internet Software/Services",       "etf": "SKYY", "note": "Cloud computing — top holdings (May 2026): DigitalOcean, Everpure, Oracle, AMZN, GOOGL, CoreWeave, Nutanix, MSFT, Akamai, Arista. Mega-caps no longer capped; methodology shifted from prior equal-weight. Best available cloud/SaaS proxy." },
         { "name": "Packaged Software",                "etf": "IGV",  "note": "MSFT, ORCL, SAP, ADBE, CRM" },
         { "name": "Information Technology Services",  "etf": "VGT",  "note": "Accenture, IBM, CACI, Leidos" },
         { "name": "Data Processing Services",         "etf": "VGT",  "note": "ADP, Paychex, Fiserv, Broadridge. FINX (FinTech) is wrong category." }
@@ -91,7 +96,7 @@
         { "name": "Beverages: Non-Alcoholic",  "etf": "XLP",  "note": "KO, PEP, MNST" },
         { "name": "Beverages: Alcoholic",      "etf": "XLP",  "note": "BUD, TAP, STZ, DEO" },
         { "name": "Tobacco",                   "etf": "XLP",  "note": "MO, PM, BTI" },
-        { "name": "Food: Specialty/Candy",     "etf": "FTXG", "note": "First Trust Nasdaq Food & Beverage ETF" },
+        { "name": "Food: Specialty/Candy",     "etf": "FTXG", "note": "First Trust Nasdaq Food & Beverage ETF (~$21M AUM)" },
         { "name": "Food: Meat/Fish/Dairy",     "etf": "FTXG", "note": "TradingView name is 'Meat/Fish/Dairy', not 'Meat/Dairy/Fish'" },
         { "name": "Food: Major Diversified",   "etf": "FTXG", "note": "GIS, CPB, HRL, SJM" },
         { "name": "Apparel/Footwear",          "etf": "XLY",  "note": "TradingView puts NKE, LULU, PVH, HBI in Consumer Non-Durables. XLY best captures these stocks." },
@@ -103,7 +108,7 @@
       "sector": "Consumer Durables",
       "sector_etf": "XLY",
       "industries": [
-        { "name": "Motor Vehicles",          "etf": "DRIV", "note": "Global X Autonomous & Electric Vehicles ETF — includes TSLA, GM, F, TM, BMW alongside EV/autonomous tech. Replaces CARZ, which rebranded to 'First Trust S-Network Future Vehicles & Technology ETF' and now holds Samsung, TSMC, AMD, Apple as top positions (no longer a motor vehicle proxy)." },
+        { "name": "Motor Vehicles",          "etf": "DRIV", "note": "Global X Autonomous & Electric Vehicles ETF — best-available auto proxy, but note: top holdings (May 2026) are Bloom Energy (5.0%), GOOGL (4.2%), TSLA (3.1%), INTC (3.0%), NVDA (2.5%), Toyota (2.5%). GM and Ford no longer in top 10 — DRIV has drifted toward EV-tech/energy ecosystem. CARZ (now 'First Trust S-Network Future Vehicles & Technology ETF') is even further from OEMs (top: AMD, TSLA, MSFT, INTC, NVDA). No US-listed pure-OEM auto ETF exists." },
         { "name": "Homebuilding",            "etf": "ITB",  "note": "DHI, LEN, NVR, PHM — homebuilders" },
         { "name": "Recreational Products",  "etf": "XLY",  "note": "Polaris, Brunswick, YETI, Callaway — no dedicated ETF" },
         { "name": "Tools & Hardware",        "etf": "XLI",  "note": "SWK, SNA, Snap-on — TradingView name is 'Tools & Hardware'" },
@@ -153,14 +158,14 @@
       "sector_etf": "XLI",
       "industries": [
         { "name": "Industrial Machinery",                "etf": "XLI",  "note": "PH, EMR, ROK, ETN, AME" },
-        { "name": "Trucks/Construction/Farm Machinery",  "etf": "XLI",  "note": "CAT, DE, PCAR, CMI — was missing from previous version" },
-        { "name": "Electrical Products",                 "etf": "XLI",  "note": "Eaton, Emerson, Rockwell — was missing from previous version" },
-        { "name": "Auto Parts: OEM",                     "etf": "MADE", "note": "iShares U.S. Manufacturing ETF (launched July 2024) — APTV, BWA, Lear" },
-        { "name": "Building Products",                   "etf": "XLI",  "note": "MAS, FBHS, Builders FirstSource — was missing from previous version" },
-        { "name": "Industrial Conglomerates",            "etf": "XLI",  "note": "GE, MMM, Honeywell, Dover — was missing" },
-        { "name": "Metal Fabrication",                   "etf": "XLI",  "note": "Watts Water, Rexnord — was missing" },
-        { "name": "Miscellaneous Manufacturing",         "etf": "XLI",  "note": "Was missing from previous version" },
-        { "name": "Office Equipment/Supplies",           "etf": "XLI",  "note": "Xerox, HBI — only 4 stocks; was missing" }
+        { "name": "Trucks/Construction/Farm Machinery",  "etf": "XLI",  "note": "CAT, DE, PCAR, CMI" },
+        { "name": "Electrical Products",                 "etf": "XLI",  "note": "Eaton, Emerson, Rockwell" },
+        { "name": "Auto Parts: OEM",                     "etf": "MADE", "note": "iShares U.S. Manufacturing ETF (launched July 2024) — broad manufacturing exposure with auto OEM tilt (GM 3.3%, Ford 2.3% in top holdings); top holdings are ETN, CAT, VRT, APH, CMI, DE, HON, PH. Not a pure auto-parts ETF — APTV/BWA/LEA do not appear in top 25. XLI is a defensible alternative." },
+        { "name": "Building Products",                   "etf": "XLI",  "note": "MAS, FBHS, Builders FirstSource" },
+        { "name": "Industrial Conglomerates",            "etf": "XLI",  "note": "GE, MMM, Honeywell, Dover" },
+        { "name": "Metal Fabrication",                   "etf": "XLI",  "note": "Watts Water, Rexnord" },
+        { "name": "Miscellaneous Manufacturing",         "etf": "XLI",  "note": null },
+        { "name": "Office Equipment/Supplies",           "etf": "XLI",  "note": "Xerox, HBI — only 4 stocks" }
       ]
     },
     {
@@ -170,9 +175,9 @@
         { "name": "Precious Metals",        "etf": "GDX",  "note": "Gold/silver miners — NEM, AEM, GOLD, WPM" },
         { "name": "Other Metals/Minerals",  "etf": "XME",  "note": "Rio Tinto, BHP, Freeport, Newmont" },
         { "name": "Steel",                  "etf": "SLX",  "note": "VanEck Steel ETF — NUE, STLD, CLF, X" },
-        { "name": "Construction Materials", "etf": "XME",  "note": "VMC, MLM, CRH, Summit Materials — was missing from previous version" },
+        { "name": "Construction Materials", "etf": "XME",  "note": "VMC, MLM, CRH, Summit Materials" },
         { "name": "Aluminum",               "etf": "IYM",  "note": "AA, ARNC — IYM is Materials ETF, no dedicated aluminum-only ETF" },
-        { "name": "Forest Products",        "etf": "XLB",  "note": "WY, PCH, Rayonier — was missing. No dedicated ETF; XLB is fallback." }
+        { "name": "Forest Products",        "etf": "XLB",  "note": "WY, PCH, Rayonier. No dedicated ETF; XLB is fallback." }
       ]
     },
     {
@@ -189,12 +194,12 @@
       "sector": "Consumer Services",
       "sector_etf": "XLY",
       "industries": [
-        { "name": "Restaurants",                  "etf": "EATZ", "note": "AdvisorShares Restaurant ETF — MCD, SBUX, CMG, YUM" },
+        { "name": "Restaurants",                  "etf": "PEJ",  "note": "Invesco Leisure & Entertainment — MCD, SBUX, CMG, YUM. Note: PEJ is broader (also covers hotels/cruise lines) but is the best remaining proxy after EATZ (AdvisorShares Restaurant ETF) was liquidated May 7, 2026." },
         { "name": "Hotels/Resorts/Cruise lines",  "etf": "PEJ",  "note": "Invesco Leisure & Entertainment — MAR, HLT, CCL, NCLH. CRUZ was cruise-only (wrong)." },
         { "name": "Movies/Entertainment",         "etf": "XLC",  "note": "Netflix, Disney, WBD — TradingView puts this in Consumer Services, NOT Communications" },
         { "name": "Cable/Satellite TV",           "etf": "XLC",  "note": "Comcast, Charter, DirecTV — in Consumer Services, NOT Communications" },
-        { "name": "Broadcasting",                 "etf": "XLC",  "note": "Fox, Paramount, Nexstar — in Consumer Services, NOT Communications" },
-        { "name": "Casinos/Gaming",               "etf": "BJK",  "note": "VanEck Gaming ETF — MGM, WYNN, CZR, LVS" },
+        { "name": "Broadcasting",                 "etf": "XLC",  "note": "Fox, Paramount Skydance (PSKY), Nexstar, Versant Media — in Consumer Services, NOT Communications" },
+        { "name": "Casinos/Gaming",               "etf": "XLY",  "note": "MGM, WYNN, CZR, LVS, DKNG, PENN. No US-listed pure-gaming ETF currently exists — BJK was rebranded to GENZ (VanEck Digital Native Economy ETF) on April 9, 2026 and no longer tracks gaming. XLY (Consumer Discretionary sector) used as fallback." },
         { "name": "Other Consumer Services",      "etf": "XLY",  "note": "Airbnb, Booking, Expedia, Match" },
         { "name": "Publishing: Newspapers",       "etf": "XLY",  "note": "NYT, News Corp — no dedicated ETF" },
         { "name": "Publishing: Books/Magazines",  "etf": "XLY",  "note": "Scholastic, Meredith — no dedicated ETF" },
@@ -205,7 +210,7 @@
       "sector": "Commercial Services",
       "sector_etf": "XLI",
       "industries": [
-        { "name": "Miscellaneous Commercial Services", "etf": "XLI",  "note": "Shopify, Verisk, Dun & Bradstreet — largest industry ($704B). Previous JSON named this 'Commercial Services'." },
+        { "name": "Miscellaneous Commercial Services", "etf": "XLI",  "note": "Shopify, Verisk, Dun & Bradstreet — largest industry ($704B)." },
         { "name": "Financial Publishing/Services",     "etf": "XLF",  "note": "Moody's, S&P Global, MSCI, FactSet" },
         { "name": "Advertising/Marketing Services",    "etf": "XLC",  "note": "WPP, Omnicom, Publicis, IPG" },
         { "name": "Commercial Printing/Forms",         "etf": "XLI",  "note": "Quad, Ennis, Vericast" },
@@ -217,25 +222,25 @@
       "sector_etf": "XLI",
       "industries": [
         { "name": "Wholesale Distributors",    "etf": "XLI",  "note": "Fastenal, W.W. Grainger, HD Supply" },
-        { "name": "Medical Distributors",      "etf": "IHF",  "note": "McKesson, AmerisourceBergen, Cardinal Health — was missing from previous version" },
-        { "name": "Food Distributors",         "etf": "XLP",  "note": "Sysco, US Foods, Performance Food — was missing" },
-        { "name": "Electronics Distributors",  "etf": "XLK",  "note": "Arrow, Avnet, TD Synnex — was missing" }
+        { "name": "Medical Distributors",      "etf": "IHF",  "note": "McKesson, AmerisourceBergen, Cardinal Health" },
+        { "name": "Food Distributors",         "etf": "XLP",  "note": "Sysco, US Foods, Performance Food" },
+        { "name": "Electronics Distributors",  "etf": "XLK",  "note": "Arrow, Avnet, TD Synnex" }
       ]
     },
     {
       "sector": "Retail Trade",
       "sector_etf": "XRT",
       "industries": [
-        { "name": "Internet Retail",              "etf": "ONLN", "note": "ProShares Online Retail — AMZN, JD, Chewy, Etsy" },
+        { "name": "Internet Retail",              "etf": "ONLN", "note": "ProShares Online Retail (~$66M AUM) — AMZN, JD, Chewy, Etsy" },
         { "name": "Specialty Stores",             "etf": "XRT",  "note": "COST, TGT, TJX, ULTA, NKE retail" },
         { "name": "Home Improvement Chains",      "etf": "XHB",  "note": "HD, LOW — XHB includes retail+homebuilders. ITB is pure homebuilders (wrong for this industry)." },
-        { "name": "Apparel/Footwear Retail",      "etf": "XRT",  "note": "GAP, URBN, PVH, Tapestry — was missing from previous version" },
+        { "name": "Apparel/Footwear Retail",      "etf": "XRT",  "note": "GAP, URBN, PVH, Tapestry" },
         { "name": "Department Stores",            "etf": "XRT",  "note": "Macy's, Nordstrom, Kohl's" },
         { "name": "Drugstore Chains",             "etf": "XLP",  "note": "CVS, Walgreens — only 2 stocks" },
-        { "name": "Discount Stores",              "etf": "XRT",  "note": "Dollar General, Dollar Tree, Five Below — was missing (previous JSON had 'General Merchandise Stores')" },
+        { "name": "Discount Stores",              "etf": "XRT",  "note": "Dollar General, Dollar Tree, Five Below" },
         { "name": "Food Retail",                  "etf": "XLP",  "note": "Kroger, Albertsons, Sprouts" },
         { "name": "Electronics/Appliance Stores", "etf": "XRT",  "note": "Best Buy — only 4 stocks" },
-        { "name": "Catalog/Specialty Distribution","etf": "XRT",  "note": "Only 1 stock — was missing from previous version" }
+        { "name": "Catalog/Specialty Distribution","etf": "XRT",  "note": "Only 1 stock" }
       ]
     },
     {
@@ -247,7 +252,7 @@
         { "name": "Other Transportation","etf": "IYT", "note": "Waste + misc transport" },
         { "name": "Airlines",          "etf": "JETS", "note": "Invesco Airlines ETF — AAL, DAL, UAL, LUV" },
         { "name": "Trucking",          "etf": "IYT",  "note": "Old Dominion, Knight-Swift, J.B. Hunt" },
-        { "name": "Marine Shipping",   "etf": "BOAT", "note": "SonicShares Global Shipping ETF — equity-based (container, tanker, dry bulk). Holds Matson, Frontline, Danaos and peers. Replaces BDRY (freight futures pool, not equity-based)." }
+        { "name": "Marine Shipping",   "etf": "BOAT", "note": "SonicShares Global Shipping ETF (~$82M AUM) — equity-based (container, tanker, dry bulk). Holds Frontline, Mitsui O.S.K., A.P. Møller-Mærsk, Matson. Replaces BDRY (freight futures pool, not equity-based)." }
       ]
     },
     {

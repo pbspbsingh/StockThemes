@@ -20,7 +20,7 @@ pub struct Industry {
 }
 
 pub fn tv_mapping() -> Vec<Sector> {
-    let json = include_str!("../sectors_industries_etf_map.json");
+    let json = include_str!("../templates/sectors_industries_etf_map.json");
     let mapping = serde_json::from_str::<TradingViewMapping>(json).expect("Invalid JSON");
     mapping.sectors
 }
