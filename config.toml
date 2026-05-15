@@ -1,5 +1,5 @@
-chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-user_data_dir = "/Users/singhpra/Trading/ChromeDataDir"
+chrome_path = "/usr/bin/google-chrome"
+user_data_dir = "/home/pbs/Workspace/ChromeData"
 chrome_args = []
 launch_chrome_if_needed = true
 
@@ -7,7 +7,6 @@ log_config = "info,chromiumoxide=error,stock_themes=debug"
 
 base_ticker = "QQQ"
 market_hours = ["06:30", "13:00"]
-use_tv_perf_when_available = false
 ignored_stocks = []
 
 http_port = 8000

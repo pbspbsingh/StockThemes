@@ -17,7 +17,6 @@ pub struct Config {
     pub chrome_args: Vec<String>,
     pub launch_chrome_if_needed: bool,
     pub base_ticker: String,
-    pub use_tv_perf_when_available: bool,
     pub market_hours: (NaiveTime, NaiveTime),
     #[serde(default)]
     pub ignored_stocks: Vec<String>,
