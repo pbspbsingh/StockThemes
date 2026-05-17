@@ -305,7 +305,9 @@
 
         /* Preview pane fills remaining height */
         #preview {
-            height: 100%;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
         }
 
         /* Stats bar above tables (Sectors N / Industries N / Total Stocks N) */
@@ -458,6 +460,27 @@
         .tv-divider:hover,
         .tv-divider.dragging {
             background: #4a9eff;
+        }
+
+        /* ── Metric chips (ADR%, AvgVol) in preview title ────────── */
+        .metric-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 1px 6px;
+            margin-left: 6px;
+            border-radius: 10px;
+            background: #1a1a1a;
+            color: #c8c8c8;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            vertical-align: middle;
+            border: 1px solid #2a2a2a;
+        }
+        .metric-chip .metric-label {
+            color: #888;
+            font-weight: 700;
         }
 
         /* ── Chart icon button (header breadcrumb) ──────────────── */
@@ -718,12 +741,13 @@
         <div class="column-header preview-header">
             <span id="preview-title">Preview</span>
             <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+                <span id="preview-metrics"></span>
                 <div class="chart-toggle" id="chart-toggle">
                     <button data-mode="daily" title="Daily chart only">D</button>
                     <button data-mode="hourly" title="Daily and Hourly split view">D/H</button>
                     <button data-mode="split" title="Daily and Weekly split view">D/W</button>
-                    <button data-mode="benchmark" title="Daily ticker vs Daily benchmark">D/B</button>
                     <button data-mode="industry" title="Daily ticker vs Industry ETF (falls back to Sector ETF)">D/G</button>
+                    <button data-mode="benchmark" title="Daily ticker vs Daily benchmark">D/B</button>
                 </div>
                 <a href="/rrg.html" class="rrg-link" title="Relative Rotation Graph" target="_blank">RRG</a>
             </div>
@@ -784,6 +808,9 @@
 <script id="stock-rs" type="application/json">
     {{ stock_rs|json|safe }}
 </script>
+<script id="stock-metrics" type="application/json">
+    {{ stock_metrics|json|safe }}
+</script>
 <script id="stock-data" type="application/json">
     {{ summary|json|safe }}
 </script>
@@ -821,8 +848,28 @@
     const stockRS = new Map(
         Object.entries(JSON.parse(document.getElementById('stock-rs').textContent))
     );
+    const stockMetrics = new Map(
+        Object.entries(JSON.parse(document.getElementById('stock-metrics').textContent))
+    );
 
     const stockData = JSON.parse(document.getElementById('stock-data').textContent);
+
+    // Format volume as 1.2K / 3.4M / 1.5B
+    function formatVolume(v) {
+        if (v == null) return '';
+        if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+        if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+        if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+        return String(v);
+    }
+
+    function metricChipsHtml(ticker) {
+        const m = stockMetrics.get(ticker);
+        if (!m) return '';
+        const adr = `<span class="metric-chip" title="Average Daily Range %"><span class="metric-label">ADR</span>${m.adr_pct.toFixed(1)}%</span>`;
+        const vol = `<span class="metric-chip" title="Average Daily Volume"><span class="metric-label">Vol</span>${formatVolume(m.avg_volume)}</span>`;
+        return adr + vol;
+    }
 
     // ============================================================
     // STATE MANAGEMENT
@@ -1231,6 +1278,8 @@
                     ` \\ <a href="${tickerInfo.industryUrl}" target="_blank">${tickerInfo.industry}</a>` +
                     ` \\ <a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank">${tickerInfo.ticker}</a>${chartBtn}${rrgBtn}`;
 
+                document.getElementById('preview-metrics').innerHTML = metricChipsHtml(tickerInfo.ticker);
+
                 // Attach click handlers to the icon buttons
                 const chartIconBtn = titleElement.querySelector('.chart-icon-btn:not(.rrg-icon-btn)');
                 if (chartIconBtn) {
@@ -1266,6 +1315,7 @@
                 }
             } else {
                 titleElement.textContent = 'Preview';
+                document.getElementById('preview-metrics').innerHTML = '';
                 toggleElement.style.visibility = 'hidden';
                 toggleElement.style.pointerEvents = 'none';
             }

@@ -20,6 +20,7 @@ use tracing::{debug, info, trace};
 pub mod config;
 pub mod etf_map;
 pub mod html_error;
+pub mod metrics;
 pub mod rrg_util;
 pub mod rs;
 pub mod store;

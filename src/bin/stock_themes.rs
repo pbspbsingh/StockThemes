@@ -4,7 +4,8 @@ use tracing::{info, warn};
 
 use std::path::PathBuf;
 use stock_themes::{
-    Performance, Stock, fetch_stock_perf, init_logger, rs, start_http_server, store::Store, util,
+    Performance, Stock, fetch_stock_perf, init_logger, metrics, rs, start_http_server,
+    store::Store, util,
 };
 
 use stock_themes::summary::Summary;
@@ -46,11 +47,19 @@ async fn main() -> anyhow::Result<()> {
     let (stocks, stock_perfs) = fetch_stock_info(&mut tv_manager, &yf, tickers).await?;
     let rs_maps = rs::build_rs_maps(&store, &yf, &mut tv_manager, &stocks, &stock_perfs).await?;
 
+    let stock_metrics = metrics::build_stock_metrics(&store, &yf, &stocks).await?;
+    info!("Computed metrics for {} stocks", stock_metrics.len());
+
     drop(tv_manager);
     drop(yf);
 
     let summary = Summary::summarize(stocks);
-    let html = summary.render(rs_maps.sectors, rs_maps.industries, rs_maps.stocks);
+    let html = summary.render(
+        rs_maps.sectors,
+        rs_maps.industries,
+        rs_maps.stocks,
+        stock_metrics,
+    );
 
     start_http_server(html).await
 }

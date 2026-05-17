@@ -2,4 +2,5 @@
 .idea
 target
 *.csv
+*.toml
 database.sqlite*

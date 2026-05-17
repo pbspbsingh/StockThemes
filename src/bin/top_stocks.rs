@@ -4,6 +4,7 @@ use clap::Parser;
 use tracing::info;
 
 use std::path::{Path, PathBuf};
+use stock_themes::metrics;
 use stock_themes::store::Store;
 use stock_themes::summary::Summary;
 use stock_themes::tv::tv_manager::TvManager;
@@ -63,13 +64,21 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("No sector/industry RS computed");
     }
 
+    let stock_metrics = metrics::build_stock_metrics(&store, &yf, &stocks).await?;
+    info!("Computed metrics for {} stocks", stock_metrics.len());
+
     drop(tv_manager);
     drop(yf);
 
     save_csv(&args.output_file, &args.tv_screen_url, &stocks).await?;
 
     let summary = Summary::summarize(stocks);
-    let html = summary.render(rs_maps.sectors, rs_maps.industries, rs_maps.stocks);
+    let html = summary.render(
+        rs_maps.sectors,
+        rs_maps.industries,
+        rs_maps.stocks,
+        stock_metrics,
+    );
     start_http_server(html).await
 }
 

@@ -1,4 +1,5 @@
 use crate::config::APP_CONFIG;
+use crate::metrics::MetricsMap;
 use crate::{Stock, Ticker, etf_map};
 use askama::Template;
 use itertools::Itertools;
@@ -87,6 +88,7 @@ impl Summary {
         sector_rs: HashMap<String, f64>,
         industry_rs: HashMap<String, f64>,
         stock_rs: HashMap<String, f64>,
+        stock_metrics: MetricsMap,
     ) -> String {
         #[derive(Template)]
         #[template(path = "./stocks_themes.html")]
@@ -97,6 +99,7 @@ impl Summary {
             sector_rs: HashMap<String, f64>,
             industry_rs: HashMap<String, f64>,
             stock_rs: HashMap<String, f64>,
+            stock_metrics: MetricsMap,
         }
 
         let html = Html {
@@ -106,6 +109,7 @@ impl Summary {
             sector_rs,
             industry_rs,
             stock_rs,
+            stock_metrics,
         };
 
         html.render().expect("Failed to render html")

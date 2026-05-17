@@ -25,6 +25,9 @@ pub struct Config {
 
     #[serde(default)]
     pub trade_analysis: TradeAnalysisConfig,
+
+    #[serde(default)]
+    pub metrics: MetricsConfig,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -40,6 +43,12 @@ pub struct TradeAnalysisConfig {
     pub daily_chart_post_days: u32,
     pub hourly_chart_days: u32,
     pub hourly_chart_post_days: u32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct MetricsConfig {
+    pub adr_days: usize,
+    pub avg_volume_days: usize,
 }
 
 pub static APP_CONFIG: LazyLock<Config> = LazyLock::new(|| {
@@ -62,6 +71,15 @@ impl Default for TradeAnalysisConfig {
             daily_chart_post_days: 5,
             hourly_chart_days: 15,
             hourly_chart_post_days: 1,
+        }
+    }
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            adr_days: 20,
+            avg_volume_days: 50,
         }
     }
 }
