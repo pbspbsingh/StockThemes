@@ -1273,9 +1273,11 @@
                     ? `<button class="chart-icon-btn rrg-icon-btn">${RRG_SVG}</button>`
                     : '';
 
+                const sectorTitle = tickerInfo.sectorEtf ? ` title="${tickerInfo.sectorEtf}"` : '';
+                const industryTitle = tickerInfo.industryEtf ? ` title="${tickerInfo.industryEtf}"` : '';
                 titleElement.innerHTML =
-                    `<a href="${tickerInfo.sectorUrl}" target="_blank">${tickerInfo.sector}</a>` +
-                    ` \\ <a href="${tickerInfo.industryUrl}" target="_blank">${tickerInfo.industry}</a>` +
+                    `<a href="${tickerInfo.sectorUrl}" target="_blank"${sectorTitle}>${tickerInfo.sector}</a>` +
+                    ` \\ <a href="${tickerInfo.industryUrl}" target="_blank"${industryTitle}>${tickerInfo.industry}</a>` +
                     ` \\ <a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank">${tickerInfo.ticker}</a>${chartBtn}${rrgBtn}`;
 
                 document.getElementById('preview-metrics').innerHTML = metricChipsHtml(tickerInfo.ticker);
