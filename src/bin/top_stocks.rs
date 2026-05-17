@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     info!("Total {} unique stocks fetched", stocks.len());
 
-    let rs_maps = rs::build_rs_maps(&store, &yf, &mut tv_manager, &stock_perfs).await?;
+    let rs_maps = rs::build_rs_maps(&store, &yf, &mut tv_manager, &stocks, &stock_perfs).await?;
 
     if rs_maps.sectors.is_empty() || rs_maps.industries.is_empty() {
         anyhow::bail!("No sector/industry RS computed");

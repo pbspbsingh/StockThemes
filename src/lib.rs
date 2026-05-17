@@ -115,7 +115,8 @@ pub async fn no_cache(request: axum::extract::Request, next: Next) -> Response {
     response
 }
 
-static FETCH_LOCKS: LazyLock<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static FETCH_LOCKS: LazyLock<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub async fn fetch_candles(
     store: &Store,
@@ -171,14 +172,10 @@ pub async fn fetch_stock_perf(
     yf: &YFinance,
     ticker: &str,
 ) -> anyhow::Result<Performance> {
-    let compute_perf = async || {
-        let candles = fetch_candles(store, yf, ticker)
-            .await
-            .with_context(|| format!("Failed to retrieved candles for {ticker}"))?;
-        Ok::<_, anyhow::Error>(Performance::compute(ticker, TickerType::Stock, &candles))
-    };
-
-    compute_perf().await
+    let candles = fetch_candles(store, yf, ticker)
+        .await
+        .with_context(|| format!("Failed to retrieved candles for {ticker}"))?;
+    Ok(Performance::compute(ticker, TickerType::Stock, &candles))
 }
 
 impl Performance {

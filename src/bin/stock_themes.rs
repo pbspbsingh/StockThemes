@@ -44,8 +44,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Total unique stocks: {}", tickers.len());
 
     let (stocks, stock_perfs) = fetch_stock_info(&mut tv_manager, &yf, tickers).await?;
-
-    let rs_maps = rs::build_rs_maps(&store, &yf, &mut tv_manager, &stock_perfs).await?;
+    let rs_maps = rs::build_rs_maps(&store, &yf, &mut tv_manager, &stocks, &stock_perfs).await?;
 
     drop(tv_manager);
     drop(yf);

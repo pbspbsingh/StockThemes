@@ -9,13 +9,6 @@ use serde::{Deserialize, Serialize};
 
 const CONFIG_FILE: &str = "config.toml";
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-pub enum PerfMode {
-    TradingView,
-    EtfBuckets,
-    EtfCandles,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub log_config: String,
@@ -32,6 +25,13 @@ pub struct Config {
 
     #[serde(default)]
     pub trade_analysis: TradeAnalysisConfig,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+pub enum PerfMode {
+    TradingView,
+    EtfBuckets,
+    EtfCandles,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
