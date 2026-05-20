@@ -9,7 +9,7 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use std::slice;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
 
 pub struct TvManager {
     store: Arc<Store>,
@@ -82,48 +82,78 @@ impl TvManager {
     ) -> anyhow::Result<(Vec<Stock>, Vec<Performance>)> {
         let store = self.store.clone();
 
-        let fetcher = TopStocksFetcher::load_screen_url(
-            self.get_or_init_page().await?,
-            screen_url,
-            top_count,
-            is_desc,
-        )
-        .await?;
+        let (screener_stocks, perfs) = {
+            let fetcher = TopStocksFetcher::load_screen_url(
+                self.get_or_init_page().await?,
+                screen_url,
+                top_count,
+                is_desc,
+            )
+            .await?;
 
-        Self::fetch_stocks(store, fetcher, time_frames).await
-    }
+            let mut stocks_map: HashMap<String, Stock> = HashMap::new();
+            let mut perf_map: HashMap<String, Performance> = HashMap::new();
+            for sort_by in time_frames {
+                let (stocks, perfs) = fetcher.fetch_stocks(&sort_by).await?;
 
-    async fn fetch_stocks<'a>(
-        store: Arc<Store>,
-        fetcher: TopStocksFetcher<'a>,
-        time_frames: impl Iterator<Item = String>,
-    ) -> anyhow::Result<(Vec<Stock>, Vec<Performance>)> {
-        let mut stocks_map = HashMap::new();
-        let mut perf_map = HashMap::new();
-        for sort_by in time_frames {
-            let (stocks, perfs) = fetcher.fetch_stocks(&sort_by).await?;
+                // Persist perfs only — screener sector/industry is unreliable, don't store it.
+                store.save_performances(&perfs).await?;
 
-            store.add_stocks(&stocks).await?;
-            store.save_performances(&perfs).await?;
-
-            for stock in stocks {
-                stocks_map.insert(stock.ticker.clone(), stock);
+                for stock in stocks {
+                    stocks_map.insert(stock.ticker.clone(), stock);
+                }
+                for perf in perfs {
+                    perf_map.insert(perf.ticker.clone(), perf);
+                }
             }
-            for perf in perfs {
-                perf_map.insert(perf.ticker.clone(), perf);
-            }
+
+            let stocks: Vec<Stock> = stocks_map
+                .into_values()
+                .sorted_by_key(|s| s.ticker.clone())
+                .collect();
+            let perfs: Vec<Performance> = perf_map
+                .into_values()
+                .sorted_by_key(|p| p.ticker.clone())
+                .collect();
+            (stocks, perfs)
+        };
+
+        let total = screener_stocks.len();
+        info!("Validating stock info for {total} tickers via detail page");
+        let mut stocks = Vec::with_capacity(total);
+        for (i, screener) in screener_stocks.into_iter().enumerate() {
+            info!("[{}/{total}] Validating {}", i + 1, screener.ticker);
+            let stock = match self.fetch_stock_info(&screener.ticker).await {
+                Ok(detail) => {
+                    if screener.exchange != detail.exchange
+                        || screener.sector.name != detail.sector.name
+                        || screener.industry.name != detail.industry.name
+                    {
+                        warn!(
+                            "Mismatch for {}: screener=(exchange={}, sector={}, industry={}) detail=(exchange={}, sector={}, industry={}); using detail",
+                            screener.ticker,
+                            screener.exchange,
+                            screener.sector.name,
+                            screener.industry.name,
+                            detail.exchange,
+                            detail.sector.name,
+                            detail.industry.name,
+                        );
+                    }
+                    detail
+                }
+                Err(e) => {
+                    warn!(
+                        "fetch_stock_info failed for {}: {e}; falling back to screener data",
+                        screener.ticker
+                    );
+                    screener
+                }
+            };
+            stocks.push(stock);
         }
 
-        Ok((
-            stocks_map
-                .into_values()
-                .sorted_by_key(|s| s.ticker.clone())
-                .collect(),
-            perf_map
-                .into_values()
-                .sorted_by_key(|s| s.ticker.clone())
-                .collect(),
-        ))
+        Ok((stocks, perfs))
     }
 
     async fn industry_groups(&mut self) -> anyhow::Result<TopIndustryGroups<'_>> {
