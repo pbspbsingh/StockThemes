@@ -61,21 +61,15 @@ impl Store {
     }
 
     async fn cleanup(pool: &Pool<Sqlite>) -> anyhow::Result<()> {
-        // Evict stale stock rows older than 30 days
-        let cutoff = Local::now().date_naive() - TimeDelta::days(30);
-        let stale_stocks = sqlx::query!("DELETE FROM stocks WHERE last_update < $1", cutoff)
-            .execute(pool)
+        let mut tx = pool
+            .begin()
             .await
-            .context("Failed to evict stale stock rows")?
-            .rows_affected();
-        if stale_stocks > 0 {
-            warn!("Cleaned {stale_stocks} stale stocks info");
-        }
+            .context("Failed to begin cleanup transaction")?;
 
         // Evict stale candles older than 2 years
         let cutoff = Local::now().date_naive() - TWO_YEARS;
         let old_candles = sqlx::query!("DELETE FROM daily_candles WHERE day < $1", cutoff)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
             .context("Failed to evict old daily candles")?
             .rows_affected();
@@ -88,7 +82,7 @@ impl Store {
             - TimeDelta::days(crate::trades::candles::HOURLY_MAX_LOOKBACK_DAYS))
         .naive_utc();
         let old_hourly = sqlx::query!("DELETE FROM hourly_candles WHERE hour < $1", cutoff)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
             .context("Failed to evict old hourly candles")?
             .rows_affected();
@@ -96,7 +90,9 @@ impl Store {
             warn!("Cleaned {old_hourly} old hourly candles");
         }
 
-        Ok(())
+        tx.commit()
+            .await
+            .context("Failed to commit cleanup transaction")
     }
     // ── Stock methods ────────────────────────────────────────────────────────
 
