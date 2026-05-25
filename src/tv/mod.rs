@@ -1,4 +1,5 @@
 mod perf_util;
+mod screenshot;
 pub mod stock_info_loader;
 pub mod top_industry_groups;
 pub mod top_stocks_fetcher;

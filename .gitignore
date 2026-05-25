@@ -4,3 +4,4 @@ target
 *.csv
 config.toml
 database.sqlite*
+screenshots

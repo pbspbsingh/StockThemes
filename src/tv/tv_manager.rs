@@ -1,10 +1,15 @@
 use crate::config::APP_CONFIG;
 use crate::store::Store;
+use crate::tv::screenshot::SnapOnErr;
 use crate::tv::stock_info_loader::StockInfoLoader;
 use crate::tv::top_industry_groups::TopIndustryGroups;
 use crate::tv::top_stocks_fetcher::TopStocksFetcher;
 use crate::{Performance, Stock, TickerType};
+use chrome_driver::chromiumoxide::cdp::browser_protocol::page::{
+    EventJavascriptDialogOpening, HandleJavaScriptDialogParams,
+};
 use chrome_driver::{Browser, ChromeDriverConfig, Page, PageFeatures};
+use futures::StreamExt;
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::slice;
@@ -36,8 +41,16 @@ impl TvManager {
             return Ok(cached);
         }
 
-        let tig = self.industry_groups().await?;
-        let sectors = tig.fetch_sectors().await?;
+        let page = self.get_or_init_page().await?.clone();
+        let tig = TopIndustryGroups::new(&page)
+            .await
+            .snap_on_err(&page, "industry_groups_init")
+            .await?;
+        let sectors = tig
+            .fetch_sectors()
+            .await
+            .snap_on_err(&page, "fetch_sectors")
+            .await?;
         self.store.save_performances(&sectors).await?;
 
         Ok(sectors)
@@ -53,8 +66,16 @@ impl TvManager {
             return Ok(cached);
         }
 
-        let tig = self.industry_groups().await?;
-        let industries = tig.fetch_industries().await?;
+        let page = self.get_or_init_page().await?.clone();
+        let tig = TopIndustryGroups::new(&page)
+            .await
+            .snap_on_err(&page, "industry_groups_init")
+            .await?;
+        let industries = tig
+            .fetch_industries()
+            .await
+            .snap_on_err(&page, "fetch_industries")
+            .await?;
         self.store.save_performances(&industries).await?;
 
         Ok(industries)
@@ -65,8 +86,16 @@ impl TvManager {
             return Ok(stock);
         }
 
-        let si_loader = StockInfoLoader::new(self.get_or_init_page().await?).await?;
-        let stock = si_loader.fetch_stock_info(ticker).await?;
+        let page = self.get_or_init_page().await?.clone();
+        let si_loader = StockInfoLoader::new(&page)
+            .await
+            .snap_on_err(&page, &format!("stock_info_init_{ticker}"))
+            .await?;
+        let stock = si_loader
+            .fetch_stock_info(ticker)
+            .await
+            .snap_on_err(&page, &format!("stock_info_{ticker}"))
+            .await?;
 
         self.store.add_stocks(slice::from_ref(&stock)).await?;
 
@@ -82,19 +111,21 @@ impl TvManager {
     ) -> anyhow::Result<(Vec<Stock>, Vec<Performance>)> {
         let store = self.store.clone();
 
+        let page = self.get_or_init_page().await?.clone();
         let (screener_stocks, perfs) = {
-            let fetcher = TopStocksFetcher::load_screen_url(
-                self.get_or_init_page().await?,
-                screen_url,
-                top_count,
-                is_desc,
-            )
-            .await?;
+            let fetcher = TopStocksFetcher::load_screen_url(&page, screen_url, top_count, is_desc)
+                .await
+                .snap_on_err(&page, "load_screen_url")
+                .await?;
 
             let mut stocks_map: HashMap<String, Stock> = HashMap::new();
             let mut perf_map: HashMap<String, Performance> = HashMap::new();
             for sort_by in time_frames {
-                let (stocks, perfs) = fetcher.fetch_stocks(&sort_by).await?;
+                let (stocks, perfs) = fetcher
+                    .fetch_stocks(&sort_by)
+                    .await
+                    .snap_on_err(&page, &format!("fetch_stocks_{sort_by}"))
+                    .await?;
 
                 // Persist perfs only — screener sector/industry is unreliable, don't store it.
                 store.save_performances(&perfs).await?;
@@ -156,11 +187,6 @@ impl TvManager {
         Ok((stocks, perfs))
     }
 
-    async fn industry_groups(&mut self) -> anyhow::Result<TopIndustryGroups<'_>> {
-        let page = self.get_or_init_page().await?;
-        TopIndustryGroups::new(page).await
-    }
-
     async fn get_or_init_page(&mut self) -> anyhow::Result<&Page> {
         if self.page.is_none() {
             info!("TvFetcher: cache miss — launching browser");
@@ -171,10 +197,28 @@ impl TvManager {
                 .connect()
                 .await?;
             let page = browser.new_page("about:blank").await?;
+            Self::auto_accept_dialogs(&page).await?;
             self.browser = Some(browser);
             self.page = Some(page);
         }
         Ok(self.page.as_ref().unwrap())
+    }
+
+    async fn auto_accept_dialogs(page: &Page) -> anyhow::Result<()> {
+        let mut dialogs = page.event_listener::<EventJavascriptDialogOpening>().await?;
+        let page = page.clone();
+        tokio::spawn(async move {
+            while let Some(ev) = dialogs.next().await {
+                info!("Auto-accepting JS dialog ({:?}): {}", ev.r#type, ev.message);
+                if let Err(e) = page
+                    .execute(HandleJavaScriptDialogParams::new(true))
+                    .await
+                {
+                    warn!("Failed to auto-accept JS dialog: {e}");
+                }
+            }
+        });
+        Ok(())
     }
 }
 
