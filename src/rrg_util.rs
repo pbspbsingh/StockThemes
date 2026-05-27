@@ -7,27 +7,44 @@ use anyhow::Context;
 use askama::Template;
 use axum::response::{Html, IntoResponse};
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, Query},
 };
 use chrono::Datelike;
 use serde::{Deserialize, Serialize};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use tracing::trace;
 
 static YF: LazyLock<YFinance> = LazyLock::new(YFinance::new);
 
-pub async fn rrg_home() -> Result<impl IntoResponse, HtmlError> {
+/// What the RRG page should plot. The two modes are mutually exclusive and each
+/// carries exactly the data it needs, so neither "both" nor "neither" can be
+/// represented.
+#[derive(Clone)]
+pub enum RrgMode {
+    /// Sector/industry ETF rotation (the default when no CSV files are given).
+    Sectors(Vec<etf_map::Sector>),
+    /// Rotation of an explicit, non-empty list of tickers.
+    Tickers(Vec<String>),
+}
+
+pub async fn rrg_home(
+    mode: Option<Extension<Arc<RrgMode>>>,
+) -> Result<impl IntoResponse, HtmlError> {
     #[derive(Template)]
     #[template(path = "rrg.html")]
     struct Home {
         benchmark: String,
-        sectors: Vec<etf_map::Sector>,
+        mode: RrgMode,
     }
+
+    let mode = mode
+        .map(|Extension(m)| (*m).clone())
+        .unwrap_or_else(|| RrgMode::Sectors(etf_map::tv_mapping()));
 
     let home = Home {
         benchmark: APP_CONFIG.base_ticker.to_uppercase(),
-        sectors: etf_map::tv_mapping(),
+        mode,
     };
 
     Ok(Html(home.render()?))

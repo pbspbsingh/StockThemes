@@ -689,7 +689,14 @@
 <!-- ── Toast ─────────────────────────────────────────────────── -->
 <div class="toast" id="toast"></div>
 
+{% match mode %}
+{% when RrgMode::Sectors with (sectors) %}
 <script id="sectors-data" type="application/json">{{ sectors | json | safe }}</script>
+<script id="tickers-data" type="application/json">[]</script>
+{% when RrgMode::Tickers with (tickers) %}
+<script id="sectors-data" type="application/json">[]</script>
+<script id="tickers-data" type="application/json">{{ tickers | json | safe }}</script>
+{% endmatch %}
 
 <script>
     'use strict';
@@ -731,8 +738,15 @@
         sec.industries.sort((a, b) => a.name.localeCompare(b.name));
     });
 
+    // Ticker mode: when the server is launched with CSV files, plot those
+    // tickers' rotation instead of the sector/industry ETFs.
+    const _rawTickers = JSON.parse(document.getElementById('tickers-data').textContent);
+    _rawTickers.sort((a, b) => a.localeCompare(b));
+    const TICKER_MODE = _rawTickers.length > 0;
+
     const State = {
         sectors: _rawSectors,
+        tickers: _rawTickers,
         benchmark: BENCHMARK,
 
         // UI
@@ -810,9 +824,50 @@
         return Array.from(seen.values());
     }
 
+    // Compact candlestick icon used by sidebar chart buttons.
+    const CHART_ICON_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="2.5" y1="1" x2="2.5" y2="3" stroke="currentColor" stroke-width="1"/><rect x="1" y="3" width="3" height="4" rx="0.5" fill="currentColor"/><line x1="2.5" y1="7" x2="2.5" y2="9" stroke="currentColor" stroke-width="1"/><line x1="6.5" y1="3" x2="6.5" y2="5" stroke="currentColor" stroke-width="1"/><rect x="5" y="5" width="3" height="5" rx="0.5" fill="currentColor"/><line x1="6.5" y1="10" x2="6.5" y2="12" stroke="currentColor" stroke-width="1"/><line x1="10.5" y1="1" x2="10.5" y2="4" stroke="currentColor" stroke-width="1"/><rect x="9" y="4" width="3" height="3" rx="0.5" fill="currentColor"/><line x1="10.5" y1="7" x2="10.5" y2="10" stroke="currentColor" stroke-width="1"/></svg>`;
+
+    // Flat, toggleable list of CSV tickers (ticker mode).
+    function renderTickerList(container) {
+        State.tickers.forEach(ticker => {
+            const isSel = State.selectedItem?.etf === ticker;
+            const row = document.createElement('div');
+            row.className = 'sector-row';
+            row.innerHTML = `
+            <div class="industry-item ${isSel ? 'selected' : ''}" data-ticker="${ticker}" data-etf="${ticker}" title="${ticker}">
+                <span class="industry-label">${ticker}</span>
+                <button class="chart-icon-btn" data-chart-etf="${ticker}" data-chart-name="${ticker}" title="Open chart (C)">${CHART_ICON_SVG}</button>
+            </div>`;
+            row.querySelector('.industry-item').addEventListener('click', (e) => {
+                if (e.target.closest('.chart-icon-btn')) return;
+                onTickerClick(ticker);
+            });
+            row.querySelector('.chart-icon-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                openChartPopup(ticker, ticker);
+            });
+            container.appendChild(row);
+        });
+    }
+
+    // Select a ticker for the RS chart + dot highlight.
+    function onTickerClick(ticker) {
+        State.selectedItem = { name: ticker, etf: ticker, type: 'ticker' };
+        State.navIndex = buildNavList().findIndex(i => i.name === ticker);
+        renderLeftPanel();
+        loadAndRenderRS(ticker, ticker);
+        updateSelectedInfo();
+        animateSelectedDot();
+    }
+
     function renderLeftPanel() {
         const container = document.getElementById('sector-list');
         container.innerHTML = '';
+
+        if (TICKER_MODE) {
+            renderTickerList(container);
+            return;
+        }
 
         State.sectors.forEach(sectorObj => {
             const sName    = sectorObj.sector;
@@ -935,13 +990,17 @@
         const { selectedItem } = State;
 
         if (!selectedItem) {
-            el.innerHTML = 'Click ▶ to expand a sector';
+            el.innerHTML = TICKER_MODE
+                ? 'Click a ticker to view its relative strength'
+                : 'Click ▶ to expand a sector';
             el.title = '';
             return;
         }
 
         const typeLabel = selectedItem.type === 'sector'
             ? `<strong>${selectedItem.name}</strong> — sector · ${selectedItem.etf}`
+            : selectedItem.type === 'ticker'
+            ? `<strong>${selectedItem.name}</strong> — ticker`
             : `<strong>${selectedItem.name}</strong> — industry · ${selectedItem.etf}`;
         el.innerHTML = typeLabel;
         el.title = selectedItem.name;
@@ -954,7 +1013,9 @@
     async function loadAndRenderRRG() {
         // Determine what to show
         let items;
-        if (State.expandedSectors.size > 0) {
+        if (TICKER_MODE) {
+            items = State.tickers.map(t => ({ name: t, etf: t }));
+        } else if (State.expandedSectors.size > 0) {
             const raw = [];
             State.sectors
                 .filter(s => State.expandedSectors.has(s.sector))
@@ -1610,7 +1671,7 @@
         if (idx < 0) return;
 
         const d = rrgData[idx];
-        State.selectedItem = { name: d.name, etf: d.etf, type: State.expandedSectors.size > 0 ? 'industry' : 'sector' };
+        State.selectedItem = { name: d.name, etf: d.etf, type: TICKER_MODE ? 'ticker' : (State.expandedSectors.size > 0 ? 'industry' : 'sector') };
         State.navIndex = buildNavList().findIndex(i => i.name === d.name);
         renderLeftPanel();
         updateSelectedInfo();
@@ -1851,6 +1912,9 @@
      * immediately after their parent sector when it is expanded.
      */
     function buildNavList() {
+        if (TICKER_MODE) {
+            return State.tickers.map(t => ({ type: 'ticker', name: t, etf: t }));
+        }
         const list = [];
         State.sectors.forEach(sec => {
             list.push({ type: 'sector', name: sec.sector, etf: sec.sector_etf });
@@ -1919,6 +1983,8 @@
                 const item = navList[State.navIndex];
                 if (item.type === 'sector') {
                     onSectorSelect(item.name, item.etf);
+                } else if (item.type === 'ticker') {
+                    onTickerClick(item.name);
                 } else {
                     onIndustryClick(item.name, item.etf);
                 }
@@ -2218,10 +2284,14 @@
     // ════════════════════════════════════════════════════════════
 
     function init() {
+        if (TICKER_MODE) {
+            const header = document.querySelector('.left-panel .panel-header');
+            if (header) header.textContent = 'Tickers';
+        }
         renderLeftPanel();
         initControls();
         initRSPanel();
-        loadAndRenderRRG();  // initial: all sectors
+        loadAndRenderRRG();  // initial: all sectors (or all tickers in ticker mode)
     }
 
     init();
