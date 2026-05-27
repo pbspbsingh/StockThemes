@@ -213,7 +213,7 @@
             color: #d0d0d0;
         }
 
-        #chart-toggle { visibility: hidden; }
+        #chart-controls { visibility: hidden; }
 
         .chart-toggle button.active {
             background: #4a9eff;
@@ -742,12 +742,15 @@
             <span id="preview-title">Preview</span>
             <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
                 <span id="preview-metrics"></span>
-                <div class="chart-toggle" id="chart-toggle">
-                    <button data-mode="daily" title="Daily chart only">D</button>
-                    <button data-mode="hourly" title="Daily and Hourly split view">D/H</button>
-                    <button data-mode="split" title="Daily and Weekly split view">D/W</button>
-                    <button data-mode="industry" title="Daily ticker vs Industry ETF (falls back to Sector ETF)">D/G</button>
-                    <button data-mode="benchmark" title="Daily ticker vs Daily benchmark">D/B</button>
+                <div id="chart-controls" style="display:flex;gap:6px;">
+                    <div class="chart-toggle" id="timeframe-toggle">
+                        <button data-tf="D" title="Daily timeframe">D</button>
+                        <button data-tf="W" title="Weekly timeframe">W</button>
+                    </div>
+                    <div class="chart-toggle" id="compare-toggle">
+                        <button data-cmp="group" title="Compare ticker vs Industry ETF (falls back to Sector ETF)">Group</button>
+                        <button data-cmp="bench" title="Compare ticker vs benchmark">Bench</button>
+                    </div>
                 </div>
                 <a href="/rrg.html" class="rrg-link" title="Relative Rotation Graph" target="_blank">RRG</a>
             </div>
@@ -901,7 +904,8 @@
             });
         },
 
-        chartMode: localStorage.getItem('chartMode') || 'split',
+        timeframe:   localStorage.getItem('timeframe')   || 'D',    // 'D' | 'W'
+        compareMode: localStorage.getItem('compareMode') || 'off',  // 'off' | 'group' | 'bench'
         popupInfo: null,
         currentTickerSymbol: null,
 
@@ -1262,7 +1266,7 @@
 
         updateHeader(tickerInfo = null) {
             const titleElement = document.getElementById('preview-title');
-            const toggleElement = document.getElementById('chart-toggle');
+            const controls = document.getElementById('chart-controls');
 
             if (tickerInfo) {
                 const hasEtf = tickerInfo.sectorEtf || tickerInfo.industryEtf;
@@ -1300,26 +1304,31 @@
                     });
                 }
 
-                toggleElement.style.visibility = 'visible';
-                toggleElement.style.pointerEvents = '';
+                controls.style.visibility = 'visible';
+                controls.style.pointerEvents = '';
 
-                const diBtn = toggleElement.querySelector('[data-mode="industry"]');
-                if (diBtn) {
-                    const hasEtf = !!(tickerInfo.industryEtf || tickerInfo.sectorEtf);
-                    diBtn.disabled = !hasEtf;
-                    if (!hasEtf && AppState.chartMode === 'industry') {
-                        AppState.chartMode = 'split';
-                        localStorage.setItem('chartMode', 'split');
-                        toggleElement.querySelectorAll('button').forEach(b =>
-                            b.classList.toggle('active', b.getAttribute('data-mode') === 'split')
-                        );
+                // Sync timeframe buttons
+                document.querySelectorAll('#timeframe-toggle button').forEach(b =>
+                    b.classList.toggle('active', b.dataset.tf === AppState.timeframe)
+                );
+
+                // Group comparison needs an ETF; disable + fall back to single if absent
+                const groupBtn = document.querySelector('#compare-toggle [data-cmp="group"]');
+                if (groupBtn) {
+                    groupBtn.disabled = !hasEtf;
+                    if (!hasEtf && AppState.compareMode === 'group') {
+                        AppState.compareMode = 'off';
+                        localStorage.setItem('compareMode', 'off');
                     }
                 }
+                document.querySelectorAll('#compare-toggle button').forEach(b =>
+                    b.classList.toggle('active', b.dataset.cmp === AppState.compareMode)
+                );
             } else {
                 titleElement.textContent = 'Preview';
                 document.getElementById('preview-metrics').innerHTML = '';
-                toggleElement.style.visibility = 'hidden';
-                toggleElement.style.pointerEvents = 'none';
+                controls.style.visibility = 'hidden';
+                controls.style.pointerEvents = 'none';
             }
         },
 
@@ -1479,7 +1488,8 @@
     // ============================================================
     const TradingViewWidget = {
         _instances: {},  // containerId → widget instance
-        _bottomEtf: null,
+        _bottomSymbol: null,  // symbol currently in the bottom (comparison) pane
+        _timeframe: null,     // interval ('D'|'W') the visible widgets are drawn at
 
         _destroy(containerId) {
             const w = this._instances[containerId];
@@ -1487,7 +1497,18 @@
                 try { w.remove(); } catch (e) {}
                 delete this._instances[containerId];
             }
-            if (containerId === 'tv-bottom-main') this._bottomEtf = null;
+            if (containerId === 'tv-bottom-main') this._bottomSymbol = null;
+        },
+
+        // Resolve the comparison symbol for the bottom pane, or null when
+        // compare is off (or 'group' with no ETF mapped).
+        _resolveBottomSymbol(tickerSymbol) {
+            if (AppState.compareMode === 'bench') return BENCHMARK_SYMBOL;
+            if (AppState.compareMode === 'group') {
+                const info = DataHelpers.findTickerInfo(tickerSymbol);
+                return info?.industryEtf ?? info?.sectorEtf ?? null;
+            }
+            return null;
         },
 
         show(tickerSymbol) {
@@ -1497,28 +1518,19 @@
             PreviewManager.updateHeader(DataHelpers.findTickerInfo(tickerSymbol));
             Renderers.highlightTickerContext();
 
-            // In benchmark mode, if the split layout is already on screen,
-            // only swap the top (ticker) pane — leave the benchmark bottom untouched.
-            if (AppState.chartMode === 'benchmark') {
-                const existingTop = document.getElementById('tv-daily-main');
-                if (existingTop) {
-                    this._destroy('tv-daily-main');
-                    existingTop.innerHTML = '';
-                    this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
-                    return;
-                }
-            }
+            // Read state AFTER updateHeader (it may reset compareMode when no ETF)
+            const tf = AppState.timeframe;
+            const bottomSymbol = this._resolveBottomSymbol(tickerSymbol);  // null = single pane
+            const isSplit = bottomSymbol != null;
 
-            // Same optimisation for industry mode: skip reloading the bottom ETF chart
-            // when the new ticker belongs to the same industry/sector ETF.
-            if (AppState.chartMode === 'industry') {
-                const _info = DataHelpers.findTickerInfo(tickerSymbol);
-                const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
+            // Optimisation: split already on screen with the same comparison symbol
+            // and timeframe → only swap the top (ticker) pane.
+            if (isSplit) {
                 const existingTop = document.getElementById('tv-daily-main');
-                if (existingTop && _etf && _etf === this._bottomEtf) {
+                if (existingTop && bottomSymbol === this._bottomSymbol && tf === this._timeframe) {
                     this._destroy('tv-daily-main');
                     existingTop.innerHTML = '';
-                    this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
+                    this.createWidget(tickerSymbol, 'tv-daily-main', tf);
                     return;
                 }
             }
@@ -1527,59 +1539,39 @@
             this._destroy('tv-daily-main');
             this._destroy('tv-bottom-main');
 
-            const isDaily     = AppState.chartMode === 'daily';
-            const isBenchmark = AppState.chartMode === 'benchmark';
-            const isIndustry  = AppState.chartMode === 'industry';
-            const bottomInterval = AppState.chartMode === 'hourly' ? '60' : 'W';
-            const savedRatio  = parseFloat(localStorage.getItem('splitRatio')) || 50;
+            const savedRatio = parseFloat(localStorage.getItem('splitRatio')) || 50;
             container.innerHTML = `
                 <div class="tradingview-widget-container tv-container-split">
-                    <div id="tv-daily-main" class="tv-pane" style="${isDaily ? 'flex:1' : `flex:0 0 ${savedRatio}%`}"></div>
-                    ${!isDaily ? '<div class="tv-divider"></div>' : ''}
-                    <div id="tv-bottom-main" class="tv-pane" style="${isDaily ? 'display:none' : 'flex:1;min-height:0'}"></div>
+                    <div id="tv-daily-main" class="tv-pane" style="${isSplit ? `flex:0 0 ${savedRatio}%` : 'flex:1'}"></div>
+                    ${isSplit ? '<div class="tv-divider"></div>' : ''}
+                    <div id="tv-bottom-main" class="tv-pane" style="${isSplit ? 'flex:1;min-height:0' : 'display:none'}"></div>
                 </div>
             `;
-            if (!isDaily) {
+            if (isSplit) {
                 initSplitDrag(container.querySelector('.tv-container-split'));
             }
 
-            this.createWidget(tickerSymbol, 'tv-daily-main', 'D');
-            if (!isDaily) {
-                if (isBenchmark) {
-                    this.createWidget(BENCHMARK_SYMBOL, 'tv-bottom-main', 'D');
-                } else if (isIndustry) {
-                    const _info = DataHelpers.findTickerInfo(tickerSymbol);
-                    const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
-                    if (_etf) {
-                        this._bottomEtf = _etf;
-                        this.createWidget(_etf, 'tv-bottom-main', 'D');
-                    }
-                } else {
-                    this.createWidget(tickerSymbol, 'tv-bottom-main', bottomInterval);
-                }
+            this._timeframe = tf;
+            this.createWidget(tickerSymbol, 'tv-daily-main', tf);
+            if (isSplit) {
+                this._bottomSymbol = bottomSymbol;
+                this.createWidget(bottomSymbol, 'tv-bottom-main', tf);
+            } else {
+                this._bottomSymbol = null;
             }
         },
 
-        // Called on mode toggle only — leaves the top daily chart untouched.
-        swapBottomPane(tickerSymbol, interval, symbolOverride) {
+        // Replace the bottom pane widget — leaves the top (ticker) chart untouched.
+        swapBottomPane(symbol, interval) {
             const bottomPane = document.getElementById('tv-bottom-main');
             if (!bottomPane) return;
             this._destroy('tv-bottom-main');
             bottomPane.innerHTML = '';
-            this.createWidget(symbolOverride ?? tickerSymbol, 'tv-bottom-main', interval);
+            this.createWidget(symbol, 'tv-bottom-main', interval);
+            this._bottomSymbol = symbol;
         },
 
         createWidget(tickerSymbol, containerId, interval) {
-            const studies = ["MASimple@tv-basicstudies"];
-            const studiesOverrides = {
-                "moving average.length": interval === '60' ? 65 : 10,
-                "moving average.ma.color": interval === 'W' ? "#ff922b" : "#5693e7",
-            };
-
-            if (interval === 'D') {
-                studies.push("STD;MA%Ribbon");
-            }
-
             const w = new TradingView.widget({
                 width: "100%",
                 height: "100%",
@@ -1592,8 +1584,11 @@
                 toolbar_bg: "#1e1e1e",
                 enable_publishing: false,
                 container_id: containerId,
-                studies: studies,
-                studies_overrides: studiesOverrides,
+                studies: ["MASimple@tv-basicstudies", "STD;MA%Ribbon"],
+                studies_overrides: {
+                    "moving average.length": 10,
+                    "moving average.ma.color": "#5693e7",
+                },
                 loading_screen: { backgroundColor: "#1e1e1e" }
             });
             this._instances[containerId] = w;
@@ -1677,16 +1672,18 @@
             Renderers.renderTickers();
             this.scrollTickerIntoView();
             // Clear immediately so the old chart doesn't linger on the new ticker.
-            // In benchmark mode, only wipe the top pane so the benchmark chart stays alive.
+            // When a comparison pane can be reused (same symbol + timeframe), only
+            // wipe the top pane so the comparison chart stays alive.
             const spinner = `<div style="height:100%;display:flex;align-items:center;justify-content:center;"><div style="width:64px;height:64px;border:3px solid #2a2a2a;border-top-color:#4a9eff;border-radius:50%;animation:spin 0.7s linear infinite;"></div></div>`;
             const topPane = document.getElementById('tv-daily-main');
-            let topPaneOnly = AppState.chartMode === 'benchmark' && !!topPane;
-            if (!topPaneOnly && AppState.chartMode === 'industry' && topPane) {
+            let topPaneOnly = false;
+            if (topPane && AppState.compareMode !== 'off') {
                 const nextTicker = AppState.currentTickers[AppState.selectedTickerIndex]?.ticker;
                 if (nextTicker) {
-                    const _info = DataHelpers.findTickerInfo(nextTicker);
-                    const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
-                    topPaneOnly = !!(_etf && _etf === TradingViewWidget._bottomEtf);
+                    const nextBottom = TradingViewWidget._resolveBottomSymbol(nextTicker);
+                    topPaneOnly = !!(nextBottom
+                        && nextBottom === TradingViewWidget._bottomSymbol
+                        && AppState.timeframe === TradingViewWidget._timeframe);
                 }
             }
             if (topPaneOnly) {
@@ -2169,78 +2166,79 @@
         );
     }
 
-    function initChartToggle() {
-        const toggleContainer = document.getElementById('chart-toggle');
-        const buttons = toggleContainer.querySelectorAll('button');
+    // Apply a compare-mode change to the on-screen chart without reloading the
+    // top (ticker) pane — only the layout and bottom (comparison) pane change.
+    function applyCompareChange() {
+        if (!AppState.currentTickerSymbol) return;
+        const topPane = document.getElementById('tv-daily-main');
+        if (!topPane) { TradingViewWidget.show(AppState.currentTickerSymbol); return; }
 
-        // Restore active button from stored mode
-        buttons.forEach(btn => {
-            btn.classList.toggle('active', btn.getAttribute('data-mode') === AppState.chartMode);
+        const bottomPane   = document.getElementById('tv-bottom-main');
+        const bottomSymbol = TradingViewWidget._resolveBottomSymbol(AppState.currentTickerSymbol);
+        const wantSplit    = bottomSymbol != null;
+        const divider      = document.querySelector('.tv-divider');
+        const isSplit      = !!(divider && divider.style.display !== 'none'
+                                && bottomPane && bottomPane.style.display !== 'none');
+
+        if (!wantSplit) {
+            // Collapse to a single pane — top widget untouched.
+            TradingViewWidget._destroy('tv-bottom-main');
+            if (bottomPane) { bottomPane.style.display = 'none'; bottomPane.innerHTML = ''; }
+            topPane.style.flex = '1';
+            if (divider) divider.style.display = 'none';
+            return;
+        }
+
+        if (!isSplit) {
+            // Expand single → split — top widget untouched.
+            const savedRatio = parseFloat(localStorage.getItem('splitRatio')) || 50;
+            topPane.style.flex = `0 0 ${savedRatio}%`;
+            if (bottomPane) { bottomPane.style.display = ''; bottomPane.style.flex = '1'; bottomPane.style.minHeight = '0'; }
+            if (divider) {
+                divider.style.display = '';
+            } else {
+                const d = document.createElement('div');
+                d.className = 'tv-divider';
+                topPane.insertAdjacentElement('afterend', d);
+                initSplitDrag(topPane.closest('.tv-container-split'));
+            }
+        }
+        TradingViewWidget.swapBottomPane(bottomSymbol, AppState.timeframe);
+    }
+
+    function initChartToggle() {
+        const tfToggle  = document.getElementById('timeframe-toggle');
+        const cmpToggle = document.getElementById('compare-toggle');
+
+        // Restore active states from stored settings
+        tfToggle.querySelectorAll('button').forEach(b =>
+            b.classList.toggle('active', b.dataset.tf === AppState.timeframe));
+        cmpToggle.querySelectorAll('button').forEach(b =>
+            b.classList.toggle('active', b.dataset.cmp === AppState.compareMode));
+
+        // Timeframe group — exactly one active; both panes reload at the new interval
+        tfToggle.querySelectorAll('button').forEach(button => {
+            button.addEventListener('click', () => {
+                const tf = button.dataset.tf;
+                if (tf === AppState.timeframe) return;
+                AppState.timeframe = tf;
+                localStorage.setItem('timeframe', tf);
+                tfToggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === button));
+                if (AppState.currentTickerSymbol) TradingViewWidget.show(AppState.currentTickerSymbol);
+            });
         });
 
-        buttons.forEach(button => {
+        // Compare group — tri-state: click the active one again to turn it off
+        cmpToggle.querySelectorAll('button').forEach(button => {
             button.addEventListener('click', () => {
-                const mode = button.getAttribute('data-mode');
-                if (mode === AppState.chartMode) return;
-
-                const wasDaily = AppState.chartMode === 'daily';
-                AppState.chartMode = mode;
-                localStorage.setItem('chartMode', mode);
-
-                buttons.forEach(btn => btn.classList.remove('active'));
-                button.classList.add('active');
-
-                if (AppState.currentTickerSymbol) {
-                    const isDaily = mode === 'daily';
-                    const topPane    = document.getElementById('tv-daily-main');
-                    const bottomPane = document.getElementById('tv-bottom-main');
-
-                    if (isDaily) {
-                        // Hide bottom pane and divider, expand top — daily widget untouched
-                        TradingViewWidget._destroy('tv-bottom-main');
-                        if (bottomPane) { bottomPane.style.display = 'none'; bottomPane.innerHTML = ''; }
-                        if (topPane)    topPane.style.flex = '1';
-                        const divider = document.querySelector('.tv-divider');
-                        if (divider)    divider.style.display = 'none';
-                    } else if (wasDaily) {
-                        // Restore split — daily widget untouched, create bottom
-                        const savedRatio = parseFloat(localStorage.getItem('splitRatio')) || 50;
-                        if (topPane)    topPane.style.flex = `0 0 ${savedRatio}%`;
-                        if (bottomPane) { bottomPane.style.display = ''; bottomPane.style.flex = '1'; bottomPane.style.minHeight = '0'; }
-                        // Show existing divider or create one if coming from initial daily load
-                        let divider = document.querySelector('.tv-divider');
-                        if (divider) {
-                            divider.style.display = '';
-                        } else if (topPane) {
-                            divider = document.createElement('div');
-                            divider.className = 'tv-divider';
-                            topPane.insertAdjacentElement('afterend', divider);
-                            initSplitDrag(topPane.closest('.tv-container-split'));
-                        }
-                        if (mode === 'benchmark') {
-                            TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', BENCHMARK_SYMBOL);
-                        } else if (mode === 'industry') {
-                            const _info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
-                            const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
-                            if (_etf) TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', _etf);
-                        } else {
-                            const interval = mode === 'hourly' ? '60' : 'W';
-                            TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
-                        }
-                    } else {
-                        // D/H ↔ D/W ↔ D/B ↔ D/I — both split, just swap bottom widget
-                        if (mode === 'benchmark') {
-                            TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', BENCHMARK_SYMBOL);
-                        } else if (mode === 'industry') {
-                            const _info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
-                            const _etf  = _info?.industryEtf ?? _info?.sectorEtf;
-                            if (_etf) TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, 'D', _etf);
-                        } else {
-                            const interval = mode === 'hourly' ? '60' : 'W';
-                            TradingViewWidget.swapBottomPane(AppState.currentTickerSymbol, interval);
-                        }
-                    }
-                }
+                if (button.disabled) return;
+                const cmp  = button.dataset.cmp;
+                const next = cmp === AppState.compareMode ? 'off' : cmp;
+                AppState.compareMode = next;
+                localStorage.setItem('compareMode', next);
+                cmpToggle.querySelectorAll('button').forEach(b =>
+                    b.classList.toggle('active', b.dataset.cmp === next));
+                applyCompareChange();
             });
         });
     }
