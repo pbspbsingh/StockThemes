@@ -199,7 +199,7 @@
             align-items: center;
             gap: 6px;
         }
-        #period-slider, #dim-slider {
+        #period-slider, #dim-slider, #rs-slider {
             -webkit-appearance: none;
             appearance: none;
             width: 80px;
@@ -214,7 +214,8 @@
             outline: none;
             cursor: pointer;
         }
-        #dim-slider::-webkit-slider-thumb {
+        #dim-slider::-webkit-slider-thumb,
+        #rs-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 12px;
             height: 12px;
@@ -223,7 +224,8 @@
             cursor: pointer;
             transition: background 0.15s;
         }
-        #dim-slider::-moz-range-thumb {
+        #dim-slider::-moz-range-thumb,
+        #rs-slider::-moz-range-thumb {
             width: 12px;
             height: 12px;
             border-radius: 50%;
@@ -231,12 +233,42 @@
             border: none;
             cursor: pointer;
         }
-        #dim-slider:hover::-webkit-slider-thumb { background: #78baff; }
-        #dim-value, #period-value {
+        #dim-slider:hover::-webkit-slider-thumb,
+        #rs-slider:hover::-webkit-slider-thumb { background: #78baff; }
+        #dim-value, #period-value, #rs-value {
             font-size: 11px;
             color: #666;
             min-width: 28px;
             text-align: right;
+        }
+
+        /* Quadrant show/hide toggles */
+        #quad-group { gap: 3px; }
+        .quad-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 7px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            background: #1a1a1a;
+            color: #ccc;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.15s, border-color 0.15s;
+        }
+        .quad-toggle .quad-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .quad-toggle:hover { border-color: #555; }
+        .quad-toggle.off {
+            opacity: 0.35;
+            color: #777;
+            text-decoration: line-through;
         }
 
         .benchmark-tag {
@@ -626,6 +658,20 @@
                 <input type="range" id="dim-slider" min="0" max="1" step="0.05">
                 <span id="dim-value">15%</span>
             </div>
+            <div class="ctrl-group dim-slider-wrap">
+                <span class="ctrl-label" title="Hide items with RS-Ratio below this value">RS≥</span>
+                <input type="range" id="rs-slider" min="80" max="120" step="0.5">
+                <span id="rs-value">80</span>
+            </div>
+            <div class="ctrl-group">
+                <span class="ctrl-label">Quad</span>
+                <div class="btn-group" id="quad-group">
+                    <button class="quad-toggle" data-quad="leading" title="Leading"><span class="quad-dot" style="background:#2ecc71"></span>Lead</button>
+                    <button class="quad-toggle" data-quad="recovering" title="Recovering"><span class="quad-dot" style="background:#4a9eff"></span>Recov</button>
+                    <button class="quad-toggle" data-quad="weakening" title="Weakening"><span class="quad-dot" style="background:#f39c12"></span>Weak</button>
+                    <button class="quad-toggle" data-quad="lagging" title="Lagging"><span class="quad-dot" style="background:#e74c3c"></span>Lag</button>
+                </div>
+            </div>
             <button class="reset-btn" id="reset-btn" title="Reset all settings to defaults">↺ Reset</button>
             <div class="selected-info" id="selected-info">Click ▶ to expand a sector</div>
         </div>
@@ -766,7 +812,79 @@
 
         // Dim opacity for non-selected ETF tails/dots (0 = invisible, 1 = full)
         dimOpacity: parseFloat(localStorage.getItem('rrg_dim_opacity') ?? '0.15'),
+
+        // Hide items whose RS-Ratio is below this threshold.
+        // null = show all (the slider rides each level's minimum value).
+        minRsRatio: (() => {
+            const v = localStorage.getItem('rrg_min_rs');
+            return v === null ? null : parseFloat(v);
+        })(),
+
+        // etf/ticker → rs_ratio from the most recent fetch (drives sidebar filtering)
+        rsByEtf: new Map(),
+
+        // etf/ticker → quadrant key from the most recent fetch
+        quadByEtf: new Map(),
+
+        // Quadrant keys ('leading'|'weakening'|'lagging'|'recovering') to hide
+        hiddenQuadrants: new Set(JSON.parse(localStorage.getItem('rrg_hidden_quads') || '[]')),
+
+        // Last fetched dataset, kept so filters re-render without refetching
+        lastData: null,
     };
+
+    // An item is visible when its RS-Ratio meets the threshold. Items with no
+    // RS known yet (not in the last fetch) are shown.
+    function rsVisible(etf) {
+        const rs = State.rsByEtf.get(etf);
+        return rs === undefined || rs >= (State.minRsRatio ?? -Infinity);
+    }
+
+    // An item is visible when its quadrant isn't hidden.
+    function quadVisible(etf) {
+        const q = State.quadByEtf.get(etf);
+        return q === undefined || !State.hiddenQuadrants.has(q);
+    }
+
+    // Combined visibility: passes both the RS threshold and the quadrant filter.
+    function itemVisible(etf) {
+        return rsVisible(etf) && quadVisible(etf);
+    }
+
+    // Re-apply filters to the last fetched data and redraw — no network refetch.
+    function rerenderFromCache() {
+        if (!State.lastData) return;
+        renderLeftPanel();
+        rrgData = State.lastData.filter(d => itemVisible(d.etf));
+        drawRRG();
+    }
+
+    // Visual-only slider update (value, gradient fill, label).
+    function paintRsSlider(val) {
+        const slider = document.getElementById('rs-slider');
+        const label  = document.getElementById('rs-value');
+        slider.value = val;
+        const lo = parseFloat(slider.min), hi = parseFloat(slider.max);
+        slider.style.setProperty('--val', hi > lo ? (val - lo) / (hi - lo) : 0);
+        label.textContent = val;
+    }
+
+    // Slider min/max follow the available RS values of the current level.
+    function setRsSliderRange(values) {
+        if (!values.length) return;
+        const slider = document.getElementById('rs-slider');
+        let lo = Math.floor(Math.min(...values) * 2) / 2;
+        let hi = Math.ceil(Math.max(...values) * 2) / 2;
+        if (hi <= lo) hi = lo + 0.5;
+        slider.min = lo;
+        slider.max = hi;
+        // Untouched → ride the minimum (show all). Explicit → clamp into range.
+        const val = State.minRsRatio === null
+            ? lo
+            : Math.max(lo, Math.min(hi, State.minRsRatio));
+        if (State.minRsRatio !== null) State.minRsRatio = val;
+        paintRsSlider(val);
+    }
 
     // ════════════════════════════════════════════════════════════
     // API
@@ -830,6 +948,7 @@
     // Flat, toggleable list of CSV tickers (ticker mode).
     function renderTickerList(container) {
         State.tickers.forEach(ticker => {
+            if (!itemVisible(ticker)) return;
             const isSel = State.selectedItem?.etf === ticker;
             const row = document.createElement('div');
             row.className = 'sector-row';
@@ -872,6 +991,7 @@
         State.sectors.forEach(sectorObj => {
             const sName    = sectorObj.sector;
             const sEtf     = sectorObj.sector_etf;
+            if (!itemVisible(sEtf)) return;
             const expanded = State.expandedSectors.has(sName);
             const isSelectedRS = State.selectedItem?.name === sName;
 
@@ -899,7 +1019,7 @@
 </svg></button>
             </div>
             <div class="industry-list ${expanded ? 'open' : ''}" data-sector-industries="${sName}">
-                ${dedupIndustries(sectorObj.industries).map(ind => {
+                ${dedupIndustries(sectorObj.industries).filter(ind => itemVisible(ind.etf)).map(ind => {
                 const isSel = State.selectedItem?.etf === ind.etf && State.selectedItem?.type === 'industry';
                 return `<div class="industry-item ${isSel ? 'selected' : ''}" data-industry="${ind.name}" data-etf="${ind.etf}" title="${ind.name}">
                         <span class="industry-label">${ind.name}</span>
@@ -1029,7 +1149,13 @@
         try {
             const data = await fetchAll(items);
             showLoading(false);
-            renderRRG(data);
+            // Record RS + quadrant for the fetched level so the sidebar can filter too.
+            State.lastData = data;
+            State.rsByEtf   = new Map(data.map(d => [d.etf, d.rs_ratio]));
+            State.quadByEtf = new Map(data.map(d => [d.etf, getQuadrant(d.rs_ratio, d.rs_momentum)]));
+            setRsSliderRange(data.map(d => d.rs_ratio));
+            renderLeftPanel();
+            renderRRG(data.filter(d => itemVisible(d.etf)));
         } catch (e) {
             showLoading(false);
             console.error('RRG load failed:', e);
@@ -1913,13 +2039,17 @@
      */
     function buildNavList() {
         if (TICKER_MODE) {
-            return State.tickers.map(t => ({ type: 'ticker', name: t, etf: t }));
+            return State.tickers
+                .filter(t => itemVisible(t))
+                .map(t => ({ type: 'ticker', name: t, etf: t }));
         }
         const list = [];
         State.sectors.forEach(sec => {
+            if (!itemVisible(sec.sector_etf)) return;
             list.push({ type: 'sector', name: sec.sector, etf: sec.sector_etf });
             if (State.expandedSectors.has(sec.sector)) {
                 dedupIndustries(sec.industries).forEach(ind => {
+                    if (!itemVisible(ind.etf)) return;
                     list.push({ type: 'industry', name: ind.name, etf: ind.etf, sectorName: sec.sector });
                 });
             }
@@ -2122,10 +2252,38 @@
             updateDimSlider(parseFloat(dimSlider.value));
         });
 
+        // RS-Ratio threshold slider — min/max follow the current level's values,
+        // applied after each fetch in setRsSliderRange(). Filtering is purely
+        // client-side, so it re-renders live from cache without a refetch.
+        const rsSlider = document.getElementById('rs-slider');
+
+        rsSlider.addEventListener('input', () => {
+            State.minRsRatio = parseFloat(rsSlider.value);
+            localStorage.setItem('rrg_min_rs', State.minRsRatio);
+            paintRsSlider(State.minRsRatio);
+            rerenderFromCache();
+        });
+
+        // Quadrant show/hide toggles
+        const quadGroup = document.getElementById('quad-group');
+        quadGroup.querySelectorAll('button').forEach(btn => {
+            btn.classList.toggle('off', State.hiddenQuadrants.has(btn.dataset.quad));
+            btn.addEventListener('click', () => {
+                const q = btn.dataset.quad;
+                if (State.hiddenQuadrants.has(q)) State.hiddenQuadrants.delete(q);
+                else State.hiddenQuadrants.add(q);
+                btn.classList.toggle('off', State.hiddenQuadrants.has(q));
+                localStorage.setItem('rrg_hidden_quads', JSON.stringify([...State.hiddenQuadrants]));
+                rerenderFromCache();
+            });
+        });
+
         // Reset button
         document.getElementById('reset-btn').addEventListener('click', () => {
             localStorage.removeItem('rrg_dim_opacity');
             localStorage.removeItem('rrg_period_weeks');
+            localStorage.removeItem('rrg_min_rs');
+            localStorage.removeItem('rrg_hidden_quads');
 
             State.timeframe   = 'daily';
             State.historyLen  = HISTORY_LEN['daily'];
@@ -2137,6 +2295,9 @@
             renderTailButtons('daily');   // resets tailLen to 20
             updatePeriodSlider(10);
             updateDimSlider(0.15);
+            State.minRsRatio = null;   // show all; range re-derived on reload
+            State.hiddenQuadrants.clear();
+            document.querySelectorAll('#quad-group button').forEach(b => b.classList.remove('off'));
 
             loadAndRenderRRG();
             if (State.selectedItem) loadAndRenderRS(State.selectedItem.etf, State.selectedItem.name);
