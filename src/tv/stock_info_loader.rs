@@ -4,6 +4,7 @@ use chrome_driver::chromiumoxide::cdp::browser_protocol::input::{
 };
 use chrome_driver::{Element, Page, PageFeatures};
 use chrono::Local;
+use tracing::warn;
 
 use super::TV_HOME;
 
@@ -116,18 +117,20 @@ impl<'a> StockInfoLoader<'a> {
 
         async fn find_group(element: &Element) -> Option<Group> {
             let name = normalize(element.inner_text().await.ok()??.trim());
-            let url = normalize(element.attribute("href").await.ok()??.trim());
+            let url = normalize(element.attribute("href").await.ok()??.trim()).to_lowercase();
             Some(Group { name, url })
         }
 
+        let exchange = exchange
+            .inner_text()
+            .await?
+            .unwrap_or_default()
+            .trim()
+            .to_owned();
+
         Ok(Stock {
             ticker: ticker.to_owned(),
-            exchange: exchange
-                .inner_text()
-                .await?
-                .unwrap_or_default()
-                .trim()
-                .to_uppercase(),
+            exchange: Self::map_exchange(&exchange).to_owned(),
             sector: find_group(&sector).await.context("Couldn't find sector")?,
             industry: find_group(&industry)
                 .await
@@ -163,6 +166,61 @@ impl<'a> StockInfoLoader<'a> {
             )
             .await?;
         Ok(())
+    }
+
+    /// Map TradingView's human-readable exchange name (from the detail widget)
+    /// to the symbol prefix used in `tradingview.com/symbols/{prefix}-{ticker}`.
+    fn map_exchange(exchange: &str) -> &str {
+        match exchange {
+            // United States
+            "NASDAQ" | "NasdaqGS" | "NasdaqGM" | "NasdaqCM" => "NASDAQ",
+            "NYSE" | "New York Stock Exchange" => "NYSE",
+            "AMEX" | "NYSE American" | "American Stock Exchange" | "NYSE MKT" => "AMEX",
+            "NYSE Arca" => "NYSEARCA",
+            "Cboe BZX" | "BATS" => "CBOE",
+            "OTC Bulletin Board" | "Other OTC" | "Pink Sheets" | "OTC Markets" => "OTC",
+            // Canada
+            "Toronto" | "TSX" => "TSX",
+            "TSX Venture" => "TSXV",
+            "Canadian Securities Exchange" => "CSE",
+            // United Kingdom
+            "London" => "LSE",
+            // Europe
+            "XETRA" | "Frankfurt" => "XETR",
+            "Euronext Paris" | "Paris" => "EURONEXT",
+            "Amsterdam" | "Brussels" | "Lisbon" => "EURONEXT",
+            "Milan" | "Borsa Italiana" => "MIL",
+            "Madrid" => "BME",
+            "Stockholm" | "Nasdaq Stockholm" => "OMX",
+            "Oslo" => "OSL",
+            "Copenhagen" | "Nasdaq Copenhagen" => "CPH",
+            "Helsinki" | "Nasdaq Helsinki" => "HEL",
+            "Zurich" | "Swiss Exchange" | "SIX Swiss Exchange" => "SIX",
+            "Vienna" => "WBAG",
+            "Warsaw" => "GPW",
+            // Asia / Pacific
+            "Tokyo" => "TSE",
+            "Hong Kong" => "HKEX",
+            "Shanghai" => "SSE",
+            "Shenzhen" => "SZSE",
+            "Korea Exchange" | "Seoul" => "KRX",
+            "Australian" | "ASX" => "ASX",
+            "Singapore" | "SGX" => "SGX",
+            "Bombay" | "BSE India" => "BSE",
+            "National Stock Exchange India" => "NSE",
+            "Taiwan" | "TWSE" => "TWSE",
+            "New Zealand" => "NZX",
+            // Other
+            "Tel Aviv" => "TASE",
+            "Johannesburg" => "JSE",
+            "Brazil" | "Bovespa" => "BMFBOVESPA",
+            "Mexico" => "BMV",
+            // Unknown — pass through as-is
+            other => {
+                warn!("Invalid Exchange detected {other}");
+                other
+            }
+        }
     }
 }
 
