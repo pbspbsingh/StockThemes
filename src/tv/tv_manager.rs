@@ -205,15 +205,14 @@ impl TvManager {
     }
 
     async fn auto_accept_dialogs(page: &Page) -> anyhow::Result<()> {
-        let mut dialogs = page.event_listener::<EventJavascriptDialogOpening>().await?;
+        let mut dialogs = page
+            .event_listener::<EventJavascriptDialogOpening>()
+            .await?;
         let page = page.clone();
         tokio::spawn(async move {
             while let Some(ev) = dialogs.next().await {
                 info!("Auto-accepting JS dialog ({:?}): {}", ev.r#type, ev.message);
-                if let Err(e) = page
-                    .execute(HandleJavaScriptDialogParams::new(true))
-                    .await
-                {
+                if let Err(e) = page.execute(HandleJavaScriptDialogParams::new(true)).await {
                     warn!("Failed to auto-accept JS dialog: {e}");
                 }
             }

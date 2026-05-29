@@ -1,5 +1,5 @@
-use chrome_driver::chromiumoxide::page::ScreenshotParams;
 use chrome_driver::Page;
+use chrome_driver::chromiumoxide::page::ScreenshotParams;
 use chrono::Local;
 use std::path::Path;
 use tracing::warn;
@@ -38,7 +38,11 @@ async fn save_screenshot(page: &Page, label: &str) {
             }
         })
         .collect();
-    let filename = format!("{}_{}.png", Local::now().format("%Y%m%d_%H%M%S"), safe_label);
+    let filename = format!(
+        "{}_{}.png",
+        Local::now().format("%Y%m%d_%H%M%S"),
+        safe_label
+    );
     let path = dir.join(filename);
     match page
         .save_screenshot(ScreenshotParams::default(), &path)
