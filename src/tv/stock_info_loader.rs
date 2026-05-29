@@ -106,6 +106,13 @@ impl<'a> StockInfoLoader<'a> {
             .find_element(r#"span[data-qa-id="details-element exchange"]"#)
             .await
             .context("No exchange info found")?;
+        let exchange = exchange
+            .inner_text()
+            .await?
+            .unwrap_or_default()
+            .trim()
+            .to_owned();
+
         let sector = detail_widget
             .find_element(r#"a[data-qa-id="details-element sector"]"#)
             .await
@@ -120,13 +127,6 @@ impl<'a> StockInfoLoader<'a> {
             let url = normalize(element.attribute("href").await.ok()??.trim()).to_lowercase();
             Some(Group { name, url })
         }
-
-        let exchange = exchange
-            .inner_text()
-            .await?
-            .unwrap_or_default()
-            .trim()
-            .to_owned();
 
         Ok(Stock {
             ticker: ticker.to_owned(),
@@ -168,53 +168,14 @@ impl<'a> StockInfoLoader<'a> {
         Ok(())
     }
 
-    /// Map TradingView's human-readable exchange name (from the detail widget)
-    /// to the symbol prefix used in `tradingview.com/symbols/{prefix}-{ticker}`.
     fn map_exchange(exchange: &str) -> &str {
         match exchange {
-            // United States
             "NASDAQ" | "NasdaqGS" | "NasdaqGM" | "NasdaqCM" => "NASDAQ",
             "NYSE" | "New York Stock Exchange" => "NYSE",
             "AMEX" | "NYSE American" | "American Stock Exchange" | "NYSE MKT" => "AMEX",
             "NYSE Arca" => "NYSEARCA",
-            "Cboe BZX" | "BATS" => "CBOE",
+            "CBOE" | "Cboe BZX" | "BATS" => "CBOE",
             "OTC Bulletin Board" | "Other OTC" | "Pink Sheets" | "OTC Markets" => "OTC",
-            // Canada
-            "Toronto" | "TSX" => "TSX",
-            "TSX Venture" => "TSXV",
-            "Canadian Securities Exchange" => "CSE",
-            // United Kingdom
-            "London" => "LSE",
-            // Europe
-            "XETRA" | "Frankfurt" => "XETR",
-            "Euronext Paris" | "Paris" => "EURONEXT",
-            "Amsterdam" | "Brussels" | "Lisbon" => "EURONEXT",
-            "Milan" | "Borsa Italiana" => "MIL",
-            "Madrid" => "BME",
-            "Stockholm" | "Nasdaq Stockholm" => "OMX",
-            "Oslo" => "OSL",
-            "Copenhagen" | "Nasdaq Copenhagen" => "CPH",
-            "Helsinki" | "Nasdaq Helsinki" => "HEL",
-            "Zurich" | "Swiss Exchange" | "SIX Swiss Exchange" => "SIX",
-            "Vienna" => "WBAG",
-            "Warsaw" => "GPW",
-            // Asia / Pacific
-            "Tokyo" => "TSE",
-            "Hong Kong" => "HKEX",
-            "Shanghai" => "SSE",
-            "Shenzhen" => "SZSE",
-            "Korea Exchange" | "Seoul" => "KRX",
-            "Australian" | "ASX" => "ASX",
-            "Singapore" | "SGX" => "SGX",
-            "Bombay" | "BSE India" => "BSE",
-            "National Stock Exchange India" => "NSE",
-            "Taiwan" | "TWSE" => "TWSE",
-            "New Zealand" => "NZX",
-            // Other
-            "Tel Aviv" => "TASE",
-            "Johannesburg" => "JSE",
-            "Brazil" | "Bovespa" => "BMFBOVESPA",
-            "Mexico" => "BMV",
             // Unknown — pass through as-is
             other => {
                 warn!("Invalid Exchange detected {other}");
