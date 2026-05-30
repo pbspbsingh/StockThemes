@@ -8,7 +8,7 @@ mod tests;
 pub use error::YfError;
 pub use types::{BarSize, Candle, Range, TickerInfo, TimeSpec};
 
-use crate::{Group, Stock, StockInfoFetcher};
+use crate::{Group, Stock, StockInfoFetcher, util};
 use anyhow::Context;
 use chrono::{Local, TimeZone, Utc};
 use de::{ChartResponse, QuoteSummaryResponse};
@@ -22,7 +22,7 @@ use tracing::warn;
 // ============================================================================
 
 pub struct YFinance {
-    client: Client,
+    client: &'static Client,
     crumb: OnceCell<String>,
 }
 
@@ -34,17 +34,8 @@ impl Default for YFinance {
 
 impl YFinance {
     pub fn new() -> Self {
-        let client = Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0")
-            .cookie_store(true)
-            .gzip(true)
-            .deflate(true)
-            .timeout(Duration::from_secs(10))
-            .build()
-            .expect("Failed to build HTTP client");
-
         Self {
-            client,
+            client: &*util::HTTP_CLIENT,
             crumb: OnceCell::new(),
         }
     }

@@ -1,4 +1,4 @@
-use crate::{Group, Stock, StockInfoFetcher};
+use crate::{Group, Stock, StockInfoFetcher, util};
 use anyhow::Context;
 use chrono::Local;
 use futures::{StreamExt, TryStreamExt, stream};
@@ -6,28 +6,30 @@ use reqwest::{Client, header};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::time::Duration;
+
 use url::Url;
 
 const SCANNER_URL: &str = "https://scanner.tradingview.com/global/scan";
 const SYMBOL_SEARCH_URL: &str = "https://symbol-search.tradingview.com/symbol_search/v3/";
 const FIELDS: [&str; 4] = ["name", "exchange", "sector", "industry"];
 const SYMBOL_SEARCH_CONCURRENCY: usize = 8;
-const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
 #[derive(Clone)]
 pub struct ScreenerApi {
-    client: Client,
+    client: &'static Client,
+}
+
+impl Default for ScreenerApi {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ScreenerApi {
-    pub fn new() -> anyhow::Result<Self> {
-        let client = Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(Duration::from_secs(20))
-            .build()
-            .context("Failed to build TradingView screener HTTP client")?;
-        Ok(Self { client })
+    pub fn new() -> Self {
+        Self {
+            client: &util::HTTP_CLIENT,
+        }
     }
 
     pub async fn fetch_stocks(&self, tickers: &[String]) -> anyhow::Result<HashMap<String, Stock>> {

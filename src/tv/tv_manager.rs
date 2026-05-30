@@ -114,13 +114,13 @@ impl TvManager {
         let page = self.get_or_init_page().await?;
         let fetcher = TopStocksFetcher::load_screen_url(page, screen_url, top_count, is_desc)
             .await
-            .snap_on_err(&page, "load_screen_url")
+            .snap_on_err(page, "load_screen_url")
             .await?;
         for sort_by in time_frames {
             let stocks = fetcher
                 .fetch_stocks(&sort_by)
                 .await
-                .snap_on_err(&page, &format!("fetch_stocks_{sort_by}"))
+                .snap_on_err(page, &format!("fetch_stocks_{sort_by}"))
                 .await?;
             unique_stocks.extend(stocks.into_iter().map(|s| s.1));
         }

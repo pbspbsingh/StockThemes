@@ -2,9 +2,12 @@ use anyhow::Context;
 use chrono::{DateTime, Datelike, Local, TimeDelta, Weekday};
 use futures::stream;
 use itertools::Itertools;
+use reqwest::Client;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
+    sync::LazyLock,
+    time::Duration,
 };
 use tokio::fs;
 use tracing::{debug, info};
@@ -16,6 +19,20 @@ use rand::seq::SliceRandom;
 use crate::Performance;
 use crate::config::APP_CONFIG;
 use crate::yf::Candle;
+
+const BROWSER_UA: &str =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:152.0) Gecko/20100101 Firefox/152.0";
+
+pub static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    Client::builder()
+        .user_agent(BROWSER_UA)
+        .cookie_store(true)
+        .gzip(true)
+        .deflate(true)
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("Failed to build HTTP client")
+});
 
 pub async fn read_stocks(
     files: &[PathBuf],

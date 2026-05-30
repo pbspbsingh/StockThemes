@@ -9,7 +9,7 @@ use stock_themes::store::Store;
 
 use stock_themes::tv::tv_manager::TvManager;
 
-use stock_themes::{init_logger};
+use stock_themes::init_logger;
 
 #[derive(Parser, Debug)]
 #[command(name = "top_stocks")]

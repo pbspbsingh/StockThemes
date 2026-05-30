@@ -76,7 +76,7 @@ async fn fetch_stock_info(store: &Store, tickers: Vec<String>) -> anyhow::Result
             "Fetching {} stocks info from TradingView API",
             missing_tickers.len()
         );
-        let stock_info_fetcher = ScreenerApi::new()?;
+        let stock_info_fetcher = ScreenerApi::default();
         let fetched_stocks = stock_info_fetcher.fetch_stocks(&missing_tickers).await?;
         if !fetched_stocks.is_empty() {
             let fetched = fetched_stocks.values().cloned().collect::<Vec<_>>();
