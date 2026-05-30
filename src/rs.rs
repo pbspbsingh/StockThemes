@@ -1,3 +1,4 @@
+use anyhow::Context;
 use itertools::Itertools;
 use std::collections::HashMap;
 use tracing::{info, warn};
@@ -26,22 +27,19 @@ pub async fn build_rs_maps(
     let base_candles = fetch_candles(store, yf, &APP_CONFIG.base_ticker).await?;
     info!("Fetched {} baseline candles", base_candles.len());
 
-    build_etf_rs_maps(stocks, async |ticker| {
-        let candles = fetch_candles(store, yf, ticker).await?;
-        Ok(compute_rs_candles(&candles, &base_candles))
-    })
-    .await
-}
+    let rs_fn = async |ticker| {
+        let candles = fetch_candles(store, yf, ticker)
+            .await
+            .with_context(|| format!("Failed to fetch candles for {ticker:?}"))?;
+        anyhow::Ok(compute_rs_candles(&candles, &base_candles))
+    };
 
-async fn build_etf_rs_maps(
-    stocks: &[Stock],
-    mut rs_fn: impl AsyncFnMut(&str) -> anyhow::Result<f64>,
-) -> anyhow::Result<RsMaps> {
     let mut sector_rs = HashMap::new();
     let mut industrie_rs = HashMap::new();
     let mut stock_rs = HashMap::new();
 
     let mapping = etf_map::tv_mapping();
+
     for sec in stocks.iter().map(|s| &s.sector).unique_by(|sec| &sec.name) {
         let Some(sec) = mapping
             .iter()

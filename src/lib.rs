@@ -13,9 +13,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex as AsyncMutex;
-use tracing::{debug, info, trace};
+use tracing::{debug, info, trace, warn};
 
 pub mod config;
 pub mod etf_map;
@@ -136,7 +137,7 @@ pub async fn fetch_candles(
             .fetch_candles(ticker, BarSize::Daily, TimeSpec::Range(Range::TwoYears))
             .await?;
         info!(
-            "Fetched {} candles for {} from yfinance",
+            "Fetched {} candles for {:?} from yfinance",
             candles.len(),
             ticker,
         );
@@ -157,10 +158,11 @@ pub async fn fetch_candles(
         .map(|c| c.timestamp - TimeDelta::days(1))
         .unwrap_or_else(|| Utc::now() - TWO_YEARS);
     let end = Utc::now();
-    let new_candles = yf
-        .fetch_candles(ticker, BarSize::Daily, TimeSpec::Interval(start, end))
-        .await?;
-    info!("Fetched {} new candles for {}", new_candles.len(), ticker);
+    let new_candles = fetch_with_backoff(|| {
+        yf.fetch_candles(ticker, BarSize::Daily, TimeSpec::Interval(start, end))
+    })
+    .await?;
+    info!("Fetched {} new candles for {:?}", new_candles.len(), ticker);
 
     candles.extend(new_candles);
     store.save_candles(ticker, &candles).await?;
@@ -227,5 +229,33 @@ impl Display for Performance {
         write!(f, "6M={:.2}%, ", self.perf_6m)?;
         write!(f, "1Y={:.2}%", self.perf_1y)?;
         writeln!(f, "}}")
+    }
+}
+
+const MAX_RETRIES: u32 = 3;
+const BASE_DELAY_MS: u64 = 500;
+
+async fn fetch_with_backoff<F, Fut, T>(mut f: F) -> anyhow::Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = anyhow::Result<T>>,
+{
+    let mut attempt = 0;
+    loop {
+        match f().await {
+            Ok(val) => break Ok(val),
+            Err(e) if attempt < MAX_RETRIES => {
+                let delay = BASE_DELAY_MS * 2u64.pow(attempt);
+                warn!(
+                    "Yahoo Finance request failed (attempt {}/{}), retrying in {}ms: {e}",
+                    attempt + 1,
+                    MAX_RETRIES,
+                    delay,
+                );
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+                attempt += 1;
+            }
+            Err(e) => break Err(e),
+        }
     }
 }

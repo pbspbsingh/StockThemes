@@ -218,7 +218,7 @@ impl YFinance {
         };
 
         // Random jitter to avoid throttling
-        tokio::time::sleep(Duration::from_millis(rand::random_range(10..=100))).await;
+        tokio::time::sleep(Duration::from_millis(rand::random_range(50..=500))).await;
 
         let response = self
             .client
