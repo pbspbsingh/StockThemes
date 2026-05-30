@@ -10,8 +10,8 @@ use chrome_driver::chromiumoxide::cdp::browser_protocol::page::{
 };
 use chrome_driver::{Browser, ChromeDriverConfig, Page, PageFeatures};
 use futures::StreamExt;
-use itertools::Itertools;
-use std::collections::HashMap;
+
+use std::collections::HashSet;
 use std::slice;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -108,83 +108,24 @@ impl TvManager {
         top_count: usize,
         is_desc: bool,
         time_frames: impl Iterator<Item = String>,
-    ) -> anyhow::Result<(Vec<Stock>, Vec<Performance>)> {
-        let store = self.store.clone();
+    ) -> anyhow::Result<Vec<String>> {
+        let mut unique_stocks = HashSet::new();
 
-        let page = self.get_or_init_page().await?.clone();
-        let (screener_stocks, perfs) = {
-            let fetcher = TopStocksFetcher::load_screen_url(&page, screen_url, top_count, is_desc)
+        let page = self.get_or_init_page().await?;
+        let fetcher = TopStocksFetcher::load_screen_url(page, screen_url, top_count, is_desc)
+            .await
+            .snap_on_err(&page, "load_screen_url")
+            .await?;
+        for sort_by in time_frames {
+            let stocks = fetcher
+                .fetch_stocks(&sort_by)
                 .await
-                .snap_on_err(&page, "load_screen_url")
+                .snap_on_err(&page, &format!("fetch_stocks_{sort_by}"))
                 .await?;
-
-            let mut stocks_map: HashMap<String, Stock> = HashMap::new();
-            let mut perf_map: HashMap<String, Performance> = HashMap::new();
-            for sort_by in time_frames {
-                let (stocks, perfs) = fetcher
-                    .fetch_stocks(&sort_by)
-                    .await
-                    .snap_on_err(&page, &format!("fetch_stocks_{sort_by}"))
-                    .await?;
-
-                // Persist perfs only — screener sector/industry is unreliable, don't store it.
-                store.save_performances(&perfs).await?;
-
-                for stock in stocks {
-                    stocks_map.insert(stock.ticker.clone(), stock);
-                }
-                for perf in perfs {
-                    perf_map.insert(perf.ticker.clone(), perf);
-                }
-            }
-
-            let stocks: Vec<Stock> = stocks_map
-                .into_values()
-                .sorted_by_key(|s| s.ticker.clone())
-                .collect();
-            let perfs: Vec<Performance> = perf_map
-                .into_values()
-                .sorted_by_key(|p| p.ticker.clone())
-                .collect();
-            (stocks, perfs)
-        };
-
-        let total = screener_stocks.len();
-        info!("Validating stock info for {total} tickers via detail page");
-        let mut stocks = Vec::with_capacity(total);
-        for (i, screener) in screener_stocks.into_iter().enumerate() {
-            info!("[{}/{total}] Validating {}", i + 1, screener.ticker);
-            let stock = match self.fetch_stock_info(&screener.ticker).await {
-                Ok(detail) => {
-                    if screener.exchange != detail.exchange
-                        || screener.sector.name != detail.sector.name
-                        || screener.industry.name != detail.industry.name
-                    {
-                        warn!(
-                            "Mismatch for {}: screener=(exchange={}, sector={}, industry={}) detail=(exchange={}, sector={}, industry={}); using detail",
-                            screener.ticker,
-                            screener.exchange,
-                            screener.sector.name,
-                            screener.industry.name,
-                            detail.exchange,
-                            detail.sector.name,
-                            detail.industry.name,
-                        );
-                    }
-                    detail
-                }
-                Err(e) => {
-                    warn!(
-                        "fetch_stock_info failed for {}: {e}; falling back to screener data",
-                        screener.ticker
-                    );
-                    screener
-                }
-            };
-            stocks.push(stock);
+            unique_stocks.extend(stocks.into_iter().map(|s| s.1));
         }
 
-        Ok((stocks, perfs))
+        Ok(unique_stocks.into_iter().collect())
     }
 
     async fn get_or_init_page(&mut self) -> anyhow::Result<&Page> {

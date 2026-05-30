@@ -4,12 +4,12 @@ use clap::Parser;
 use tracing::info;
 
 use std::path::{Path, PathBuf};
-use stock_themes::metrics;
+
 use stock_themes::store::Store;
-use stock_themes::summary::Summary;
+
 use stock_themes::tv::tv_manager::TvManager;
-use stock_themes::yf::YFinance;
-use stock_themes::{Stock, init_logger, rs, start_http_server, time_frames};
+
+use stock_themes::{init_logger};
 
 #[derive(Parser, Debug)]
 #[command(name = "top_stocks")]
@@ -43,12 +43,8 @@ async fn main() -> anyhow::Result<()> {
     let args = TopStocksArgs::parse();
     info!("Using args: {args:#?}");
 
-    let yf = YFinance::new();
-    let store = Store::load_store().await?;
-
-    let mut tv_manager = TvManager::new(store.clone());
-
-    let (stocks, _stock_perfs) = tv_manager
+    let mut tv_manager = TvManager::new(Store::load_store().await?);
+    let stocks = tv_manager
         .fetch_top_stocks(
             &args.tv_screen_url,
             args.top_count,
@@ -58,31 +54,10 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     info!("Total {} unique stocks fetched", stocks.len());
 
-    let rs_maps = rs::build_rs_maps(&store, &yf, &stocks).await?;
-
-    if rs_maps.sectors.is_empty() || rs_maps.industries.is_empty() {
-        anyhow::bail!("No sector/industry RS computed");
-    }
-
-    let stock_metrics = metrics::build_stock_metrics(&store, &yf, &stocks).await?;
-    info!("Computed metrics for {} stocks", stock_metrics.len());
-
-    drop(tv_manager);
-    drop(yf);
-
-    save_csv(&args.output_file, &args.tv_screen_url, &stocks).await?;
-
-    let summary = Summary::summarize(stocks);
-    let html = summary.render(
-        rs_maps.sectors,
-        rs_maps.industries,
-        rs_maps.stocks,
-        stock_metrics,
-    );
-    start_http_server(html).await
+    save_csv(&args.output_file, &args.tv_screen_url, &stocks).await
 }
 
-async fn save_csv(file: &Path, source: &str, stocks: &[Stock]) -> anyhow::Result<()> {
+async fn save_csv(file: &Path, source: &str, stocks: &[String]) -> anyhow::Result<()> {
     use std::fmt::Write;
 
     let mut content = String::new();
@@ -91,11 +66,15 @@ async fn save_csv(file: &Path, source: &str, stocks: &[Stock]) -> anyhow::Result
     writeln!(content, "Count: {}", stocks.len())?;
     writeln!(content)?;
     for stock in stocks {
-        writeln!(content, "{}", stock.ticker)?;
+        writeln!(content, "{stock}")?;
     }
     tokio::fs::write(file, content)
         .await
         .with_context(|| format!("Error writing output to {file:?}"))?;
     info!("Saved the output to {:?}\n", file.canonicalize()?);
     Ok(())
+}
+
+pub fn time_frames(input: &str) -> impl Iterator<Item = String> {
+    input.split(',').map(str::trim).map(str::to_uppercase)
 }

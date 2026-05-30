@@ -88,10 +88,6 @@ pub fn init_logger() {
         .init();
 }
 
-pub fn time_frames(input: &str) -> impl Iterator<Item = String> {
-    input.split(',').map(str::trim).map(str::to_uppercase)
-}
-
 pub async fn start_http_server(home: String) -> anyhow::Result<()> {
     let addr = format!("127.0.0.1:{}", APP_CONFIG.http_port);
     let listener = TcpListener::bind(&addr)
@@ -133,9 +129,10 @@ pub async fn fetch_candles(
 
     let mut candles = store.get_candles(ticker).await?;
     if candles.is_empty() {
-        let candles = yf
-            .fetch_candles(ticker, BarSize::Daily, TimeSpec::Range(Range::TwoYears))
-            .await?;
+        let candles = fetch_with_backoff(|| {
+            yf.fetch_candles(ticker, BarSize::Daily, TimeSpec::Range(Range::TwoYears))
+        })
+        .await?;
         info!(
             "Fetched {} candles for {:?} from yfinance",
             candles.len(),
@@ -168,17 +165,6 @@ pub async fn fetch_candles(
     store.save_candles(ticker, &candles).await?;
 
     Ok(store.get_candles(ticker).await?)
-}
-
-pub async fn fetch_stock_perf(
-    store: &Store,
-    yf: &YFinance,
-    ticker: &str,
-) -> anyhow::Result<Performance> {
-    let candles = fetch_candles(store, yf, ticker)
-        .await
-        .with_context(|| format!("Failed to retrieved candles for {ticker}"))?;
-    Ok(Performance::compute(ticker, TickerType::Stock, &candles))
 }
 
 impl Performance {
