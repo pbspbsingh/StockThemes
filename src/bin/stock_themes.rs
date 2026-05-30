@@ -1,5 +1,7 @@
+use chrono::Utc;
 use clap::Parser;
 
+use stock_themes::Group;
 use tracing::{info, warn};
 
 use std::collections::HashMap;
@@ -74,10 +76,12 @@ async fn fetch_stock_info(store: &Store, tickers: Vec<String>) -> anyhow::Result
     if !missing_tickers.is_empty() {
         info!(
             "Fetching {} stocks info from TradingView API",
-            missing_tickers.len()
+            missing_tickers.len(),
         );
         let stock_info_fetcher = ScreenerApi::default();
-        let fetched_stocks = stock_info_fetcher.fetch_stocks(&missing_tickers).await?;
+        let mut fetched_stocks = stock_info_fetcher.fetch_stocks(&missing_tickers).await?;
+        fetched_stocks
+            .retain(|_, stock| !(stock.sector.name.is_empty() || stock.industry.name.is_empty()));
         if !fetched_stocks.is_empty() {
             let fetched = fetched_stocks.values().cloned().collect::<Vec<_>>();
             store.add_stocks(&fetched).await?;
@@ -91,20 +95,35 @@ async fn fetch_stock_info(store: &Store, tickers: Vec<String>) -> anyhow::Result
         .collect::<Vec<_>>();
     if !missing_tickers.is_empty() {
         warn!(
-            "Failed to fetch stock info for {} tickers",
-            missing_tickers.len()
+            "Failed to fetch stock info for {} tickers: [{}]",
+            missing_tickers.len(),
+            missing_tickers.join(","),
         );
-        warn!("Failed tickers: '{}'", missing_tickers.join(","));
-        anyhow::bail!(
-            "Couldn't fetch stock info for '{}'",
-            missing_tickers.join(",")
-        );
+        for ticker in missing_tickers {
+            cached_stocks.insert(
+                ticker.clone(),
+                Stock {
+                    ticker,
+                    exchange: "".into(),
+                    sector: unknown_group(),
+                    industry: unknown_group(),
+                    last_update: Utc::now().date_naive(),
+                },
+            );
+        }
     }
     info!(
-        "Finished processing {} tickers in {:?}",
+        "Finished processing {} tickers in {:.2?}",
         cached_stocks.len(),
         start.elapsed(),
     );
 
     Ok(cached_stocks.into_values().collect())
+}
+
+fn unknown_group() -> Group {
+    Group {
+        name: "Unknown".into(),
+        url: "".into(),
+    }
 }
