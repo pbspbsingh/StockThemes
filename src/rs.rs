@@ -2,12 +2,11 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use tracing::{info, warn};
 
-use crate::config::{APP_CONFIG, PerfMode};
+use crate::config::APP_CONFIG;
+use crate::fetch_candles;
 use crate::store::Store;
-use crate::tv::tv_manager::TvManager;
-use crate::util::{compute_rs, compute_rs_candles};
+use crate::util::compute_rs_candles;
 use crate::yf::YFinance;
-use crate::{Performance, TickerType, fetch_candles, fetch_stock_perf};
 use crate::{Stock, etf_map};
 
 pub type RsMap = HashMap<String, f64>;
@@ -22,41 +21,16 @@ pub struct RsMaps {
 pub async fn build_rs_maps(
     store: &Store,
     yf: &YFinance,
-    tv_manager: &mut TvManager,
     stocks: &[Stock],
-    stock_perfs: &[Performance],
 ) -> anyhow::Result<RsMaps> {
     let base_candles = fetch_candles(store, yf, &APP_CONFIG.base_ticker).await?;
     info!("Fetched {} baseline candles", base_candles.len());
-    let base_perf = Performance::compute(&APP_CONFIG.base_ticker, TickerType::Stock, &base_candles);
 
-    match APP_CONFIG.perf_mode {
-        PerfMode::TradingView => {
-            let sectors = tv_manager.fetch_sectors().await?;
-            info!("Fetched {} sectors", sectors.len());
-            let industries = tv_manager.fetch_industries().await?;
-            info!("Fetched {} industry groups", industries.len());
-            Ok(RsMaps {
-                sectors: rs_map_from_perfs(sectors, &base_perf),
-                industries: rs_map_from_perfs(industries, &base_perf),
-                stocks: rs_map_from_perfs(stock_perfs.iter().cloned(), &base_perf),
-            })
-        }
-        PerfMode::EtfBuckets => {
-            build_etf_rs_maps(stocks, async |ticker| {
-                let p = fetch_stock_perf(store, yf, ticker).await?;
-                Ok(compute_rs(&p, &base_perf))
-            })
-            .await
-        }
-        PerfMode::EtfCandles => {
-            build_etf_rs_maps(stocks, async |ticker| {
-                let candles = fetch_candles(store, yf, ticker).await?;
-                Ok(compute_rs_candles(&candles, &base_candles))
-            })
-            .await
-        }
-    }
+    build_etf_rs_maps(stocks, async |ticker| {
+        let candles = fetch_candles(store, yf, ticker).await?;
+        Ok(compute_rs_candles(&candles, &base_candles))
+    })
+    .await
 }
 
 async fn build_etf_rs_maps(
@@ -104,16 +78,6 @@ async fn build_etf_rs_maps(
         industries: industrie_rs,
         stocks: stock_rs,
     })
-}
-
-fn rs_map_from_perfs(perfs: impl IntoIterator<Item = Performance>, base: &Performance) -> RsMap {
-    perfs
-        .into_iter()
-        .map(|p| {
-            let rs = round_rs(compute_rs(&p, base));
-            (p.ticker, rs)
-        })
-        .collect()
 }
 
 fn round_rs(rs: f64) -> f64 {

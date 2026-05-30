@@ -2,14 +2,13 @@ use clap::Parser;
 
 use tracing::{info, warn};
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use stock_themes::{
-    Performance, Stock, fetch_stock_perf, init_logger, metrics, rs, start_http_server,
-    store::Store, util,
-};
+use std::time::Instant;
+use stock_themes::{Stock, init_logger, metrics, rs, start_http_server, store::Store, util};
 
 use stock_themes::summary::Summary;
-use stock_themes::tv::tv_manager::TvManager;
+use stock_themes::tv::screener_api::ScreenerApi;
 use stock_themes::yf::YFinance;
 
 #[derive(Parser, Debug)]
@@ -39,19 +38,14 @@ async fn main() -> anyhow::Result<()> {
     let yf = YFinance::new();
     let store = Store::load_store().await?;
 
-    let mut tv_manager = TvManager::new(store.clone());
-
     let tickers = util::read_stocks(&args.files, args.skip_lines, &args.skip_stocks).await?;
     info!("Total unique stocks: {}", tickers.len());
 
-    let (stocks, stock_perfs) = fetch_stock_info(&mut tv_manager, &yf, tickers).await?;
-    let rs_maps = rs::build_rs_maps(&store, &yf, &mut tv_manager, &stocks, &stock_perfs).await?;
+    let stocks = fetch_stock_info(&store, tickers).await?;
+    let rs_maps = rs::build_rs_maps(&store, &yf, &stocks).await?;
 
     let stock_metrics = metrics::build_stock_metrics(&store, &yf, &stocks).await?;
     info!("Computed metrics for {} stocks", stock_metrics.len());
-
-    drop(tv_manager);
-    drop(yf);
 
     let summary = Summary::summarize(stocks);
     let html = summary.render(
@@ -64,52 +58,53 @@ async fn main() -> anyhow::Result<()> {
     start_http_server(html).await
 }
 
-async fn fetch_stock_info(
-    tv_manager: &mut TvManager,
-    yf: &YFinance,
-    tickers: Vec<String>,
-) -> anyhow::Result<(Vec<Stock>, Vec<Performance>)> {
-    let total = tickers.len();
-    let store = Store::load_store().await?;
-
-    let mut stocks = Vec::with_capacity(total);
-    let mut perfs = Vec::with_capacity(total);
-
-    let mut failed = Vec::new();
-    let mut last_error = None;
-
-    let mut fetch_fn = async |ticker: &str| -> anyhow::Result<(Stock, Performance)> {
-        Ok((
-            tv_manager.fetch_stock_info(ticker).await?,
-            fetch_stock_perf(&store, yf, ticker).await?,
-        ))
-    };
-
-    for (i, ticker) in tickers.into_iter().enumerate() {
-        info!("[{}/{}] Fetching info for {ticker}", i + 1, total);
-        let (stock, perf) = match fetch_fn(&ticker).await {
-            Ok(sp) => sp,
-            Err(e) => {
-                warn!(
-                    "[{}/{total}] Failed to fetch stock/performance for {ticker}: {e}",
-                    i + 1
-                );
-                last_error = Some(e);
-                failed.push(ticker);
-                continue;
+async fn fetch_stock_info(store: &Store, tickers: Vec<String>) -> anyhow::Result<Vec<Stock>> {
+    let start = Instant::now();
+    let mut cached_stocks = HashMap::new();
+    let mut missing_tickers = Vec::new();
+    for ticker in &tickers {
+        match store.get_stock(ticker).await? {
+            Some(stock) => {
+                cached_stocks.insert(ticker.clone(), stock);
             }
-        };
-        stocks.push(stock);
-        perfs.push(perf);
+            None => missing_tickers.push(ticker.clone()),
+        }
     }
-    if let Some(e) = last_error {
-        warn!(
-            "Failed to fetch stock/performance for: '{}'",
-            failed.join(","),
-        );
-        return Err(e);
-    }
-    info!("Finished processing {} tickers", stocks.len());
 
-    Ok((stocks, perfs))
+    if !missing_tickers.is_empty() {
+        info!(
+            "Fetching {} stocks info from TradingView API",
+            missing_tickers.len()
+        );
+        let stock_info_fetcher = ScreenerApi::new()?;
+        let fetched_stocks = stock_info_fetcher.fetch_stocks(&missing_tickers).await?;
+        if !fetched_stocks.is_empty() {
+            let fetched = fetched_stocks.values().cloned().collect::<Vec<_>>();
+            store.add_stocks(&fetched).await?;
+            cached_stocks.extend(fetched_stocks);
+        }
+    }
+
+    let missing_tickers = tickers
+        .into_iter()
+        .filter(|t| !cached_stocks.contains_key(t))
+        .collect::<Vec<_>>();
+    if !missing_tickers.is_empty() {
+        warn!(
+            "Failed to fetch stock info for {} tickers",
+            missing_tickers.len()
+        );
+        warn!("Failed tickers: '{}'", missing_tickers.join(","));
+        anyhow::bail!(
+            "Couldn't fetch stock info for '{}'",
+            missing_tickers.join(",")
+        );
+    }
+    info!(
+        "Finished processing {} tickers in {:?}",
+        cached_stocks.len(),
+        start.elapsed(),
+    );
+
+    Ok(cached_stocks.into_values().collect())
 }

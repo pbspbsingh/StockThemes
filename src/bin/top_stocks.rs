@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut tv_manager = TvManager::new(store.clone());
 
-    let (stocks, stock_perfs) = tv_manager
+    let (stocks, _stock_perfs) = tv_manager
         .fetch_top_stocks(
             &args.tv_screen_url,
             args.top_count,
@@ -58,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     info!("Total {} unique stocks fetched", stocks.len());
 
-    let rs_maps = rs::build_rs_maps(&store, &yf, &mut tv_manager, &stocks, &stock_perfs).await?;
+    let rs_maps = rs::build_rs_maps(&store, &yf, &stocks).await?;
 
     if rs_maps.sectors.is_empty() || rs_maps.industries.is_empty() {
         anyhow::bail!("No sector/industry RS computed");

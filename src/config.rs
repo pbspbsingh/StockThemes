@@ -18,7 +18,6 @@ pub struct Config {
     pub launch_chrome_if_needed: bool,
     pub base_ticker: String,
     pub market_hours: (NaiveTime, NaiveTime),
-    pub perf_mode: PerfMode,
     #[serde(default)]
     pub ignored_stocks: Vec<String>,
     pub http_port: u16,
@@ -28,13 +27,6 @@ pub struct Config {
 
     #[serde(default)]
     pub metrics: MetricsConfig,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-pub enum PerfMode {
-    TradingView,
-    EtfBuckets,
-    EtfCandles,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
