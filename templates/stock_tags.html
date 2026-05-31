@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏷️</text></svg>">
+    <title>Stock Tags Explorer</title>
+    <script src="https://s3.tradingview.com/tv.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: #1a1a1a;
+            color: #d0d0d0;
+            font-size: 13px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 250px 270px minmax(520px, 1fr);
+            height: 100vh;
+            gap: 1px;
+            background: #0a0a0a;
+        }
+
+        .column {
+            background: #1e1e1e;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .column-header {
+            background: #2d2d2d;
+            color: #e0e0e0;
+            padding: 10px;
+            min-height: 42px;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,.3);
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .column-header-flex { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .header-count { color: #777; font-size: 11px; font-weight: 600; }
+
+        .btn-clear {
+            display: inline-block;
+            padding: 1px 7px;
+            font-size: 10px;
+            font-weight: 600;
+            background: #2a2a2a;
+            color: #888;
+            border: 1px solid #3a3a3a;
+            border-radius: 3px;
+            cursor: pointer;
+            line-height: 16px;
+            transition: color 0.2s, opacity 0.2s;
+        }
+
+        .btn-clear:hover:not(:disabled) { color: #d0d0d0; }
+        .btn-clear:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .list {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #3a3a3a transparent;
+        }
+
+        .list::-webkit-scrollbar { width: 4px; }
+        .list::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 2px; }
+
+        .item {
+            padding: 8px 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #2a2a2a;
+            transition: background 0.15s;
+            color: #d0d0d0;
+        }
+        .item:hover { background: #252525; }
+        .item.selected {
+            background: #1a3a52;
+            border-left: 3px solid #4a9eff;
+            padding-left: 7px;
+        }
+        .item.ticker-context {
+            border-bottom: 1px solid #3a6b3a;
+            background: rgba(98,196,98,0.06);
+        }
+
+        .item-main {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .item-name {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .count {
+            color: #666;
+            font-size: 11px;
+            flex-shrink: 0;
+        }
+
+        .preview-column {
+            background: #1a1a1a;
+            position: relative;
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+
+        .preview-title {
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .preview-title a {
+            color: #4a9eff;
+            text-decoration: none;
+        }
+        .preview-title a:hover {
+            color: #6ab0ff;
+            text-decoration: underline;
+        }
+
+        .preview-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+        }
+
+        .ticker-tag-chips {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-left: 8px;
+            vertical-align: middle;
+            max-width: 100%;
+        }
+
+        .ticker-tag-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 7px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #c8c8c8;
+            font-size: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .ticker-tag-tooltip {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 2400;
+            opacity: 0;
+            transform: translateY(-6px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+            width: max-content;
+            max-width: min(360px, calc(100vw - 24px));
+        }
+
+        .ticker-tag-tooltip.open {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .ticker-tag-tooltip-panel {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 10px 14px 12px;
+            border: 1px solid #3a3a3a;
+            border-radius: 6px;
+            background: #171717;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+        }
+
+        .ticker-tag-tooltip-line {
+            color: #d0d0d0;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.3;
+            white-space: nowrap;
+        }
+
+        .ticker-tag-tooltip-empty {
+            color: #666;
+            font-size: 11px;
+            font-style: italic;
+        }
+
+        .chart-toggle {
+            display: flex;
+            gap: 2px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            padding: 1px;
+        }
+        .chart-toggle button {
+            padding: 3px 10px;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 12px;
+            line-height: 1;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+        .chart-toggle button:hover { color: #d0d0d0; }
+        .chart-toggle button.active { background: #4a9eff; color: white; }
+
+        .bench-label {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border: 1px solid #3a3a3a;
+            border-radius: 3px;
+            color: #888;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .bench-label strong { color: #d0d0d0; font-weight: 700; }
+
+        #preview {
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .tag-summary {
+            padding: 30px;
+            color: #d0d0d0;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+
+        .nav-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 26px;
+            padding: 5px 11px;
+            border-radius: 999px;
+            border: 1px solid #303030;
+            background: #1d1d1d;
+            color: #cfd8e3;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1;
+            letter-spacing: 0.2px;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+
+        .nav-link:hover {
+            color: #ffffff;
+            background: #243447;
+            border-color: #4a9eff;
+        }
+
+        .tag-summary h2 {
+            color: #4a9eff;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .stat { font-size: 15px; }
+        .stat-label {
+            color: #888;
+            display: inline-block;
+            width: 150px;
+        }
+        .stat-value {
+            color: #e0e0e0;
+            font-weight: 600;
+        }
+
+        .overview-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .overview-table th {
+            padding: 8px 12px;
+            border-bottom: 2px solid #4a9eff;
+            color: #4a9eff;
+            text-align: left;
+        }
+
+        .overview-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #2a2a2a;
+            vertical-align: top;
+        }
+
+        .overview-table th.col-count,
+        .overview-table td.col-count {
+            text-align: center;
+            width: 80px;
+            border-right: 1px solid #2a2a2a;
+        }
+
+        .overview-table th.col-tag,
+        .overview-table td.col-tag {
+            width: 200px;
+            border-right: 1px solid #2a2a2a;
+        }
+
+        .overview-table td.col-tickers { line-height: 1.8; }
+
+        .tbl-link {
+            color: #d0d0d0;
+            text-decoration: none;
+        }
+        .tbl-link:hover { color: #4a9eff; }
+
+        .count-muted {
+            color: #666;
+            font-size: 11px;
+        }
+
+        .ticker-chip {
+            display: inline-flex;
+            align-items: center;
+            margin: 2px 4px 2px 0;
+            white-space: nowrap;
+        }
+
+        .ticker-chip-link {
+            color: #c0c0c0;
+            text-decoration: none;
+            font-size: 12px;
+        }
+        .ticker-chip-link:hover { color: #4a9eff; }
+
+        .item-rs {
+            padding: 2px 7px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-left: 3px;
+            flex-shrink: 0;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+        }
+
+        .tv-container-split {
+            height: 100%;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tv-pane {
+            width: 100%;
+        }
+
+        .tv-divider {
+            width: 100%;
+            height: 1px;
+            background: #111;
+            cursor: ns-resize;
+            flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        .tv-divider:hover,
+        .tv-divider.dragging { background: #4a9eff; }
+
+        .tv-chart-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%) translateY(12px);
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-left: 3px solid #f39c12;
+            color: #d0d0d0;
+            font-size: 12px;
+            padding: 8px 16px;
+            border-radius: 5px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+            z-index: 2000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            white-space: nowrap;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <div class="column">
+        <div class="column-header column-header-flex">
+            <span>Tags <span class="header-count" id="tag-header-count"></span></span>
+            <button id="clear-tags" class="btn-clear" disabled title="Clear tag selection" onclick="AppState.clearTagSelection(); Renderers.renderAll();">✕ clear</button>
+        </div>
+        <div id="tags" class="list"></div>
+    </div>
+    <div class="column">
+        <div class="column-header">
+            <span>Tickers</span>
+        </div>
+        <div id="tickers" class="list"></div>
+    </div>
+    <div class="column preview-column">
+        <div class="column-header preview-header">
+            <span id="preview-title" class="preview-title">Preview</span>
+            <div class="preview-actions">
+                <span id="preview-metrics"></span>
+                <div id="chart-controls" style="display:flex;gap:6px;visibility:hidden;pointer-events:none;">
+                    <div class="chart-toggle" id="timeframe-toggle">
+                        <button data-tf="D" title="Daily timeframe">D</button>
+                        <button data-tf="W" title="Weekly timeframe">W</button>
+                    </div>
+                    <span class="bench-label">vs <strong id="benchmark-label"></strong></span>
+                </div>
+            </div>
+        </div>
+        <div id="preview"></div>
+    </div>
+</div>
+
+<div id="ticker-tag-tooltip" class="ticker-tag-tooltip"></div>
+
+<div class="toast" id="toast"></div>
+
+<script id="tag-groups" type="application/json">{{ tag_groups_json | safe }}</script>
+<script id="ticker-info" type="application/json">{{ ticker_info_json | safe }}</script>
+<script id="stock-rs" type="application/json">{{ stock_rs_json | safe }}</script>
+<script id="stock-metrics" type="application/json">{{ stock_metrics_json | safe }}</script>
+
+<script>
+    const BENCHMARK_SYMBOL = '{{ benchmark_symbol }}';
+    document.getElementById('benchmark-label').textContent = BENCHMARK_SYMBOL;
+
+    const TAG_GROUPS = JSON.parse(document.getElementById('tag-groups').textContent);
+    const TICKER_INFO = new Map(Object.entries(JSON.parse(document.getElementById('ticker-info').textContent)));
+    const STOCK_RS = new Map(Object.entries(JSON.parse(document.getElementById('stock-rs').textContent)));
+    const STOCK_METRICS = new Map(Object.entries(JSON.parse(document.getElementById('stock-metrics').textContent)));
+    const REAL_TAG_COUNT = {{ real_tag_count }};
+    const TAGGED_STOCK_COUNT = {{ tagged_stock_count }};
+    const UNTAGGED_STOCK_COUNT = {{ untagged_stock_count }};
+
+    const DOM = {
+        get(id) { return document.getElementById(id); },
+        clear(el) { el.innerHTML = ''; },
+        create(tag, className, innerHTML) {
+            const el = document.createElement(tag);
+            if (className) el.className = className;
+            if (innerHTML) el.innerHTML = innerHTML;
+            return el;
+        }
+    };
+
+    function rsColor(rs) {
+        if (rs == null) return { bg: '#2a2a2a', fg: '#888' };
+        let r, g, b;
+        if (rs <= 0.85) {
+            r = 180; g = 30; b = 30;
+        } else if (rs < 1.0) {
+            const t = (rs - 0.85) / 0.15;
+            r = Math.round(180 + t * (220 - 180));
+            g = Math.round(30 + t * (200 - 30));
+            b = 20;
+        } else if (rs <= 1.3) {
+            const t = (rs - 1.0) / 0.3;
+            r = Math.round(220 - t * (220 - 40));
+            g = Math.round(200 + t * (210 - 200));
+            b = Math.round(20 + t * (80 - 20));
+        } else {
+            r = 40; g = 210; b = 80;
+        }
+        return {
+            bg: `rgb(${Math.round(r*0.18)},${Math.round(g*0.18)},${Math.round(b*0.18)})`,
+            fg: `rgb(${r},${g},${b})`,
+        };
+    }
+
+    const AppState = {
+        selectedTags: new Set(),
+        selectedTickerIndex: -1,
+        currentTickers: [],
+        currentTickerSymbol: null,
+        timeframe: localStorage.getItem('timeframe') || 'D',
+
+        clearTagSelection() {
+            this.selectedTags.clear();
+            this.selectedTickerIndex = -1;
+            this.currentTickerSymbol = null;
+        },
+
+        toggleTag(tagName) {
+            if (tagName === 'Untagged') {
+                if (this.selectedTags.has('Untagged') && this.selectedTags.size === 1) {
+                    this.selectedTags.clear();
+                } else {
+                    this.selectedTags.clear();
+                    this.selectedTags.add('Untagged');
+                }
+                this.selectedTickerIndex = -1;
+                this.currentTickerSymbol = null;
+                return;
+            }
+
+            if (this.selectedTags.has('Untagged')) {
+                this.selectedTags.clear();
+            }
+            if (this.selectedTags.has(tagName)) {
+                this.selectedTags.delete(tagName);
+            } else {
+                this.selectedTags.add(tagName);
+            }
+            this.selectedTickerIndex = -1;
+            this.currentTickerSymbol = null;
+        },
+
+        selectTicker(index) {
+            this.selectedTickerIndex = index;
+        }
+    };
+
+    function formatVolume(v) {
+        if (v == null) return '';
+        if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+        if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+        if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+        return String(v);
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
+
+    function metricChipsHtml(ticker) {
+        const m = STOCK_METRICS.get(ticker);
+        if (!m) return '';
+        const adr = `<span class="item-rs" title="Average Daily Range %"><span style="color:#888;font-weight:700;">ADR</span> ${m.adr_pct.toFixed(1)}%</span>`;
+        const vol = `<span class="item-rs" title="Average Daily Volume"><span style="color:#888;font-weight:700;">Vol</span> ${formatVolume(m.avg_volume)}</span>`;
+        return adr + vol;
+    }
+
+    function rsPill(rs) {
+        if (rs == null) return '';
+        const { bg, fg } = rsColor(rs);
+        return `<span class="item-rs" style="background:${bg};color:${fg};">${rs.toFixed(2)}</span>`;
+    }
+
+    function tickerLink(ticker, exchange) {
+        const tvUrl = exchange ? `https://www.tradingview.com/symbols/${exchange}-${ticker}/` : `https://www.tradingview.com/symbols/${ticker}/`;
+        return `<a href="${tvUrl}" target="_blank" class="ticker-chip-link">${escapeHtml(ticker)}</a>`;
+    }
+
+    function selectionLabel() {
+        if (AppState.selectedTags.size === 0) return 'Tags';
+        const tags = [...AppState.selectedTags];
+        if (tags.length === 1) return tags[0];
+        return `${tags[0]} +${tags.length - 1}`;
+    }
+
+    function isUntaggedSelected() {
+        return AppState.selectedTags.has('Untagged') && AppState.selectedTags.size === 1;
+    }
+
+    function getVisibleTagGroups() {
+        return TAG_GROUPS.filter(group => !group.is_untagged || group.count > 0);
+    }
+
+    const TAG_COUNTS = new Map(
+        TAG_GROUPS
+            .filter(group => !group.is_untagged)
+            .map(group => [group.name.toLowerCase(), group.count])
+    );
+
+    function sortedTickerTags(tags) {
+        return [...(tags || [])].sort((a, b) => {
+            const aCount = TAG_COUNTS.get(String(a).toLowerCase()) ?? 0;
+            const bCount = TAG_COUNTS.get(String(b).toLowerCase()) ?? 0;
+            if (aCount !== bCount) return bCount - aCount;
+            return String(a).localeCompare(String(b));
+        });
+    }
+
+    function tickerTagChips(tags) {
+        if (!tags || tags.length === 0) return '';
+        return `<span class="ticker-tag-chips">${
+            sortedTickerTags(tags)
+                .map(tag => `<span class="ticker-tag-chip">${escapeHtml(tag)}</span>`)
+                .join('')
+        }</span>`;
+    }
+
+    function renderTickerTagTooltip(tags) {
+        const sorted = sortedTickerTags(tags);
+        if (sorted.length === 0) {
+            return '<div class="ticker-tag-tooltip-panel"><div class="ticker-tag-tooltip-empty">No tags</div></div>';
+        }
+        return `<div class="ticker-tag-tooltip-panel">${
+            sorted.map(tag => `<div class="ticker-tag-tooltip-line">${escapeHtml(tag)}</div>`).join('')
+        }</div>`;
+    }
+
+    function getTagRowsToShow() {
+        if (AppState.selectedTags.size === 0) return getVisibleTagGroups();
+        const selected = new Set(AppState.selectedTags);
+        return getVisibleTagGroups().filter(group => selected.has(group.name));
+    }
+
+    function getFilteredTickers() {
+        const dedup = new Map();
+        const selected = AppState.selectedTags;
+
+        if (selected.size === 0) {
+            TAG_GROUPS.filter(group => !group.is_untagged).forEach(group => {
+                group.tickers.forEach(ticker => dedup.set(ticker.ticker, ticker));
+            });
+        } else if (isUntaggedSelected()) {
+            const untagged = TAG_GROUPS.find(group => group.is_untagged);
+            (untagged?.tickers ?? []).forEach(ticker => dedup.set(ticker.ticker, ticker));
+        } else {
+            TAG_GROUPS.forEach(group => {
+                if (group.is_untagged) return;
+                if (!selected.has(group.name)) return;
+                group.tickers.forEach(ticker => dedup.set(ticker.ticker, ticker));
+            });
+        }
+
+        return [...dedup.values()].sort((a, b) => {
+            const aRS = STOCK_RS.get(a.ticker) ?? 0;
+            const bRS = STOCK_RS.get(b.ticker) ?? 0;
+            if (aRS !== bRS) return bRS - aRS;
+            return a.ticker.localeCompare(b.ticker);
+        });
+    }
+
+    function getTickerInfo(ticker) {
+        return TICKER_INFO.get(ticker) || { exchange: '', tags: [] };
+    }
+
+    const Templates = {
+        stat(label, value) {
+            return `<div class="stat"><span class="stat-label">${label}:</span><span class="stat-value">${value}</span></div>`;
+        },
+        tickerChip(ticker, exchange) {
+            const rs = STOCK_RS.get(ticker) ?? null;
+            return `<span class="ticker-chip">${tickerLink(ticker, exchange)}${rsPill(rs)}</span>`;
+        }
+    };
+
+    let tickerTagTooltipHideTimer = null;
+    let tickerTagTooltipShowTimer = null;
+
+    function showTickerTagTooltip(tags) {
+        const tooltip = DOM.get('ticker-tag-tooltip');
+        if (!tooltip) return;
+        clearTimeout(tickerTagTooltipHideTimer);
+        clearTimeout(tickerTagTooltipShowTimer);
+        tooltip.innerHTML = renderTickerTagTooltip(tags);
+        tooltip.classList.add('open');
+    }
+
+    function hideTickerTagTooltip(delay = 0) {
+        const tooltip = DOM.get('ticker-tag-tooltip');
+        if (!tooltip) return;
+        clearTimeout(tickerTagTooltipHideTimer);
+        clearTimeout(tickerTagTooltipShowTimer);
+        tickerTagTooltipHideTimer = setTimeout(() => {
+            tooltip.classList.remove('open');
+            tooltip.innerHTML = '';
+            tooltip.style.left = '0px';
+            tooltip.style.top = '0px';
+        }, delay);
+    }
+
+    function positionTickerTagTooltip(anchorEl) {
+        const tooltip = DOM.get('ticker-tag-tooltip');
+        if (!tooltip) return;
+        const linkRect = anchorEl.getBoundingClientRect();
+        const centerX = linkRect.left + (linkRect.width / 2);
+        const desiredTop = linkRect.bottom + 10;
+
+        tooltip.style.top = `${desiredTop}px`;
+        tooltip.style.visibility = 'hidden';
+        tooltip.style.left = '0px';
+
+        requestAnimationFrame(() => {
+            const width = tooltip.offsetWidth || 220;
+            const left = Math.max(
+                12,
+                Math.min(centerX - (width / 2), window.innerWidth - width - 12)
+            );
+            tooltip.style.left = `${left}px`;
+            tooltip.style.visibility = '';
+        });
+    }
+
+    const Renderers = {
+        renderTags() {
+            const container = DOM.get('tags');
+            DOM.clear(container);
+            const clearBtn = DOM.get('clear-tags');
+            clearBtn.disabled = AppState.selectedTags.size === 0;
+            DOM.get('tag-header-count').textContent = `${AppState.selectedTags.size}/${REAL_TAG_COUNT}`;
+
+            getVisibleTagGroups().forEach(group => {
+                const isSelected = AppState.selectedTags.has(group.name);
+                const item = DOM.create('div', `item${isSelected ? ' selected' : ''}`);
+                item.dataset.name = group.name;
+                item.title = `${group.name} — ${group.count} tickers`;
+                item.innerHTML = `<div class="item-main"><span class="item-name">${escapeHtml(group.name)}</span><span class="count">${group.count}</span></div>`;
+                item.addEventListener('click', () => {
+                    AppState.toggleTag(group.name);
+                    this.renderAll();
+                });
+                container.appendChild(item);
+            });
+
+            this.highlightTickerContext();
+        },
+
+        renderTickers() {
+            const container = DOM.get('tickers');
+            DOM.clear(container);
+
+            const tickers = getFilteredTickers();
+            AppState.currentTickers = tickers;
+
+            if (tickers.length === 0) {
+                container.innerHTML = '<div class="item" style="cursor:default;color:#666;">No tickers found</div>';
+                AppState.selectedTickerIndex = -1;
+                return;
+            }
+
+            tickers.forEach((ticker, index) => {
+                const isSelected = index === AppState.selectedTickerIndex;
+                const item = DOM.create('div', `item${isSelected ? ' selected' : ''}`);
+                const rs = STOCK_RS.get(ticker.ticker) ?? null;
+                item.title = `${ticker.ticker}${rs != null ? ` · RS: ${rs.toFixed(2)}` : ''} — click to preview`;
+                item.innerHTML = `<div class="item-main"><span class="item-name">${ticker.ticker}</span>${rsPill(rs)}</div>`;
+                item.addEventListener('click', () => {
+                    if (index === AppState.selectedTickerIndex) {
+                        AppState.selectedTickerIndex = -1;
+                        AppState.currentTickerSymbol = null;
+                        this.renderTickers();
+                        this.highlightTickerContext();
+                        PreviewManager.updatePreview();
+                    } else {
+                        AppState.selectTicker(index);
+                        this.renderTickers();
+                        TradingViewWidget.show(ticker.ticker);
+                    }
+                });
+                container.appendChild(item);
+            });
+        },
+
+        highlightTickerContext() {
+            const tickerSymbol = AppState.currentTickerSymbol;
+            const info = tickerSymbol ? getTickerInfo(tickerSymbol) : null;
+            const currentTags = new Set(info?.tags ?? []);
+            document.querySelectorAll('#tags .item').forEach(el => {
+                const name = el.dataset.name;
+                const isContext = !!(info && (
+                    (name === 'Untagged' && currentTags.size === 0) ||
+                    currentTags.has(name)
+                ));
+                el.classList.toggle('ticker-context', isContext);
+            });
+
+            const selected = document.querySelector('#tags .item.ticker-context');
+            if (selected) selected.scrollIntoView({ block: 'nearest' });
+        },
+
+        renderAll() {
+            this.renderTags();
+            this.renderTickers();
+            PreviewManager.updatePreview();
+            this.highlightTickerContext();
+        }
+    };
+
+    const PreviewManager = {
+        getContainer() {
+            return DOM.get('preview');
+        },
+
+        updateHeader(tickerInfo = null) {
+            const title = DOM.get('preview-title');
+            const controls = DOM.get('chart-controls');
+            const metrics = DOM.get('preview-metrics');
+
+            if (!tickerInfo) {
+                title.textContent = 'Preview';
+                metrics.innerHTML = '';
+                controls.style.visibility = 'hidden';
+                controls.style.pointerEvents = 'none';
+                return;
+            }
+
+            const label = selectionLabel();
+            const tickerHref = tickerInfo.exchange
+                ? `https://www.tradingview.com/symbols/${tickerInfo.exchange}-${AppState.currentTickerSymbol}/`
+                : `https://www.tradingview.com/symbols/${AppState.currentTickerSymbol}/`;
+            title.innerHTML =
+                `${escapeHtml(label)} \\ <a href="${tickerHref}" target="_blank">${escapeHtml(AppState.currentTickerSymbol)}</a>${tickerTagChips(tickerInfo.tags)}`;
+            metrics.innerHTML = metricChipsHtml(AppState.currentTickerSymbol);
+            controls.style.visibility = 'visible';
+            controls.style.pointerEvents = '';
+            DOM.get('timeframe-toggle').querySelectorAll('button').forEach(button => {
+                button.classList.toggle('active', button.dataset.tf === AppState.timeframe);
+            });
+
+            const tooltipTags = tickerInfo.tags || [];
+            const tickerLinkEl = title.querySelector('a');
+            const tooltipEl = DOM.get('ticker-tag-tooltip');
+            if (tickerLinkEl && tooltipEl) {
+                tickerLinkEl.onmouseenter = () => {
+                    showTickerTagTooltip(tooltipTags);
+                    positionTickerTagTooltip(tickerLinkEl);
+                };
+                tickerLinkEl.onmouseleave = () => hideTickerTagTooltip(120);
+                tooltipEl.onmouseenter = () => clearTimeout(tickerTagTooltipHideTimer);
+                tooltipEl.onmouseleave = () => hideTickerTagTooltip(120);
+            }
+        },
+
+        showTagsOverview(tagRows) {
+            const container = this.getContainer();
+            const selected = AppState.selectedTags.size;
+            const totalTickers = getFilteredTickers().length;
+
+            const rows = tagRows.map(group => {
+                const chips = group.tickers
+                    .slice()
+                    .sort((a, b) => {
+                        const aRS = STOCK_RS.get(a.ticker) ?? 0;
+                        const bRS = STOCK_RS.get(b.ticker) ?? 0;
+                        if (aRS !== bRS) return bRS - aRS;
+                        return a.ticker.localeCompare(b.ticker);
+                    })
+                    .map(t => Templates.tickerChip(t.ticker, t.exchange))
+                    .join('');
+
+                return `<tr>
+                    <td class="col-tag">${escapeHtml(group.name)} <span class="count-muted">(${group.count})</span></td>
+                    <td class="col-count">${group.count}</td>
+                    <td class="col-tickers">${chips}</td>
+                </tr>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="tag-summary">
+                    <div class="nav-links">
+                        <a class="nav-link" href="/" target="_blank" rel="noopener noreferrer">Stock themes</a>
+                        <a class="nav-link" href="/tag_mgmt.html" target="_blank" rel="noopener noreferrer">Tag management</a>
+                        <a class="nav-link" href="/rrg.html" target="_blank" rel="noopener noreferrer">RRG</a>
+                    </div>
+                    <h2>${selected ? 'Selected Tags' : 'Tag Overview'}</h2>
+                    <div class="stats-bar">
+                        ${Templates.stat('Tags', REAL_TAG_COUNT)}
+                        ${Templates.stat('Tickers', totalTickers)}
+                        ${Templates.stat('Untagged Stocks', UNTAGGED_STOCK_COUNT)}
+                    </div>
+                    <table class="overview-table">
+                        <thead>
+                            <tr>
+                                <th class="col-tag">Tag</th>
+                                <th class="col-count">Count</th>
+                                <th class="col-tickers">Tickers</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows || '<tr><td colspan="3" style="padding:14px;color:#666;">No tags found</td></tr>'}</tbody>
+                    </table>
+                </div>
+            `;
+        },
+
+        updatePreview() {
+            if (AppState.currentTickerSymbol !== null) return;
+            AppState.currentTickerSymbol = null;
+            this.updateHeader(null);
+            hideTickerTagTooltip(0);
+            this.showTagsOverview(getTagRowsToShow());
+        }
+    };
+
+    const TradingViewWidget = {
+        _instances: {},
+        _timeframe: null,
+
+        _destroy(containerId) {
+            const w = this._instances[containerId];
+            if (w) {
+                try { w.remove(); } catch (e) {}
+                delete this._instances[containerId];
+            }
+        },
+
+        _renderComparison(containerId, prefix, tickerSymbol, interval) {
+            const container = DOM.get(containerId);
+            const savedRatio = parseFloat(localStorage.getItem('splitRatio')) || 50;
+            container.innerHTML = `
+                <div class="tradingview-widget-container tv-container-split">
+                    <div id="${prefix}-top" class="tv-pane" style="flex:0 0 ${savedRatio}%"></div>
+                    <div class="tv-divider"></div>
+                    <div id="${prefix}-bottom" class="tv-pane" style="flex:1;min-height:0"></div>
+                </div>
+            `;
+            initSplitDrag(container.querySelector('.tv-container-split'));
+            this._destroy(`${prefix}-top`);
+            this._destroy(`${prefix}-bottom`);
+            this.createWidget(tickerSymbol, `${prefix}-top`, interval);
+            this.createWidget(BENCHMARK_SYMBOL, `${prefix}-bottom`, interval);
+            this._timeframe = interval;
+        },
+
+        show(tickerSymbol) {
+            AppState.currentTickerSymbol = tickerSymbol;
+            const info = getTickerInfo(tickerSymbol);
+            PreviewManager.updateHeader(info);
+            Renderers.highlightTickerContext();
+            this._renderComparison('preview', 'tv-main', tickerSymbol, AppState.timeframe);
+        },
+
+        createWidget(tickerSymbol, containerId, interval) {
+            const w = new TradingView.widget({
+                width: "100%",
+                height: "100%",
+                symbol: tickerSymbol,
+                interval: interval,
+                timezone: "America/Los_Angeles",
+                theme: "dark",
+                style: "1",
+                locale: "en",
+                toolbar_bg: "#1e1e1e",
+                enable_publishing: false,
+                container_id: containerId,
+                studies: ["MASimple@tv-basicstudies", "STD;MA%Ribbon"],
+                studies_overrides: {
+                    "moving average.length": 10,
+                    "moving average.ma.color": "#5693e7",
+                },
+                loading_screen: { backgroundColor: "#1e1e1e" }
+            });
+            this._instances[containerId] = w;
+        }
+    };
+
+    function initSplitDrag(splitContainer) {
+        const divider = splitContainer.querySelector('.tv-divider');
+        const topPane = splitContainer.querySelector('#tv-main-top');
+        if (!divider || !topPane) return;
+
+        divider.addEventListener('mousedown', e => {
+            e.preventDefault();
+            divider.classList.add('dragging');
+            document.body.style.cursor = 'ns-resize';
+            document.body.style.userSelect = 'none';
+
+            const rect = splitContainer.getBoundingClientRect();
+            const minPx = 100;
+            const maxPx = rect.height - minPx;
+
+            const onMove = ev => {
+                const y = ev.clientY - rect.top;
+                const clamped = Math.max(minPx, Math.min(maxPx, y));
+                const ratio = Math.round((clamped / rect.height) * 100);
+                topPane.style.flex = `0 0 ${ratio}%`;
+                topPane.style.minHeight = '0';
+                localStorage.setItem('splitRatio', String(ratio));
+            };
+
+            const onUp = () => {
+                divider.classList.remove('dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    }
+
+    function showToast(message) {
+        const el = DOM.get('toast');
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(showToast._timer);
+        showToast._timer = setTimeout(() => el.classList.remove('show'), 2000);
+    }
+
+    document.addEventListener('keydown', e => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (AppState.currentTickers.length === 0) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (AppState.selectedTickerIndex < AppState.currentTickers.length - 1) {
+                AppState.selectedTickerIndex++;
+                const ticker = AppState.currentTickers[AppState.selectedTickerIndex].ticker;
+                TradingViewWidget.show(ticker);
+                Renderers.renderTickers();
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (AppState.selectedTickerIndex > 0) {
+                AppState.selectedTickerIndex--;
+                const ticker = AppState.currentTickers[AppState.selectedTickerIndex].ticker;
+                TradingViewWidget.show(ticker);
+                Renderers.renderTickers();
+            }
+        }
+    });
+
+    function initChartToggle() {
+        const tfToggle = document.getElementById('timeframe-toggle');
+        tfToggle.querySelectorAll('button').forEach(button => {
+            button.classList.toggle('active', button.dataset.tf === AppState.timeframe);
+            button.addEventListener('click', () => {
+                const tf = button.dataset.tf;
+                if (tf === AppState.timeframe) return;
+                AppState.timeframe = tf;
+                localStorage.setItem('timeframe', tf);
+                tfToggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === button));
+                if (AppState.currentTickerSymbol) {
+                    TradingViewWidget.show(AppState.currentTickerSymbol);
+                }
+            });
+        });
+    }
+
+    function initializeApp() {
+        Renderers.renderAll();
+        initChartToggle();
+        DOM.get('benchmark-label').textContent = BENCHMARK_SYMBOL;
+    }
+
+    initializeApp();
+</script>
+</body>
+</html>

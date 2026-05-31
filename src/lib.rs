@@ -3,6 +3,7 @@ use crate::store::Store;
 use crate::util::is_upto_date;
 use crate::yf::{BarSize, Candle, Range, TimeSpec, YFinance};
 use anyhow::Context;
+use axum::extract::Extension;
 use axum::http::header::{CACHE_CONTROL, HeaderValue};
 use axum::middleware::Next;
 use axum::response::Html;
@@ -96,11 +97,25 @@ pub async fn start_http_server(store: Arc<Store>, home: String) -> anyhow::Resul
         .with_context(|| format!("Failed to bind at {addr}"))?;
 
     info!("Running http server at: {addr}");
+    let untagged = store.list_untagged_stocks().await?;
+    if !untagged.is_empty() {
+        warn!(
+            "Tickers without tags ({}): [{}]",
+            untagged.len(),
+            untagged.join(",")
+        );
+    }
+
     let app = Router::new()
         .route("/", routing::get(async || Html(home)))
         .route("/rrg.html", routing::get(rrg_util::rrg_home))
+        .route(
+            "/stock_tags.html",
+            routing::get(tags::stock_tags::stock_tags_home),
+        )
         .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler))
-        .merge(tags::router(store))
+        .merge(tags::router(store.clone()))
+        .layer(Extension(store))
         .layer(middleware::from_fn(no_cache));
     axum::serve(listener, app).await?;
 
