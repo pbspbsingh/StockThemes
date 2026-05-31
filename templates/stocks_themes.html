@@ -524,7 +524,7 @@
 
         /* CSS tooltip on the chart icon button */
         .chart-icon-btn::after {
-            content: 'Charts';
+            content: 'Details';
             position: absolute;
             top: calc(100% + 6px);
             left: 50%;
@@ -589,6 +589,40 @@
             color: #e0e0e0;
         }
         .tv-popup-hint { font-size: 11px; color: #555; }
+        .popup-tabs {
+            display: flex;
+            align-self: stretch;
+            gap: 0;
+            flex-shrink: 0;
+            border-left: 1px solid #3a3a3a;
+        }
+        .popup-tab-btn {
+            position: relative;
+            padding: 0 14px;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 12px;
+            line-height: 1;
+            font-weight: 600;
+            cursor: pointer;
+            border-right: 1px solid #3a3a3a;
+            transition: color 0.15s, background 0.15s;
+        }
+        .popup-tab-btn:hover { color: #d0d0d0; background: #333; }
+        .popup-tab-btn.active {
+            color: #fff;
+            background: #1e1e1e;
+        }
+        .popup-tab-btn.active::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: -7px;
+            height: 2px;
+            background: #4a9eff;
+        }
         .tv-popup-close {
             width: 26px;
             height: 26px;
@@ -639,6 +673,14 @@
             letter-spacing: 0.3px;
             flex-shrink: 0;
         }
+        .popup-tab-panel {
+            flex: 1;
+            min-height: 0;
+            display: none;
+        }
+        .popup-tab-panel.active {
+            display: flex;
+        }
         /* ── Toast ──────────────────────────────────────────────── */
         .toast {
             position: fixed;
@@ -661,31 +703,6 @@
         }
         .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-        /* ── RRG Popup ──────────────────────────────────────────────── */
-        .rrg-popup-backdrop {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.72);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-        .rrg-popup-backdrop.open { display: flex; }
-
-        .rrg-popup-modal {
-            background: #1e1e1e;
-            border: 1px solid #333;
-            border-radius: 8px;
-            box-shadow: 0 24px 80px rgba(0,0,0,0.8);
-            width: calc(100vw - 24px);
-            height: calc(100vh - 144px);
-            max-width: 1920px;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
         .rrg-popup-body {
             flex: 1;
             min-height: 0;
@@ -697,8 +714,6 @@
             width: 100%;
             height: 100%;
         }
-
-        .chart-icon-btn.rrg-icon-btn::after { content: 'RRG'; }
 
         .rrg-ticker-toggle {
             padding: 2px 10px;
@@ -771,34 +786,31 @@
 <div class="tv-popup-backdrop" id="tv-popup-backdrop">
     <div class="tv-popup-modal">
         <div class="tv-popup-header">
+            <div class="popup-tabs">
+                <button class="popup-tab-btn active" id="popup-tab-charts" data-tab="charts">Charts</button>
+                <button class="popup-tab-btn" id="popup-tab-rrg" data-tab="rrg">RRG</button>
+            </div>
             <div class="tv-popup-title" id="tv-popup-title">Sector &amp; Industry Charts</div>
+            <button class="rrg-ticker-toggle active" id="rrg-ticker-toggle" title="Show/hide ticker line">Ticker</button>
             <span class="tv-popup-hint">Esc to close</span>
             <button class="tv-popup-close" id="tv-popup-close" title="Close (Esc)">✕</button>
         </div>
-        <div class="tv-popup-charts">
-            <div class="tv-chart-panel">
-                <div class="tv-panel-label" id="tv-sector-label"></div>
-                <div class="tv-chart-container" id="tv-chart-sector"></div>
-            </div>
-            <div class="tv-chart-panel">
-                <div class="tv-panel-label" id="tv-industry-label"></div>
-                <div class="tv-chart-container" id="tv-chart-industry"></div>
+        <div class="popup-tab-panel active" id="popup-tab-panel-charts">
+            <div class="tv-popup-charts">
+                <div class="tv-chart-panel">
+                    <div class="tv-panel-label" id="tv-sector-label"></div>
+                    <div class="tv-chart-container" id="tv-chart-sector"></div>
+                </div>
+                <div class="tv-chart-panel">
+                    <div class="tv-panel-label" id="tv-industry-label"></div>
+                    <div class="tv-chart-container" id="tv-chart-industry"></div>
+                </div>
             </div>
         </div>
-    </div>
-</div>
-
-<!-- ── RRG Popup ──────────────────────────────────────────────── -->
-<div class="rrg-popup-backdrop" id="rrg-popup-backdrop">
-    <div class="rrg-popup-modal">
-        <div class="tv-popup-header">
-            <div class="tv-popup-title" id="rrg-popup-title">Relative Rotation Graph</div>
-            <button class="rrg-ticker-toggle active" id="rrg-ticker-toggle" title="Show/hide ticker line">Ticker</button>
-            <span class="tv-popup-hint">Esc to close</span>
-            <button class="tv-popup-close" id="rrg-popup-close" title="Close (Esc)">✕</button>
-        </div>
-        <div class="rrg-popup-body" id="rrg-popup-body">
-            <canvas id="rrg-popup-canvas"></canvas>
+        <div class="popup-tab-panel" id="popup-tab-panel-rrg">
+            <div class="rrg-popup-body" id="rrg-popup-body">
+                <canvas id="rrg-popup-canvas"></canvas>
+            </div>
         </div>
     </div>
 </div>
@@ -1247,14 +1259,6 @@
     // ============================================================
     // PREVIEW MANAGER
     // ============================================================
-    const RRG_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <line x1="6.5" y1="1" x2="6.5" y2="12" stroke="currentColor" stroke-width="0.8" opacity="0.3"/>
-  <line x1="1" y1="6.5" x2="12" y2="6.5" stroke="currentColor" stroke-width="0.8" opacity="0.3"/>
-  <circle cx="9" cy="4" r="2" fill="currentColor"/>
-  <circle cx="4" cy="9.5" r="1.5" fill="currentColor" opacity="0.45"/>
-  <line x1="5.1" y1="8.4" x2="7.6" y2="5.5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
-</svg>`;
-
     const CANDLE_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
   <line x1="2.5" y1="1" x2="2.5" y2="3" stroke="currentColor" stroke-width="1"/>
   <rect x="1" y="3" width="3" height="4" rx="0.5" fill="currentColor"/>
@@ -1284,31 +1288,20 @@
                 const chartBtn = hasEtf
                     ? `<button class="chart-icon-btn">${CANDLE_SVG}</button>`
                     : '';
-                const rrgBtn = hasEtf
-                    ? `<button class="chart-icon-btn rrg-icon-btn">${RRG_SVG}</button>`
-                    : '';
 
                 const sectorTitle = tickerInfo.sectorEtf ? ` title="${tickerInfo.sectorEtf}"` : '';
                 const industryTitle = tickerInfo.industryEtf ? ` title="${tickerInfo.industryEtf}"` : '';
                 titleElement.innerHTML =
                     `<a href="${tickerInfo.sectorUrl}" target="_blank"${sectorTitle}>${tickerInfo.sector}</a>` +
                     ` \\ <a href="${tickerInfo.industryUrl}" target="_blank"${industryTitle}>${tickerInfo.industry}</a>` +
-                    ` \\ <a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank">${tickerInfo.ticker}</a>${chartBtn}${rrgBtn}`;
+                    ` \\ <a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank">${tickerInfo.ticker}</a>${chartBtn}`;
 
                 document.getElementById('preview-metrics').innerHTML = metricChipsHtml(tickerInfo.ticker);
 
                 // Attach click handlers to the icon buttons
-                const chartIconBtn = titleElement.querySelector('.chart-icon-btn:not(.rrg-icon-btn)');
+                const chartIconBtn = titleElement.querySelector('.chart-icon-btn');
                 if (chartIconBtn) {
                     chartIconBtn.addEventListener('click', e => {
-                        e.preventDefault();
-                        const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
-                        if (info) openChartPopup(info);
-                    });
-                }
-                const rrgIconBtn = titleElement.querySelector('.rrg-icon-btn');
-                if (rrgIconBtn) {
-                    rrgIconBtn.addEventListener('click', e => {
                         e.preventDefault();
                         const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
                         if (info) openRrgPopup(info);
@@ -1640,11 +1633,17 @@
                 const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
                 if (!info) return;
                 if (event.key === 'ArrowLeft') {
-                    if (!document.getElementById('tv-popup-backdrop').classList.contains('open'))
+                    if (!document.getElementById('tv-popup-backdrop').classList.contains('open')) {
                         openChartPopup(info);
+                    } else {
+                        switchPopupTab('charts');
+                    }
                 } else {
-                    if (!document.getElementById('rrg-popup-backdrop').classList.contains('open'))
+                    if (!document.getElementById('tv-popup-backdrop').classList.contains('open')) {
                         openRrgPopup(info);
+                    } else {
+                        switchPopupTab('rrg');
+                    }
                 }
                 return;
             }
@@ -1704,13 +1703,10 @@
             this._chartDebounceTimer = setTimeout(() => {
                 const ticker = AppState.currentTickers[AppState.selectedTickerIndex].ticker;
                 TradingViewWidget.show(ticker);
-                // If the ETF popup is open, update it to reflect the new ticker
+                // If the popup is open, update it to reflect the new ticker
                 if (document.getElementById('tv-popup-backdrop').classList.contains('open')) {
                     const info = DataHelpers.findTickerInfo(ticker);
-                    if (info) openChartPopup(info);
-                } else if (document.getElementById('rrg-popup-backdrop').classList.contains('open')) {
-                    const info = DataHelpers.findTickerInfo(ticker);
-                    if (info) openRrgPopup(info);
+                    if (info) openUnifiedPopup(info, activePopupTab());
                 }
             }, 300);
         },
@@ -1725,19 +1721,58 @@
     };
 
     // ============================================================
-    // TV CHART POPUP
+    // TABBED POPUP
     // ============================================================
 
+    function activePopupTab() {
+        return document.getElementById('popup-tab-rrg').classList.contains('active') ? 'rrg' : 'charts';
+    }
 
-    function openChartPopup(info) {
-        closeRrgPopup();
+    function switchPopupTab(tab) {
+        const isRrg = tab === 'rrg';
+        document.getElementById('popup-tab-charts').classList.toggle('active', !isRrg);
+        document.getElementById('popup-tab-rrg').classList.toggle('active', isRrg);
+        document.getElementById('popup-tab-panel-charts').classList.toggle('active', !isRrg);
+        document.getElementById('popup-tab-panel-rrg').classList.toggle('active', isRrg);
+        document.getElementById('rrg-ticker-toggle').style.display = isRrg ? '' : 'none';
+
+        if (isRrg && AppState.popupInfo) {
+            renderRrgTab(AppState.popupInfo);
+        } else if (!isRrg) {
+            if (_rrgAnimFrame) {
+                cancelAnimationFrame(_rrgAnimFrame);
+                _rrgAnimFrame = null;
+            }
+            if (AppState.popupInfo) {
+                renderChartTab(AppState.popupInfo);
+            }
+        }
+    }
+
+    function openUnifiedPopup(info, tab = 'charts') {
         AppState.popupInfo = info;
-
-        const sameEtf = !!(info.sectorEtf && info.sectorEtf === info.industryEtf);
-
         document.getElementById('tv-popup-title').innerHTML =
             `<span style="color:#4a9eff;font-weight:600">${info.ticker}</span>` +
-            `<span style="color:#555;font-weight:400;font-size:11px;margin-left:6px">Sector &amp; Industry</span>`;
+            `<span style="color:#555;font-weight:400;font-size:11px;margin-left:6px">Sector &amp; Industry / RRG</span>`;
+
+        document.getElementById('tv-popup-backdrop').classList.add('open');
+        document.body.style.overflow = 'hidden';
+        if (tab === 'charts') {
+            renderChartTab(info);
+        }
+        switchPopupTab(tab);
+    }
+
+    function openChartPopup(info) {
+        openUnifiedPopup(info, 'charts');
+    }
+
+    function openRrgPopup(info) {
+        openUnifiedPopup(info, 'rrg');
+    }
+
+    function renderChartTab(info) {
+        const sameEtf = !!(info.sectorEtf && info.sectorEtf === info.industryEtf);
 
         document.getElementById('tv-sector-label').innerHTML = info.sectorEtf
             ? `<span style="color:#d0d0d0">${info.sectorEtf}</span> <span style="color:#555">— ${sameEtf ? `${info.sector} / ${info.industry}` : info.sector}</span>`
@@ -1746,12 +1781,8 @@
             ? `<span style="color:#d0d0d0">${info.industryEtf}</span> <span style="color:#555">— ${info.industry}</span>`
             : `<span style="color:#555">${info.industry}</span>`;
 
-        // Show/hide second panel based on whether ETFs are the same
         const industryPanel = document.getElementById('tv-chart-industry').closest('.tv-chart-panel');
         industryPanel.style.display = sameEtf ? 'none' : '';
-
-        document.getElementById('tv-popup-backdrop').classList.add('open');
-        document.body.style.overflow = 'hidden';
 
         TradingViewWidget._destroy('tv-chart-sector');
         TradingViewWidget._destroy('tv-chart-industry');
@@ -1784,6 +1815,7 @@
         TradingViewWidget._destroy('tv-chart-industry');
         document.getElementById('tv-chart-sector').innerHTML = '';
         document.getElementById('tv-chart-industry').innerHTML = '';
+        if (_rrgAnimFrame) { cancelAnimationFrame(_rrgAnimFrame); _rrgAnimFrame = null; }
         AppState.popupInfo = null;
     }
 
@@ -1794,6 +1826,9 @@
 
     // Close button
     document.getElementById('tv-popup-close').addEventListener('click', closeChartPopup);
+
+    document.getElementById('popup-tab-charts').addEventListener('click', () => switchPopupTab('charts'));
+    document.getElementById('popup-tab-rrg').addEventListener('click', () => switchPopupTab('rrg'));
 
     // Esc to close
     document.addEventListener('keydown', e => {
@@ -1807,20 +1842,9 @@
     let _rrgShowTicker = localStorage.getItem('rrgShowTicker') !== 'false';
     const RRG_PARAMS = 'timeframe=daily&tail=20&history=200&period_weeks=10';
 
-    function openRrgPopup(info) {
-        closeChartPopup();
-
-        document.getElementById('rrg-popup-title').innerHTML =
-            `<span style="color:#4a9eff;font-weight:600">${info.ticker}</span>` +
-            `<span style="color:#555;font-weight:400;font-size:11px;margin-left:6px">Relative Rotation</span>` +
-            `<span style="color:#444;font-weight:400;font-size:11px;margin-left:10px">vs ${BENCHMARK_SYMBOL}</span>`;
-
+    function renderRrgTab(info) {
         const toggleBtn = document.getElementById('rrg-ticker-toggle');
         toggleBtn.classList.toggle('active', _rrgShowTicker);
-
-        const backdrop = document.getElementById('rrg-popup-backdrop');
-        backdrop.classList.add('open');
-        document.body.style.overflow = 'hidden';
 
         // Wait one frame so the flex layout has resolved before reading dimensions
         requestAnimationFrame(() => {
@@ -1850,11 +1874,7 @@
     }
 
     function closeRrgPopup() {
-        const backdrop = document.getElementById('rrg-popup-backdrop');
-        if (!backdrop.classList.contains('open')) return;
-        backdrop.classList.remove('open');
-        document.body.style.overflow = '';
-        if (_rrgAnimFrame) { cancelAnimationFrame(_rrgAnimFrame); _rrgAnimFrame = null; }
+        closeChartPopup();
     }
 
     async function fetchAndDrawRrg(info, canvas, { animate = true } = {}) {
@@ -1880,7 +1900,7 @@
                 )
             );
         } catch (_) {
-            if (!document.getElementById('rrg-popup-backdrop').classList.contains('open')) return;
+            if (!document.getElementById('tv-popup-backdrop').classList.contains('open')) return;
             const dpr2 = window.devicePixelRatio || 1;
             const eW = canvas.width / dpr2, eH = canvas.height / dpr2;
             const ctx = canvas.getContext('2d');
@@ -1894,7 +1914,7 @@
             return;
         }
 
-        if (!document.getElementById('rrg-popup-backdrop').classList.contains('open')) return;
+        if (!document.getElementById('tv-popup-backdrop').classList.contains('open')) return;
         const visible = _rrgShowTicker ? datasets : datasets.filter(d => !d.isTicker);
         drawRrgAnimated(canvas, visible, { animate });
     }
@@ -2116,14 +2136,6 @@
         const canvas = document.getElementById('rrg-popup-canvas');
         fetchAndDrawRrg(info, canvas);
     });
-
-    // Close on backdrop click (outside modal)
-    document.getElementById('rrg-popup-backdrop').addEventListener('click', e => {
-        if (e.target === document.getElementById('rrg-popup-backdrop')) closeRrgPopup();
-    });
-
-    // Close button
-    document.getElementById('rrg-popup-close').addEventListener('click', closeRrgPopup);
 
     // ============================================================
     // APPLICATION INITIALIZATION
