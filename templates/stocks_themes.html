@@ -177,6 +177,12 @@
             align-items: center;
         }
 
+        .preview-nav-links {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
         .preview-header #preview-title a {
             color: #4a9eff;
             text-decoration: none;
@@ -212,8 +218,6 @@
         .chart-toggle button:hover {
             color: #d0d0d0;
         }
-
-        #chart-controls { visibility: hidden; }
 
         .chart-toggle button.active {
             background: #4a9eff;
@@ -742,7 +746,7 @@
             <span id="preview-title">Preview</span>
             <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
                 <span id="preview-metrics"></span>
-                <div id="chart-controls" style="display:flex;gap:6px;">
+                <div id="chart-controls" style="display:none;gap:6px;">
                     <div class="chart-toggle" id="timeframe-toggle">
                         <button data-tf="D" title="Daily timeframe">D</button>
                         <button data-tf="W" title="Weekly timeframe">W</button>
@@ -752,7 +756,11 @@
                         <button data-cmp="bench" title="Compare ticker vs benchmark">Bench</button>
                     </div>
                 </div>
-                <a href="/rrg.html" class="rrg-link" title="Relative Rotation Graph" target="_blank">RRG</a>
+                <div id="preview-nav-links" class="preview-nav-links">
+                    <a href="/stock_tags.html" class="rrg-link" target="_blank" rel="noopener noreferrer">Stock Tags</a>
+                    <a href="/tag_mgmt.html" class="rrg-link" target="_blank" rel="noopener noreferrer">Tag Mgmt</a>
+                    <a href="/rrg.html" class="rrg-link" target="_blank" rel="noopener noreferrer">RRG</a>
+                </div>
             </div>
         </div>
         <div id="preview"></div>
@@ -1267,8 +1275,11 @@
         updateHeader(tickerInfo = null) {
             const titleElement = document.getElementById('preview-title');
             const controls = document.getElementById('chart-controls');
+            const navLinks = document.getElementById('preview-nav-links');
 
             if (tickerInfo) {
+                if (navLinks) navLinks.style.display = 'none';
+                if (controls) controls.style.display = 'flex';
                 const hasEtf = tickerInfo.sectorEtf || tickerInfo.industryEtf;
                 const chartBtn = hasEtf
                     ? `<button class="chart-icon-btn">${CANDLE_SVG}</button>`
@@ -1304,9 +1315,6 @@
                     });
                 }
 
-                controls.style.visibility = 'visible';
-                controls.style.pointerEvents = '';
-
                 // Sync timeframe buttons
                 document.querySelectorAll('#timeframe-toggle button').forEach(b =>
                     b.classList.toggle('active', b.dataset.tf === AppState.timeframe)
@@ -1325,10 +1333,10 @@
                     b.classList.toggle('active', b.dataset.cmp === AppState.compareMode)
                 );
             } else {
+                if (navLinks) navLinks.style.display = 'flex';
+                if (controls) controls.style.display = 'none';
                 titleElement.textContent = 'Preview';
                 document.getElementById('preview-metrics').innerHTML = '';
-                controls.style.visibility = 'hidden';
-                controls.style.pointerEvents = 'none';
             }
         },
 
