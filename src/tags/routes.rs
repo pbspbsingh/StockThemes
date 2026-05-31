@@ -272,7 +272,8 @@ async fn preview_import(
     Json(req): Json<ImportRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let assignments = parse_request_import(&req)?;
-    let errors = crate::tags::import::validate(&assignments);
+    let tags = state.store.list_tags().await?;
+    let errors = validate_import_assignments(&assignments, &tags);
     let preview = build_preview(&state.store, assignments, errors).await?;
     Ok(Json(preview))
 }
@@ -282,7 +283,8 @@ async fn apply_import(
     Json(req): Json<ImportRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let assignments = parse_request_import(&req)?;
-    let errors = crate::tags::import::validate(&assignments);
+    let tags = state.store.list_tags().await?;
+    let errors = validate_import_assignments(&assignments, &tags);
     if !errors.is_empty() {
         return Err(ApiError::bad_request("Import has validation errors"));
     }
@@ -291,10 +293,7 @@ async fn apply_import(
         .into_iter()
         .map(|assignment| (assignment.ticker, assignment.tags))
         .collect::<Vec<_>>();
-    let result = state
-        .store
-        .replace_tags_for_stocks(&import_rows)
-        .await?;
+    let result = state.store.replace_tags_for_stocks(&import_rows).await?;
 
     Ok(Json(ImportApplyResponse {
         rows_parsed: import_rows.len(),
@@ -312,6 +311,75 @@ fn parse_request_import(req: &ImportRequest) -> Result<Vec<TagAssignment>, ApiEr
     parse_import(&req.content)
         .map(normalize_assignments)
         .map_err(|err| ApiError::bad_request(err.to_string()))
+}
+
+fn validate_import_assignments(assignments: &[TagAssignment], tags: &[Tag]) -> Vec<ImportError> {
+    let allowed_tags = tags
+        .iter()
+        .map(|tag| tag.name.to_lowercase())
+        .collect::<HashSet<_>>();
+    let mut errors = crate::tags::import::validate(assignments);
+
+    for (idx, assignment) in assignments.iter().enumerate() {
+        let unknown_tags = assignment
+            .tags
+            .iter()
+            .filter(|tag| !allowed_tags.contains(&tag.to_lowercase()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unknown_tags.is_empty() {
+            errors.push(ImportError {
+                row: Some(idx + 1),
+                message: format!("Unknown tags: {}", unknown_tags.join(", ")),
+            });
+        }
+    }
+
+    errors
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tag(name: &str) -> Tag {
+        Tag {
+            id: 1,
+            name: name.to_string(),
+            stock_count: 0,
+        }
+    }
+
+    #[test]
+    fn import_validation_rejects_unknown_tags() {
+        let assignments = vec![TagAssignment {
+            ticker: "NVDA".to_string(),
+            tags: vec![
+                "AI Infrastructure".to_string(),
+                "AI Infrastucture".to_string(),
+            ],
+        }];
+        let tags = vec![tag("AI Infrastructure")];
+
+        let errors = validate_import_assignments(&assignments, &tags);
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].row, Some(1));
+        assert_eq!(errors[0].message, "Unknown tags: AI Infrastucture");
+    }
+
+    #[test]
+    fn import_validation_allows_existing_tags_case_insensitively() {
+        let assignments = vec![TagAssignment {
+            ticker: "NVDA".to_string(),
+            tags: vec!["ai infrastructure".to_string()],
+        }];
+        let tags = vec![tag("AI Infrastructure")];
+
+        let errors = validate_import_assignments(&assignments, &tags);
+
+        assert!(errors.is_empty());
+    }
 }
 
 async fn stock_views(store: &Store) -> sqlx::Result<Vec<TagStockView>> {

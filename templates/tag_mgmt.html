@@ -839,13 +839,13 @@ function renderPreview(preview) {
     previewNode.innerHTML = `
         <div class="stats">
             <span class="stat"><b>${preview.rows_parsed}</b> rows</span>
-            <span class="stat"><b>${preview.new_tags.length}</b> new tags</span>
+            <span class="stat"><b>${preview.new_tags.length}</b> unknown tags</span>
             <span class="stat"><b>${preview.mappings_to_set}</b> set</span>
             <span class="stat"><b>${preview.mappings_to_remove}</b> remove</span>
             <span class="stat"><b>${preview.unknown_tickers.length}</b> unknown tickers</span>
             <span class="stat"><b>${errors.length}</b> errors</span>
         </div>
-        ${preview.new_tags.length ? `<div class="section"><div class="section-title">New Tags</div><div class="stock-tags">${preview.new_tags.map(tag => `<span class="chip new"><span>${escapeHtml(tag)}</span></span>`).join('')}</div></div>` : ''}
+        ${preview.new_tags.length ? `<div class="section"><div class="section-title">Unknown Tags</div><div class="stock-tags">${preview.new_tags.map(tag => `<span class="chip new"><span>${escapeHtml(tag)}</span></span>`).join('')}</div></div>` : ''}
         ${errors.length ? `<div class="errors">${errors.map(error => `<div>${error.row ? `Row ${error.row}: ` : ''}${escapeHtml(error.message)}</div>`).join('')}</div>` : ''}
         <table class="preview-table">
             <thead><tr><th>Ticker</th><th>Tags</th><th class="num">Set</th><th class="num">Remove</th></tr></thead>

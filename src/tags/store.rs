@@ -291,20 +291,6 @@ impl Store {
                 continue;
             }
 
-            let insert_tag = sqlx::query(
-                r#"
-                INSERT OR IGNORE INTO tags (name, created_at, updated_at)
-                VALUES ($1, $2, $2)
-                "#,
-            )
-            .bind(&tag)
-            .bind(Local::now())
-            .execute(&mut **tx)
-            .await?;
-            if insert_tag.rows_affected() > 0 {
-                result.created_tags.push(tag.clone());
-            }
-
             let tag_id: i64 = sqlx::query_scalar("SELECT id FROM tags WHERE name = $1")
                 .bind(&tag)
                 .fetch_one(&mut **tx)
