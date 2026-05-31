@@ -138,6 +138,12 @@
             position: relative;
         }
 
+        .preview-nav-links {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
         .preview-title {
             min-width: 0;
             overflow: hidden;
@@ -274,34 +280,26 @@
             color: #d0d0d0;
         }
 
-        .nav-links {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 18px;
-        }
-
-        .nav-link {
+        .rrg-link {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            min-height: 26px;
-            padding: 5px 11px;
-            border-radius: 999px;
-            border: 1px solid #303030;
-            background: #1d1d1d;
-            color: #cfd8e3;
+            padding: 3px 10px;
+            border-radius: 3px;
+            border: 1px solid #555;
+            background: #2a2a2a;
+            color: #d0d0d0;
             text-decoration: none;
             font-size: 12px;
             font-weight: 600;
             line-height: 1;
             letter-spacing: 0.2px;
+            white-space: nowrap;
             transition: background 0.15s, border-color 0.15s, color 0.15s;
         }
-
-        .nav-link:hover {
+        .rrg-link:hover {
             color: #ffffff;
-            background: #243447;
+            background: #333;
             border-color: #4a9eff;
         }
 
@@ -478,6 +476,11 @@
                         <button data-tf="W" title="Weekly timeframe">W</button>
                     </div>
                     <span class="bench-label">vs <strong id="benchmark-label"></strong></span>
+                </div>
+                <div id="preview-nav-links" class="preview-nav-links">
+                    <a href="/" class="rrg-link" target="_blank" rel="noopener noreferrer">Stock Themes</a>
+                    <a href="/tag_mgmt.html" class="rrg-link" target="_blank" rel="noopener noreferrer">Tag Mgmt</a>
+                    <a href="/rrg.html" class="rrg-link" target="_blank" rel="noopener noreferrer">RRG</a>
                 </div>
             </div>
         </div>
@@ -1006,12 +1009,14 @@
             const title = DOM.get('preview-title');
             const controls = DOM.get('chart-controls');
             const metrics = DOM.get('preview-metrics');
+            const navLinks = DOM.get('preview-nav-links');
 
             if (!tickerInfo) {
                 title.textContent = 'Preview';
                 metrics.innerHTML = '';
                 controls.style.visibility = 'hidden';
                 controls.style.pointerEvents = 'none';
+                if (navLinks) navLinks.style.display = 'flex';
                 return;
             }
 
@@ -1024,6 +1029,7 @@
             metrics.innerHTML = metricChipsHtml(AppState.currentTickerSymbol);
             controls.style.visibility = 'visible';
             controls.style.pointerEvents = '';
+            if (navLinks) navLinks.style.display = 'none';
             DOM.get('timeframe-toggle').querySelectorAll('button').forEach(button => {
                 button.classList.toggle('active', button.dataset.tf === AppState.timeframe);
             });
@@ -1064,11 +1070,6 @@
 
             container.innerHTML = `
                 <div class="tag-summary">
-                    <div class="nav-links">
-                        <a class="nav-link" href="/" target="_blank" rel="noopener noreferrer">Stock themes</a>
-                        <a class="nav-link" href="/tag_mgmt.html" target="_blank" rel="noopener noreferrer">Tag management</a>
-                        <a class="nav-link" href="/rrg.html" target="_blank" rel="noopener noreferrer">RRG</a>
-                    </div>
                     <h2>${selected ? 'Selected Tags' : 'Tag Overview'}</h2>
                     <div class="stats-bar">
                         ${Templates.stat('Tags', REAL_TAG_COUNT)}
