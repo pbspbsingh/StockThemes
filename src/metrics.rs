@@ -40,7 +40,11 @@ pub async fn build_stock_metrics(
     Ok(map)
 }
 
-fn compute_metrics(candles: &[Candle], adr_days: usize, vol_days: usize) -> Option<StockMetrics> {
+pub(crate) fn compute_metrics(
+    candles: &[Candle],
+    adr_days: usize,
+    vol_days: usize,
+) -> Option<StockMetrics> {
     fn tail(candles: &[Candle], days: usize) -> &[Candle] {
         let start = candles.len().saturating_sub(days);
         &candles[start..]

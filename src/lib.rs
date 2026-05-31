@@ -113,6 +113,10 @@ pub async fn start_http_server(store: Arc<Store>, home: String) -> anyhow::Resul
             "/stock_tags.html",
             routing::get(tags::stock_tags::stock_tags_home),
         )
+        .route(
+            "/api/stock-tags/metrics/stream",
+            routing::get(tags::stock_tags::stock_tag_metrics_stream),
+        )
         .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler))
         .merge(tags::router(store.clone()))
         .layer(Extension(store))

@@ -2,7 +2,7 @@ use chrono::Local;
 use sqlx::Sqlite;
 use std::collections::HashMap;
 
-use crate::store::{DeleteTagResult, Store, StockTags, Tag};
+use crate::store::{DeleteTagResult, StockTags, Store, Tag};
 
 #[derive(Debug, Clone, Default)]
 pub struct AddTagsResult {

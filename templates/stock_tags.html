@@ -463,7 +463,7 @@
     </div>
     <div class="column">
         <div class="column-header">
-            <span>Tickers</span>
+            <span>Tickers <span class="header-count" id="ticker-header-count"></span></span>
         </div>
         <div id="tickers" class="list"></div>
     </div>
@@ -491,8 +491,6 @@
 
 <script id="tag-groups" type="application/json">{{ tag_groups_json | safe }}</script>
 <script id="ticker-info" type="application/json">{{ ticker_info_json | safe }}</script>
-<script id="stock-rs" type="application/json">{{ stock_rs_json | safe }}</script>
-<script id="stock-metrics" type="application/json">{{ stock_metrics_json | safe }}</script>
 
 <script>
     const BENCHMARK_SYMBOL = '{{ benchmark_symbol }}';
@@ -500,8 +498,13 @@
 
     const TAG_GROUPS = JSON.parse(document.getElementById('tag-groups').textContent);
     const TICKER_INFO = new Map(Object.entries(JSON.parse(document.getElementById('ticker-info').textContent)));
-    const STOCK_RS = new Map(Object.entries(JSON.parse(document.getElementById('stock-rs').textContent)));
-    const STOCK_METRICS = new Map(Object.entries(JSON.parse(document.getElementById('stock-metrics').textContent)));
+    let STOCK_RS = new Map();
+    let STOCK_METRICS = new Map();
+    let METRICS_REQUEST_KEY = '';
+    let METRICS_ABORT = null;
+    let METRICS_RENDER_QUEUED = false;
+    let METRICS_DEBOUNCE_TIMER = null;
+    const METRICS_DEBOUNCE_MS = 200;
     const REAL_TAG_COUNT = {{ real_tag_count }};
     const TAGGED_STOCK_COUNT = {{ tagged_stock_count }};
     const UNTAGGED_STOCK_COUNT = {{ untagged_stock_count }};
@@ -552,9 +555,11 @@
             this.selectedTags.clear();
             this.selectedTickerIndex = -1;
             this.currentTickerSymbol = null;
+            clearMetrics();
         },
 
         toggleTag(tagName) {
+            clearMetrics();
             if (tagName === 'Untagged') {
                 if (this.selectedTags.has('Untagged') && this.selectedTags.size === 1) {
                     this.selectedTags.clear();
@@ -604,8 +609,8 @@
     function metricChipsHtml(ticker) {
         const m = STOCK_METRICS.get(ticker);
         if (!m) return '';
-        const adr = `<span class="item-rs" title="Average Daily Range %"><span style="color:#888;font-weight:700;">ADR</span> ${m.adr_pct.toFixed(1)}%</span>`;
-        const vol = `<span class="item-rs" title="Average Daily Volume"><span style="color:#888;font-weight:700;">Vol</span> ${formatVolume(m.avg_volume)}</span>`;
+        const adr = m.adr_pct == null ? '' : `<span class="item-rs" title="Average Daily Range %"><span style="color:#888;font-weight:700;">ADR</span> ${m.adr_pct.toFixed(1)}%</span>`;
+        const vol = m.avg_volume == null ? '' : `<span class="item-rs" title="Average Daily Volume"><span style="color:#888;font-weight:700;">Vol</span> ${formatVolume(m.avg_volume)}</span>`;
         return adr + vol;
     }
 
@@ -618,6 +623,118 @@
     function tickerLink(ticker, exchange) {
         const tvUrl = exchange ? `https://www.tradingview.com/symbols/${exchange}-${ticker}/` : `https://www.tradingview.com/symbols/${ticker}/`;
         return `<a href="${tvUrl}" target="_blank" class="ticker-chip-link">${escapeHtml(ticker)}</a>`;
+    }
+
+    function metricTickerSymbols(tickers) {
+        return [...new Set(tickers
+            .map(ticker => typeof ticker === 'string' ? ticker : ticker.ticker)
+            .filter(Boolean))]
+            .sort();
+    }
+
+    function clearMetrics() {
+        if (METRICS_DEBOUNCE_TIMER) {
+            clearTimeout(METRICS_DEBOUNCE_TIMER);
+            METRICS_DEBOUNCE_TIMER = null;
+        }
+        if (METRICS_ABORT) {
+            METRICS_ABORT.abort();
+            METRICS_ABORT = null;
+        }
+        METRICS_REQUEST_KEY = '';
+        STOCK_RS = new Map();
+        STOCK_METRICS = new Map();
+    }
+
+    function scheduleMetricsRender(requestKey) {
+        if (METRICS_RENDER_QUEUED) return;
+        METRICS_RENDER_QUEUED = true;
+        requestAnimationFrame(() => {
+            METRICS_RENDER_QUEUED = false;
+            if (requestKey !== METRICS_REQUEST_KEY) return;
+            Renderers.renderTickers();
+            if (AppState.currentTickerSymbol) {
+                PreviewManager.updateHeader(getTickerInfo(AppState.currentTickerSymbol));
+            }
+        });
+    }
+
+    function loadMetricsForTickersDebounced(tickers) {
+        const symbols = metricTickerSymbols(tickers);
+        const requestKey = symbols.join(',');
+        if (!symbols.length || requestKey === METRICS_REQUEST_KEY) return;
+
+        if (METRICS_DEBOUNCE_TIMER) clearTimeout(METRICS_DEBOUNCE_TIMER);
+        METRICS_DEBOUNCE_TIMER = setTimeout(() => {
+            METRICS_DEBOUNCE_TIMER = null;
+            loadMetricsForTickers(symbols);
+        }, METRICS_DEBOUNCE_MS);
+    }
+
+    function applyMetricRow(row, requestKey) {
+        if (requestKey !== METRICS_REQUEST_KEY) return;
+        if (row.error) {
+            console.warn(`Skipping metrics for ${row.ticker}: ${row.error}`);
+            return;
+        }
+        if (!row.metric) return;
+        STOCK_RS.set(row.ticker, row.metric.rs);
+        STOCK_METRICS.set(row.ticker, {
+            adr_pct: row.metric.adr_pct,
+            avg_volume: row.metric.avg_volume,
+        });
+        scheduleMetricsRender(requestKey);
+    }
+
+    async function loadMetricsForTickers(tickers) {
+        const symbols = metricTickerSymbols(tickers);
+        const requestKey = symbols.join(',');
+        if (!symbols.length || requestKey === METRICS_REQUEST_KEY) return;
+
+        if (METRICS_ABORT) METRICS_ABORT.abort();
+        METRICS_ABORT = new AbortController();
+        METRICS_REQUEST_KEY = requestKey;
+        STOCK_RS = new Map();
+        STOCK_METRICS = new Map();
+
+        try {
+            const params = new URLSearchParams({ tickers: symbols.join(',') });
+            const response = await fetch(`/api/stock-tags/metrics/stream?${params}`, {
+                signal: METRICS_ABORT.signal,
+            });
+            if (!response.ok) throw new Error(response.statusText || 'Request failed');
+            if (!response.body) throw new Error('Streaming response is unavailable');
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (requestKey !== METRICS_REQUEST_KEY) return;
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                lines.filter(Boolean).forEach(line => {
+                    applyMetricRow(JSON.parse(line), requestKey);
+                });
+            }
+
+            buffer += decoder.decode();
+            if (buffer.trim() && requestKey === METRICS_REQUEST_KEY) {
+                applyMetricRow(JSON.parse(buffer), requestKey);
+            }
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            if (requestKey !== METRICS_REQUEST_KEY) return;
+            showToast(`Failed to load metrics: ${err.message}`);
+        } finally {
+            if (requestKey !== METRICS_REQUEST_KEY) return;
+            METRICS_ABORT = null;
+            scheduleMetricsRender(requestKey);
+        }
     }
 
     function selectionLabel() {
@@ -694,7 +811,11 @@
             });
         }
 
-        return [...dedup.values()].sort((a, b) => {
+        const rows = [...dedup.values()];
+        const shouldSortByRs = selected.size > 0;
+
+        return rows.sort((a, b) => {
+            if (!shouldSortByRs) return a.ticker.localeCompare(b.ticker);
             const aRS = STOCK_RS.get(a.ticker) ?? 0;
             const bRS = STOCK_RS.get(b.ticker) ?? 0;
             if (aRS !== bRS) return bRS - aRS;
@@ -711,8 +832,7 @@
             return `<div class="stat"><span class="stat-label">${label}:</span><span class="stat-value">${value}</span></div>`;
         },
         tickerChip(ticker, exchange) {
-            const rs = STOCK_RS.get(ticker) ?? null;
-            return `<span class="ticker-chip">${tickerLink(ticker, exchange)}${rsPill(rs)}</span>`;
+            return `<span class="ticker-chip">${tickerLink(ticker, exchange)}</span>`;
         }
     };
 
@@ -793,6 +913,15 @@
 
             const tickers = getFilteredTickers();
             AppState.currentTickers = tickers;
+            AppState.selectedTickerIndex = AppState.currentTickerSymbol
+                ? tickers.findIndex(ticker => ticker.ticker === AppState.currentTickerSymbol)
+                : -1;
+            DOM.get('ticker-header-count').textContent = tickers.length;
+            if (AppState.selectedTags.size > 0) {
+                loadMetricsForTickersDebounced(tickers);
+            } else if (!AppState.currentTickerSymbol) {
+                clearMetrics();
+            }
 
             if (tickers.length === 0) {
                 container.innerHTML = '<div class="item" style="cursor:default;color:#666;">No tickers found</div>';
@@ -895,18 +1024,14 @@
 
         showTagsOverview(tagRows) {
             const container = this.getContainer();
+            TradingViewWidget.reset();
             const selected = AppState.selectedTags.size;
             const totalTickers = getFilteredTickers().length;
 
             const rows = tagRows.map(group => {
                 const chips = group.tickers
                     .slice()
-                    .sort((a, b) => {
-                        const aRS = STOCK_RS.get(a.ticker) ?? 0;
-                        const bRS = STOCK_RS.get(b.ticker) ?? 0;
-                        if (aRS !== bRS) return bRS - aRS;
-                        return a.ticker.localeCompare(b.ticker);
-                    })
+                    .sort((a, b) => a.ticker.localeCompare(b.ticker))
                     .map(t => Templates.tickerChip(t.ticker, t.exchange))
                     .join('');
 
@@ -956,6 +1081,7 @@
     const TradingViewWidget = {
         _instances: {},
         _timeframe: null,
+        _splitReady: false,
 
         _destroy(containerId) {
             const w = this._instances[containerId];
@@ -965,21 +1091,36 @@
             }
         },
 
+        reset() {
+            Object.keys(this._instances).forEach(containerId => this._destroy(containerId));
+            this._instances = {};
+            this._splitReady = false;
+            this._timeframe = null;
+        },
+
         _renderComparison(containerId, prefix, tickerSymbol, interval) {
             const container = DOM.get(containerId);
-            const savedRatio = parseFloat(localStorage.getItem('splitRatio')) || 50;
-            container.innerHTML = `
-                <div class="tradingview-widget-container tv-container-split">
-                    <div id="${prefix}-top" class="tv-pane" style="flex:0 0 ${savedRatio}%"></div>
-                    <div class="tv-divider"></div>
-                    <div id="${prefix}-bottom" class="tv-pane" style="flex:1;min-height:0"></div>
-                </div>
-            `;
-            initSplitDrag(container.querySelector('.tv-container-split'));
+            const intervalChanged = this._timeframe !== interval;
+            if (!this._splitReady || intervalChanged) {
+                const savedRatio = parseFloat(localStorage.getItem('splitRatio')) || 50;
+                container.innerHTML = `
+                    <div class="tradingview-widget-container tv-container-split">
+                        <div id="${prefix}-top" class="tv-pane" style="flex:0 0 ${savedRatio}%"></div>
+                        <div class="tv-divider"></div>
+                        <div id="${prefix}-bottom" class="tv-pane" style="flex:1;min-height:0"></div>
+                    </div>
+                `;
+                initSplitDrag(container.querySelector('.tv-container-split'));
+                this._splitReady = true;
+            }
+
             this._destroy(`${prefix}-top`);
-            this._destroy(`${prefix}-bottom`);
             this.createWidget(tickerSymbol, `${prefix}-top`, interval);
-            this.createWidget(BENCHMARK_SYMBOL, `${prefix}-bottom`, interval);
+
+            if (intervalChanged || !this._instances[`${prefix}-bottom`]) {
+                this._destroy(`${prefix}-bottom`);
+                this.createWidget(BENCHMARK_SYMBOL, `${prefix}-bottom`, interval);
+            }
             this._timeframe = interval;
         },
 
@@ -987,6 +1128,9 @@
             AppState.currentTickerSymbol = tickerSymbol;
             const info = getTickerInfo(tickerSymbol);
             PreviewManager.updateHeader(info);
+            if (AppState.selectedTags.size === 0 && !STOCK_METRICS.has(tickerSymbol)) {
+                loadMetricsForTickers([tickerSymbol]);
+            }
             Renderers.highlightTickerContext();
             this._renderComparison('preview', 'tv-main', tickerSymbol, AppState.timeframe);
         },

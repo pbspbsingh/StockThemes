@@ -88,8 +88,14 @@ async fn build_ticker_tags(
             .map(|tag| tag.name)
             .collect::<Vec<_>>();
         tags.sort_by(|a, b| {
-            let a_count = tag_counts.get(&a.to_lowercase()).copied().unwrap_or_default();
-            let b_count = tag_counts.get(&b.to_lowercase()).copied().unwrap_or_default();
+            let a_count = tag_counts
+                .get(&a.to_lowercase())
+                .copied()
+                .unwrap_or_default();
+            let b_count = tag_counts
+                .get(&b.to_lowercase())
+                .copied()
+                .unwrap_or_default();
             b_count.cmp(&a_count).then_with(|| a.cmp(b))
         });
         ticker_tags.insert(stock.ticker, tags);
