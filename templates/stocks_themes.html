@@ -173,9 +173,19 @@
 
         .preview-header {
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            gap: 10px;
             min-width: 0;
+        }
+
+        .preview-header-tools {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
+            flex: 1 1 0;
+            min-width: 0;
+            margin-left: auto;
         }
 
         .preview-nav-links {
@@ -220,7 +230,8 @@
             display: flex;
             align-items: center;
             gap: 4px;
-            flex: 1 1 auto;
+            flex: 0 1 auto;
+            max-width: clamp(180px, 34%, 520px);
             min-width: 0;
             overflow: hidden;
             white-space: nowrap;
@@ -634,10 +645,11 @@
 
         .ticker-tag-chips {
             display: inline-flex;
-            flex: 0 1 auto;
+            flex: 1 1 auto;
             gap: 2px;
-            max-width: 280px;
+            max-width: 100%;
             min-width: 36px;
+            justify-content: flex-end;
             overflow: hidden;
             white-space: nowrap;
         }
@@ -646,13 +658,19 @@
             display: inline-flex;
             align-items: center;
             justify-content: flex-end;
+            flex: 1 1 auto;
             min-width: 0;
             overflow: hidden;
+        }
+
+        #preview-metrics {
+            flex: 0 0 auto;
         }
 
         .ticker-tag-chip {
             display: inline-flex;
             align-items: center;
+            flex: 0 0 auto;
             padding: 1px 4px;
             border-radius: 3px;
             border: 1px solid #2f4558;
@@ -1046,7 +1064,7 @@
     <div class="column preview-column">
         <div class="column-header preview-header">
             <span id="preview-title">Preview</span>
-            <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+            <div class="preview-header-tools">
                 <span id="preview-tags"></span>
                 <span id="preview-metrics"></span>
                 <button class="rrg-link preview-refresh-tags" type="button" title="Refresh tag mappings" aria-label="Refresh tag mappings" data-refresh-tags>
