@@ -253,7 +253,7 @@
             line-height: 1;
             font-weight: 600;
             cursor: pointer;
-            border-radius: 3px;
+            border-radius: 4px;
             transition: all 0.2s;
         }
 
@@ -278,7 +278,7 @@
             line-height: 1;
             color: #d0d0d0;
             text-decoration: none;
-            border-radius: 3px;
+            border-radius: 4px;
             background: #2a2a2a;
             border: 1px solid #555;
             transition: all 0.2s;
@@ -291,6 +291,110 @@
             color: #fff;
             background: #333;
             border-color: #4a9eff;
+        }
+
+        .rrg-link:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .preview-refresh-tags {
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            justify-content: center;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .preview-refresh-tags svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .preview-refresh-tags.loading svg {
+            animation: refresh-spin 0.8s linear infinite;
+        }
+
+        .preview-actions {
+            position: relative;
+            display: none;
+            flex-shrink: 0;
+        }
+
+        .preview-actions-toggle {
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .preview-actions-toggle svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .preview-actions-menu {
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            z-index: 30;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 174px;
+            padding: 8px;
+            background: #1a1a1a;
+            border: 1px solid #444;
+            border-radius: 4px;
+            box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+        }
+
+        .preview-actions.open .preview-actions-menu {
+            display: flex;
+        }
+
+        .preview-actions-row {
+            display: grid;
+            grid-template-columns: 70px 1fr;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .preview-actions-label {
+            color: #888;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .preview-actions-menu .preview-refresh-tags {
+            width: auto;
+            min-width: 92px;
+            gap: 5px;
+            padding: 3px 8px;
+            justify-self: stretch;
+        }
+
+        .preview-actions-menu .preview-refresh-tags svg {
+            width: 13px;
+            height: 13px;
+        }
+
+        .preview-actions-menu .chart-toggle {
+            background: #2a2a2a;
+            border: 1px solid #555;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            justify-self: stretch;
+        }
+
+        .preview-actions-menu .chart-toggle button {
+            min-width: 44px;
+        }
+
+        @keyframes refresh-spin {
+            to { transform: rotate(360deg); }
         }
 
         /* Column headers that need flex layout for clear button */
@@ -309,7 +413,7 @@
             background: #2a2a2a;
             color: #888;
             border: 1px solid #3a3a3a;
-            border-radius: 3px;
+            border-radius: 4px;
             cursor: pointer;
             line-height: 16px;
             transition: color 0.2s, opacity 0.2s;
@@ -514,8 +618,7 @@
             align-items: center;
             gap: 3px;
             padding: 1px 6px;
-            margin-left: 3px;
-            border-radius: 10px;
+            border-radius: 4px;
             background: #1a1a1a;
             color: #c8c8c8;
             font-size: 10px;
@@ -531,13 +634,20 @@
 
         .ticker-tag-chips {
             display: inline-flex;
-            flex: 1 1 120px;
+            flex: 0 1 auto;
             gap: 2px;
-            margin-left: 4px;
             max-width: 280px;
             min-width: 36px;
             overflow: hidden;
             white-space: nowrap;
+        }
+
+        #preview-tags {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            min-width: 0;
+            overflow: hidden;
         }
 
         .ticker-tag-chip {
@@ -937,15 +1047,51 @@
         <div class="column-header preview-header">
             <span id="preview-title">Preview</span>
             <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+                <span id="preview-tags"></span>
                 <span id="preview-metrics"></span>
-                <div id="chart-controls" style="display:none;gap:6px;">
-                    <div class="chart-toggle" id="timeframe-toggle">
-                        <button data-tf="D" title="Daily timeframe">D</button>
-                        <button data-tf="W" title="Weekly timeframe">W</button>
-                    </div>
-                    <div class="chart-toggle" id="compare-toggle">
-                        <button data-cmp="group" title="Compare ticker vs Industry ETF (falls back to Sector ETF)">Group</button>
-                        <button data-cmp="bench" title="Compare ticker vs benchmark">Bench</button>
+                <button class="rrg-link preview-refresh-tags" type="button" title="Refresh tag mappings" aria-label="Refresh tag mappings" data-refresh-tags>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 12a9 9 0 0 1-15.5 6.2"></path>
+                        <path d="M3 12A9 9 0 0 1 18.5 5.8"></path>
+                        <path d="M18 2v4h-4"></path>
+                        <path d="M6 22v-4h4"></path>
+                    </svg>
+                </button>
+                <div id="chart-controls" class="preview-actions">
+                    <button id="preview-actions-toggle" class="rrg-link preview-actions-toggle" type="button" title="Ticker controls" aria-label="Ticker controls" aria-expanded="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="19" cy="12" r="1"></circle>
+                            <circle cx="5" cy="12" r="1"></circle>
+                        </svg>
+                    </button>
+                    <div id="preview-actions-menu" class="preview-actions-menu">
+                        <div class="preview-actions-row">
+                            <span class="preview-actions-label">Tags</span>
+                            <button class="rrg-link preview-refresh-tags" type="button" title="Refresh tag mappings" aria-label="Refresh tag mappings" data-refresh-tags>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M21 12a9 9 0 0 1-15.5 6.2"></path>
+                                    <path d="M3 12A9 9 0 0 1 18.5 5.8"></path>
+                                    <path d="M18 2v4h-4"></path>
+                                    <path d="M6 22v-4h4"></path>
+                                </svg>
+                                <span>Refresh</span>
+                            </button>
+                        </div>
+                        <div class="preview-actions-row">
+                            <span class="preview-actions-label">Timeframe</span>
+                            <div class="chart-toggle" id="timeframe-toggle">
+                                <button data-tf="D" title="Daily timeframe">Daily</button>
+                                <button data-tf="W" title="Weekly timeframe">Weekly</button>
+                            </div>
+                        </div>
+                        <div class="preview-actions-row">
+                            <span class="preview-actions-label">Compare</span>
+                            <div class="chart-toggle" id="compare-toggle">
+                                <button data-cmp="group" title="Compare ticker vs Industry ETF (falls back to Sector ETF)">Group</button>
+                                <button data-cmp="bench" title="Compare ticker vs benchmark">Bench</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="preview-nav-links" class="preview-nav-links">
@@ -1061,6 +1207,13 @@
     );
 
     const stockData = JSON.parse(document.getElementById('stock-data').textContent);
+    const pageTickers = new Set(
+        stockData.sectors.flatMap(sector =>
+            sector.industries.flatMap(industry =>
+                industry.tickers.map(ticker => ticker.ticker)
+            )
+        )
+    );
 
     function escapeHtml(value) {
         return String(value)
@@ -1149,6 +1302,67 @@
         const params = new URLSearchParams();
         tags.forEach(tag => params.append('selected_tag', tag));
         return `/stock_tags.html?${params.toString()}`;
+    }
+
+    async function fetchJsonOrThrow(url) {
+        const response = await fetch(url);
+        if (response.ok) return response.json();
+
+        let message = `HTTP ${response.status}`;
+        try {
+            const body = await response.json();
+            if (body?.error) message = body.error;
+        } catch (_) {
+            // Keep the HTTP status when the response body is not JSON.
+        }
+        throw new Error(message);
+    }
+
+    async function refreshTickerTagMappings() {
+        const buttons = document.querySelectorAll('[data-refresh-tags]');
+        if ([...buttons].some(button => button.disabled)) return;
+
+        buttons.forEach(button => {
+            button.classList.add('loading');
+            button.disabled = true;
+        });
+
+        try {
+            const [stockViews, tags] = await Promise.all([
+                fetchJsonOrThrow('/api/stock-tags'),
+                fetchJsonOrThrow('/api/tags')
+            ]);
+            const tagCounts = new Map(tags.map(tag => [tag.name.toLowerCase(), tag.stock_count ?? 0]));
+
+            tickerTags.clear();
+            stockViews.forEach(stock => {
+                if (!pageTickers.has(stock.ticker)) return;
+
+                const tagNames = (stock.tags || [])
+                    .map(tag => tag.name)
+                    .filter(Boolean)
+                    .sort((a, b) => {
+                        const countDiff = (tagCounts.get(b.toLowerCase()) ?? 0) - (tagCounts.get(a.toLowerCase()) ?? 0);
+                        return countDiff || a.localeCompare(b);
+                    });
+
+                tickerTags.set(stock.ticker, tagNames);
+            });
+
+            hideTickerTagTooltip(0);
+            if (AppState.currentTickerSymbol) {
+                const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
+                if (info) PreviewManager.updateHeader(info);
+            }
+            showToast('Refreshed tag mappings');
+        } catch (error) {
+            showToast(`Failed to refresh tags: ${error.message}`);
+        } finally {
+            buttons.forEach(button => {
+                button.classList.remove('loading');
+                button.disabled = false;
+            });
+        }
     }
 
     function bindTickerTagTooltipActions() {
@@ -1585,10 +1799,12 @@
             const titleElement = document.getElementById('preview-title');
             const controls = document.getElementById('chart-controls');
             const navLinks = document.getElementById('preview-nav-links');
+            const directRefresh = document.querySelector('.preview-header [data-refresh-tags]');
 
             if (tickerInfo) {
                 if (navLinks) navLinks.style.display = 'none';
                 if (controls) controls.style.display = 'flex';
+                if (directRefresh) directRefresh.style.display = 'none';
                 const hasEtf = tickerInfo.sectorEtf || tickerInfo.industryEtf;
                 const chartBtn = hasEtf
                     ? `<button class="chart-icon-btn">${CANDLE_SVG}</button>`
@@ -1603,8 +1819,9 @@
                 titleElement.innerHTML =
                     `<a href="${tickerInfo.sectorUrl}" target="_blank" class="preview-group-link preview-sector-link"><span>${escapeHtml(tickerInfo.sector)}</span></a>` +
                     `<span class="preview-separator">\\</span><a href="${tickerInfo.industryUrl}" target="_blank" class="preview-group-link preview-industry-link"><span>${escapeHtml(tickerInfo.industry)}</span></a>` +
-                    `<span class="preview-separator">\\</span><a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank" class="preview-ticker-link">${escapeHtml(tickerInfo.ticker)}</a>${chartBtn}${tickerTagChipsHtml(tickerInfo.ticker)}`;
+                    `<span class="preview-separator">\\</span><a href="https://www.tradingview.com/symbols/${tickerInfo.exchange}-${tickerInfo.ticker}/" target="_blank" class="preview-ticker-link">${escapeHtml(tickerInfo.ticker)}</a>${chartBtn}`;
 
+                document.getElementById('preview-tags').innerHTML = tickerTagChipsHtml(tickerInfo.ticker);
                 document.getElementById('preview-metrics').innerHTML = metricChipsHtml(tickerInfo.ticker);
 
                 const sectorLinkEl = titleElement.querySelector('.preview-sector-link');
@@ -1668,7 +1885,10 @@
             } else {
                 if (navLinks) navLinks.style.display = 'flex';
                 if (controls) controls.style.display = 'none';
+                if (directRefresh) directRefresh.style.display = 'inline-flex';
+                closePreviewActionsMenu();
                 titleElement.textContent = 'Preview';
+                document.getElementById('preview-tags').innerHTML = '';
                 document.getElementById('preview-metrics').innerHTML = '';
                 hideTickerTagTooltip(0);
             }
@@ -2486,6 +2706,36 @@
         KeyboardNavigation.init();
         initChartToggle();
         initSortToggles();
+        initPreviewActionsMenu();
+        document.querySelectorAll('[data-refresh-tags]').forEach(button => {
+            button.addEventListener('click', refreshTickerTagMappings);
+        });
+    }
+
+    function closePreviewActionsMenu() {
+        const controls = document.getElementById('chart-controls');
+        const toggle = document.getElementById('preview-actions-toggle');
+        controls?.classList.remove('open');
+        toggle?.setAttribute('aria-expanded', 'false');
+    }
+
+    function initPreviewActionsMenu() {
+        const controls = document.getElementById('chart-controls');
+        const toggle = document.getElementById('preview-actions-toggle');
+        if (!controls || !toggle) return;
+
+        toggle.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const isOpen = controls.classList.toggle('open');
+            toggle.setAttribute('aria-expanded', String(isOpen));
+        });
+
+        controls.addEventListener('click', event => event.stopPropagation());
+        document.addEventListener('click', closePreviewActionsMenu);
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closePreviewActionsMenu();
+        });
     }
 
     function initSortToggles() {
