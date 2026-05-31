@@ -955,13 +955,14 @@
                 item.title = `${ticker.ticker}${rs != null ? ` · RS: ${rs.toFixed(2)}` : ''} — click to preview`;
                 item.innerHTML = `<div class="item-main"><span class="item-name">${ticker.ticker}</span>${rsPill(rs)}</div>`;
                 item.addEventListener('click', () => {
-                    if (index === AppState.selectedTickerIndex) {
+                    if (ticker.ticker === AppState.currentTickerSymbol) {
                         AppState.selectedTickerIndex = -1;
                         AppState.currentTickerSymbol = null;
                         this.renderTickers();
                         this.highlightTickerContext();
                         PreviewManager.updatePreview();
                     } else {
+                        AppState.currentTickerSymbol = ticker.ticker;
                         AppState.selectTicker(index);
                         this.renderTickers();
                         TradingViewWidget.show(ticker.ticker);
