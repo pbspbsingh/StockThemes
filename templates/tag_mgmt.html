@@ -374,16 +374,32 @@ select { padding: 5px 8px; }
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .row-actions input { flex: 1; min-width: 260px; }
 
-.status {
-    min-height: 26px;
-    padding: 7px 10px;
-    background: #171717;
-    border-bottom: 1px solid #2a2a2a;
-    color: #888;
+.toast {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 1000;
+    max-width: min(420px, calc(100vw - 28px));
+    padding: 10px 12px;
+    background: #202020;
+    border: 1px solid #3a3a3a;
+    border-left: 3px solid #4a9eff;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    color: #dcdcdc;
     font-size: 12px;
+    line-height: 1.35;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-8px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
 }
-.status.error { color: #ff8f8f; }
-.status.ok { color: #77c98f; }
+.toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+.toast.error { background: #231616; border-color: #5a2a2a; border-left-color: #e74c3c; color: #ffaaaa; }
+.toast.ok { background: #172116; border-color: #2d4a2b; border-left-color: #2ecc71; color: #b8e6c5; }
 
 .stats {
     display: flex;
@@ -474,10 +490,10 @@ select { padding: 5px 8px; }
         <div class="column-header">
             <span id="work-title">AI Tagging Workflow</span>
         </div>
-        <div class="status" id="status"></div>
         <div class="work" id="work"></div>
     </section>
 </div>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script id="tags-data" type="application/json">{{ tags_json|safe }}</script>
 <script id="stocks-data" type="application/json">{{ stocks_json|safe }}</script>
@@ -495,14 +511,25 @@ let pendingTagNames = [];
 let tagInputQuery = '';
 let includeAlreadyTagged = false;
 let lastPreview = null;
+let toastTimer = null;
 
 const el = id => document.getElementById(id);
 const lower = value => String(value || '').toLowerCase();
 
 function setStatus(message, type = '') {
-    const node = el('status');
+    const node = el('toast');
+    if (!node) return;
+    if (toastTimer) clearTimeout(toastTimer);
+
     node.textContent = message || '';
-    node.className = 'status' + (type ? ' ' + type : '');
+    node.className = 'toast' + (type ? ' ' + type : '');
+    if (!message) return;
+
+    requestAnimationFrame(() => node.classList.add('show'));
+    toastTimer = setTimeout(() => {
+        node.classList.remove('show');
+        toastTimer = null;
+    }, type === 'error' ? 5000 : 3000);
 }
 
 async function api(path, options = {}) {
@@ -863,12 +890,6 @@ function renderPreview(preview) {
     el('apply-import').disabled = errors.length > 0 || preview.rows_parsed === 0;
 }
 
-function renderImportError(message) {
-    const previewNode = el('preview');
-    if (!previewNode) return;
-    previewNode.innerHTML = `<div class="errors"><div>${escapeHtml(message)}</div></div>`;
-}
-
 async function createTag() {
     const input = el('new-tag-name');
     const name = input.value.trim();
@@ -978,11 +999,15 @@ async function previewImport() {
             body: JSON.stringify({ content: el('import-content').value }),
         });
         renderPreview(lastPreview);
-        setStatus('Preview ready', 'ok');
+        const errorCount = (lastPreview.errors || []).length;
+        setStatus(
+            errorCount ? `Preview found ${errorCount} import ${errorCount === 1 ? 'error' : 'errors'}` : 'Preview ready',
+            errorCount ? 'error' : 'ok',
+        );
     } catch (err) {
         lastPreview = null;
         el('apply-import').disabled = true;
-        renderImportError(err.message);
+        el('preview').innerHTML = '';
         setStatus(err.message, 'error');
     }
 }
@@ -993,12 +1018,11 @@ async function applyImport() {
             method: 'POST',
             body: JSON.stringify({ content: el('import-content').value }),
         });
-        setStatus(`Updated ${result.mappings_set} tag assignments and removed ${result.mappings_removed} old assignments`, 'ok');
+        setStatus(`Import completed: updated ${result.mappings_set} tag assignments and removed ${result.mappings_removed} old assignments`, 'ok');
         await refreshData();
         lastPreview = null;
         el('apply-import').disabled = true;
     } catch (err) {
-        renderImportError(err.message);
         setStatus(err.message, 'error');
     }
 }
