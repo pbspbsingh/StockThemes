@@ -26,6 +26,7 @@ pub mod rrg_util;
 pub mod rs;
 pub mod store;
 pub mod summary;
+pub mod tags;
 pub mod trades;
 pub mod tv;
 pub mod util;
@@ -88,7 +89,7 @@ pub fn init_logger() {
         .init();
 }
 
-pub async fn start_http_server(home: String) -> anyhow::Result<()> {
+pub async fn start_http_server(store: Arc<Store>, home: String) -> anyhow::Result<()> {
     let addr = format!("127.0.0.1:{}", APP_CONFIG.http_port);
     let listener = TcpListener::bind(&addr)
         .await
@@ -99,6 +100,7 @@ pub async fn start_http_server(home: String) -> anyhow::Result<()> {
         .route("/", routing::get(async || Html(home)))
         .route("/rrg.html", routing::get(rrg_util::rrg_home))
         .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler))
+        .merge(tags::router(store))
         .layer(middleware::from_fn(no_cache));
     axum::serve(listener, app).await?;
 

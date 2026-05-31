@@ -9,6 +9,7 @@ use sqlx::{
 
 use crate::util::is_upto_date;
 use crate::yf::Candle;
+use serde::Serialize;
 use std::sync::{Arc, LazyLock, Weak};
 use tokio::sync::Mutex;
 use tracing::warn;
@@ -20,7 +21,26 @@ static INSTANCE: LazyLock<Mutex<Weak<Store>>> = LazyLock::new(|| Mutex::new(Weak
 // ── Store ────────────────────────────────────────────────────────────────────
 
 pub struct Store {
-    pool: SqlitePool,
+    pub(crate) pool: SqlitePool,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct Tag {
+    pub id: i64,
+    pub name: String,
+    pub stock_count: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct StockTags {
+    pub ticker: String,
+    pub tags: Vec<Tag>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum DeleteTagResult {
+    Deleted,
+    InUse(i64),
 }
 
 impl Store {

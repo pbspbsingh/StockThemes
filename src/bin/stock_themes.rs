@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
         stock_metrics,
     );
 
-    start_http_server(html).await
+    start_http_server(store, html).await
 }
 
 async fn fetch_stock_info(store: &Store, tickers: Vec<String>) -> anyhow::Result<Vec<Stock>> {

@@ -6,7 +6,8 @@ use axum::{Extension, Router, middleware, routing};
 use clap::Parser;
 use stock_themes::config::APP_CONFIG;
 use stock_themes::rrg_util::RrgMode;
-use stock_themes::{etf_map, init_logger, no_cache, rrg_util, util};
+use stock_themes::store::Store;
+use stock_themes::{etf_map, init_logger, no_cache, rrg_util, tags, util};
 use tokio::net::TcpListener;
 use tracing::info;
 
@@ -59,10 +60,12 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("Failed to bind at {addr}"))?;
 
     info!("Running http server at: {addr}");
+    let store = Store::load_store().await?;
     let app = Router::new()
         .route("/", routing::get(rrg_util::rrg_home))
         .route("/rrg.html", routing::get(rrg_util::rrg_home))
         .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler))
+        .merge(tags::router(store))
         .layer(Extension(mode))
         .layer(middleware::from_fn(no_cache));
     axum::serve(listener, app).await?;

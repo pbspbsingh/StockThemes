@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='5' fill='%231a1a1a'/><path d='M7 9h18M7 16h18M7 23h12' stroke='%234a9eff' stroke-width='2' stroke-linecap='round'/><circle cx='10' cy='9' r='3' fill='%232ecc71'/><circle cx='20' cy='16' r='3' fill='%23f39c12'/><circle cx='14' cy='23' r='3' fill='%23e74c3c'/></svg>">
+<title>Tag Management</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    background: #1a1a1a;
+    color: #d0d0d0;
+    font-size: 13px;
+}
+
+.container {
+    display: grid;
+    grid-template-columns: 270px 430px minmax(520px, 1fr);
+    height: 100vh;
+    gap: 1px;
+    background: #0a0a0a;
+}
+
+.column {
+    background: #1e1e1e;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.column-header {
+    background: #2d2d2d;
+    color: #e0e0e0;
+    padding: 10px;
+    min-height: 42px;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,.3);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.header-actions { display: flex; align-items: center; gap: 5px; }
+.header-count { color: #777; font-size: 11px; font-weight: 600; }
+
+.toolbar {
+    padding: 8px 10px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #2a2a2a;
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.toolbar.vertical {
+    flex-direction: column;
+}
+
+.list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a3a transparent;
+}
+.list::-webkit-scrollbar { width: 4px; }
+.list::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 2px; }
+
+.item {
+    padding: 8px 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #2a2a2a;
+    transition: background 0.15s;
+    color: #d0d0d0;
+}
+.item:hover { background: #252525; }
+.item.selected {
+    background: #1a3a52;
+    border-left: 3px solid #4a9eff;
+    padding-left: 7px;
+}
+
+.tag-row, .stock-row-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.tag-name, .ticker {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-weight: 600;
+}
+
+.ticker { color: #e0e0e0; letter-spacing: 0.2px; }
+.count { color: #666; font-size: 11px; flex-shrink: 0; }
+
+.stock-tags {
+    margin-top: 5px;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 190px;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #c8c8c8;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.chip.new { border-color: #4a9eff; color: #9dccff; }
+.chip.warn { border-color: #f39c12; color: #f2c16b; }
+.chip button {
+    border: none;
+    background: transparent;
+    color: #777;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+}
+.chip button:hover { color: #e74c3c; }
+
+.available-tags {
+    gap: 6px;
+}
+.available-tags .chip {
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 12px;
+}
+.available-tags .chip:hover {
+    background: #1a3a52;
+    border-color: #4a9eff;
+    color: #fff;
+}
+.available-tags .chip.disabled {
+    cursor: default;
+    opacity: 0.35;
+    color: #777;
+    border-color: #2a2a2a;
+}
+.available-tags .chip.disabled:hover {
+    background: #1a1a1a;
+    border-color: #2a2a2a;
+    color: #777;
+}
+
+.tag-input-box {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    flex: 1;
+    min-width: 260px;
+    min-height: 32px;
+    padding: 4px;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 4px;
+}
+.tag-input-box:focus-within { border-color: #4a9eff; }
+.tag-input-box input {
+    flex: 1;
+    min-width: 150px;
+    border: none;
+    background: transparent;
+    padding: 3px 4px;
+}
+.tag-input-box input:focus { border: none; }
+.pending-tags {
+    display: contents;
+}
+.tag-suggestions {
+    margin-top: 7px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.tag-suggestions .chip {
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 12px;
+}
+.tag-suggestions .chip:hover {
+    background: #1a3a52;
+    border-color: #4a9eff;
+    color: #fff;
+}
+
+.prompt-options {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 10px 0 8px;
+    color: #b6b6b6;
+    font-size: 12px;
+}
+.prompt-options label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+}
+.prompt-options input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: #4a9eff;
+}
+
+#ai-prompt {
+    width: 100%;
+    min-height: 380px;
+    resize: none;
+    margin-top: 8px;
+    line-height: 1.45;
+}
+
+.no-tags { color: #666; font-size: 11px; }
+
+.btn, .icon-btn {
+    background: #2a2a2a;
+    color: #cfcfcf;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn { padding: 5px 9px; }
+.icon-btn {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.btn:hover, .icon-btn:hover { background: #333; color: #fff; border-color: #555; }
+.btn.primary { background: #1a3a52; border-color: #4a9eff; color: #9dccff; }
+.btn.danger:hover, .icon-btn.danger:hover { background: #4a1f1f; border-color: #e74c3c; color: #fff; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-clear {
+    display: inline-block;
+    padding: 1px 7px;
+    font-size: 10px;
+    font-weight: 600;
+    background: #2a2a2a;
+    color: #888;
+    border: 1px solid #3a3a3a;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 16px;
+    transition: color 0.2s, opacity 0.2s;
+}
+.btn-clear:hover:not(:disabled) { color: #d0d0d0; }
+.btn-clear:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.toggle {
+    display: flex;
+    gap: 2px;
+    background: #111;
+    border-radius: 4px;
+    padding: 2px;
+}
+.toggle button {
+    padding: 4px 9px;
+    border: none;
+    background: transparent;
+    color: #888;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 3px;
+}
+.toggle button:hover { color: #d0d0d0; }
+.toggle button.active { background: #4a9eff; color: #fff; }
+
+input, textarea, select {
+    background: #111;
+    color: #d0d0d0;
+    border: 1px solid #333;
+    border-radius: 4px;
+    font: inherit;
+    outline: none;
+}
+input { padding: 6px 8px; min-width: 0; }
+textarea {
+    width: 100%;
+    min-height: 210px;
+    resize: vertical;
+    padding: 9px;
+    line-height: 1.45;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+input:focus, textarea:focus, select:focus { border-color: #4a9eff; }
+select { padding: 5px 8px; }
+
+.search-wrap {
+    display: flex;
+    gap: 5px;
+    width: 100%;
+    align-items: stretch;
+}
+.search-wrap .search { flex: 1; }
+.search-clear {
+    width: 28px;
+    height: auto;
+    min-height: 30px;
+    flex-shrink: 0;
+    padding: 0;
+    line-height: 1;
+}
+.inline-form { display: flex; gap: 6px; }
+.inline-form input { flex: 1; }
+
+.work {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px;
+}
+
+.section { margin-bottom: 18px; }
+.section-title {
+    color: #4a9eff;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.selected-title {
+    font-size: 22px;
+    color: #e5e5e5;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.muted { color: #777; font-size: 12px; }
+
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.row-actions input { flex: 1; min-width: 260px; }
+
+.status {
+    min-height: 26px;
+    padding: 7px 10px;
+    background: #171717;
+    border-bottom: 1px solid #2a2a2a;
+    color: #888;
+    font-size: 12px;
+}
+.status.error { color: #ff8f8f; }
+.status.ok { color: #77c98f; }
+
+.stats {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 8px 0 10px;
+}
+.stat {
+    color: #888;
+    font-size: 12px;
+}
+.stat b { color: #e0e0e0; }
+
+.preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.preview-table th {
+    color: #4a9eff;
+    text-align: left;
+    padding: 7px 8px;
+    border-bottom: 2px solid #4a9eff;
+}
+.preview-table td {
+    padding: 7px 8px;
+    border-bottom: 1px solid #2a2a2a;
+    vertical-align: top;
+}
+.preview-table .num { text-align: right; color: #aaa; white-space: nowrap; }
+
+.copy-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.errors {
+    border: 1px solid #5a2a2a;
+    background: #231616;
+    color: #ffaaaa;
+    padding: 8px;
+    border-radius: 4px;
+    margin-top: 8px;
+}
+.errors div + div { margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+    <aside class="column">
+        <div class="column-header">
+            <span>Tags</span>
+            <div class="header-actions">
+                <span class="header-count" id="tag-count"></span>
+                <button class="btn-clear" id="clear-selected-tags" title="Clear selected tags" disabled>Clear</button>
+                <button class="icon-btn" id="add-tag-btn" title="Add tag">+</button>
+            </div>
+        </div>
+        <div class="toolbar vertical">
+            <div class="search-wrap">
+                <input class="search" id="tag-search" placeholder="Search tags">
+                <button class="icon-btn search-clear" id="clear-tag-search" title="Clear tag search">×</button>
+            </div>
+            <div class="inline-form" id="new-tag-form" style="display:none">
+                <input id="new-tag-name" placeholder="New tag name">
+                <button class="btn primary" id="save-new-tag">Add</button>
+            </div>
+        </div>
+        <div class="list" id="tag-list"></div>
+    </aside>
+
+    <main class="column">
+        <div class="column-header">
+            <span id="stocks-title">Stocks</span>
+            <span class="header-count" id="stock-count"></span>
+        </div>
+        <div class="toolbar vertical">
+            <div class="search-wrap">
+                <input class="search" id="stock-search" placeholder="Search tickers or tags">
+                <button class="icon-btn search-clear" id="clear-stock-search" title="Clear stock search">×</button>
+            </div>
+        </div>
+        <div class="list" id="stock-list"></div>
+    </main>
+
+    <section class="column">
+        <div class="column-header">
+            <span id="work-title">AI Tagging Workflow</span>
+        </div>
+        <div class="status" id="status"></div>
+        <div class="work" id="work"></div>
+    </section>
+</div>
+
+<script id="tags-data" type="application/json">{{ tags_json|safe }}</script>
+<script id="stocks-data" type="application/json">{{ stocks_json|safe }}</script>
+<script id="untagged-data" type="application/json">{{ untagged_json|safe }}</script>
+
+<script>
+let tags = JSON.parse(document.getElementById('tags-data').textContent);
+let stocks = JSON.parse(document.getElementById('stocks-data').textContent);
+let untagged = JSON.parse(document.getElementById('untagged-data').textContent);
+const UNTAGGED_TAG_ID = '__untagged__';
+let selectedTagIds = new Set();
+let untaggedSelected = true;
+let selectedTicker = null;
+let pendingTagNames = [];
+let tagInputQuery = '';
+let includeAlreadyTagged = false;
+let lastPreview = null;
+
+const el = id => document.getElementById(id);
+const lower = value => String(value || '').toLowerCase();
+
+function setStatus(message, type = '') {
+    const node = el('status');
+    node.textContent = message || '';
+    node.className = 'status' + (type ? ' ' + type : '');
+}
+
+async function api(path, options = {}) {
+    const response = await fetch(path, {
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...options,
+    });
+    if (!response.ok) {
+        let message = response.statusText;
+        try {
+            const body = await response.json();
+            message = body.error || message;
+        } catch (_) {}
+        throw new Error(message);
+    }
+    if (response.status === 204) return null;
+    return response.json();
+}
+
+async function refreshData() {
+    [tags, stocks, untagged] = await Promise.all([
+        api('/api/tags'),
+        api('/api/stock-tags'),
+        api('/api/stock-tags/untagged'),
+    ]);
+    renderAll();
+}
+
+function renderAll() {
+    renderTags();
+    renderStocks();
+    renderWork();
+}
+
+function renderTags() {
+    const query = lower(el('tag-search').value);
+    const list = el('tag-list');
+    const filtered = tags.filter(tag => lower(tag.name).includes(query));
+    const selectedCount = selectedTagIds.size + (untaggedSelected ? 1 : 0);
+    el('tag-count').textContent = selectedCount ? `${selectedCount}/${tags.length + 1}` : `${tags.length + 1}`;
+    el('clear-selected-tags').disabled = untaggedSelected && selectedTagIds.size === 0;
+    const untaggedRow = !query || 'untagged'.includes(query) ? `
+        <div class="item ${untaggedSelected ? 'selected' : ''}" data-tag-id="${UNTAGGED_TAG_ID}">
+            <div class="tag-row">
+                <span class="tag-name" title="Untagged">Untagged</span>
+                <span class="count">${untagged.length}</span>
+            </div>
+        </div>
+    ` : '';
+    list.innerHTML = untaggedRow + (filtered.map(tag => `
+        <div class="item ${selectedTagIds.has(tag.id) ? 'selected' : ''}" data-tag-id="${tag.id}">
+            <div class="tag-row">
+                <span class="tag-name" title="${escapeHtml(tag.name)}">${escapeHtml(tag.name)}</span>
+                <span class="count">${tag.stock_count}</span>
+            </div>
+        </div>
+    `).join('') || (!untaggedRow ? '<div class="item"><span class="no-tags">No tags</span></div>' : ''));
+
+    list.querySelectorAll('[data-tag-id]').forEach(row => {
+        row.addEventListener('click', () => {
+            const rawTagId = row.dataset.tagId;
+            if (rawTagId === UNTAGGED_TAG_ID) {
+                untaggedSelected = true;
+                selectedTagIds.clear();
+                selectedTicker = null;
+                pendingTagNames = [];
+                tagInputQuery = '';
+                renderAll();
+                return;
+            }
+
+            const tagId = Number(rawTagId);
+            untaggedSelected = false;
+            if (selectedTagIds.has(tagId)) {
+                selectedTagIds.delete(tagId);
+            } else {
+                selectedTagIds.add(tagId);
+            }
+            if (!selectedTagIds.size) untaggedSelected = true;
+            selectedTicker = null;
+            pendingTagNames = [];
+            tagInputQuery = '';
+            renderAll();
+        });
+    });
+}
+
+function visibleStocks() {
+    const query = lower(el('stock-search').value);
+    const untaggedSet = new Set(untagged);
+    let rows = stocks.slice();
+
+    if (untaggedSelected) {
+        rows = rows.filter(stock => untaggedSet.has(stock.ticker) || stock.tags.length === 0);
+    } else if (selectedTagIds.size) {
+        rows = rows.filter(stock => stock.tags.some(tag => selectedTagIds.has(tag.id)));
+    }
+
+    if (query) {
+        rows = rows.filter(stock =>
+            lower(stock.ticker).includes(query) ||
+            stock.tags.some(tag => lower(tag.name).includes(query))
+        );
+    }
+    return rows;
+}
+
+function renderStocks() {
+    const rows = visibleStocks();
+    el('stocks-title').textContent = untaggedSelected ? 'Stocks: Untagged' : selectedTagIds.size ? `Stocks: ${selectedTagTitle()}` : 'Stocks';
+    el('stock-count').textContent = `${rows.length}`;
+    const list = el('stock-list');
+    list.innerHTML = rows.map(stock => `
+        <div class="item ${stock.ticker === selectedTicker ? 'selected' : ''}" data-ticker="${stock.ticker}">
+            <div class="stock-row-main">
+                <span class="ticker">${stock.ticker}</span>
+                <span class="count">${stock.tags.length || 'untagged'}</span>
+            </div>
+            <div class="stock-tags">
+                ${stock.tags.length
+                    ? stock.tags.map(tag => `<span class="chip" data-tag-chip="${tag.id}"><span>${escapeHtml(tag.name)}</span></span>`).join('')
+                    : '<span class="no-tags">No tags</span>'}
+            </div>
+        </div>
+    `).join('') || '<div class="item"><span class="no-tags">No stocks</span></div>';
+
+    list.querySelectorAll('[data-ticker]').forEach(row => {
+        row.addEventListener('click', event => {
+            const chip = event.target.closest('[data-tag-chip]');
+            if (chip) {
+                untaggedSelected = false;
+                selectedTagIds = new Set([Number(chip.dataset.tagChip)]);
+            }
+            const nextTicker = row.dataset.ticker;
+            if (selectedTicker === nextTicker && !chip) {
+                selectedTicker = null;
+                pendingTagNames = [];
+                tagInputQuery = '';
+            } else {
+                if (selectedTicker !== nextTicker) {
+                    pendingTagNames = [];
+                    tagInputQuery = '';
+                }
+                selectedTicker = nextTicker;
+            }
+            renderAll();
+        });
+    });
+}
+
+function renderWork() {
+    el('work-title').textContent = 'AI Tagging Workflow';
+    if (selectedTicker) {
+        renderStockDetails();
+    } else if (selectedTagIds.size === 1) {
+        renderSingleTagDetails();
+    } else if (selectedTagIds.size > 1) {
+        renderMultiTagDetails();
+    } else {
+        renderWorkflowIntro();
+    }
+}
+
+function renderWorkflowIntro() {
+    const prompt = buildAiPrompt(includeAlreadyTagged);
+    el('work').innerHTML = `
+        <div class="section">
+            <div class="selected-title">AI Tagging Workflow</div>
+            <div class="muted">Generate a prompt for an AI agent, then paste the JSON response below.</div>
+            <div class="prompt-options">
+                <label>
+                    <input type="checkbox" id="include-already-tagged" ${includeAlreadyTagged ? 'checked' : ''}>
+                    Include already tagged
+                </label>
+                <button class="btn primary" id="copy-ai-prompt">Copy Prompt</button>
+            </div>
+            <textarea id="ai-prompt" readonly>${escapeHtml(prompt)}</textarea>
+        </div>
+        <div class="section">
+            <div class="section-title">Current State</div>
+            <div class="stats">
+                <span class="stat"><b>${untagged.length}</b> untagged stocks</span>
+                <span class="stat"><b>${tags.length}</b> tags</span>
+                <span class="stat"><b>${stocks.length}</b> total stocks</span>
+            </div>
+        </div>
+        ${renderImportSection()}
+    `;
+
+    el('include-already-tagged').addEventListener('change', event => {
+        includeAlreadyTagged = event.target.checked;
+        renderWorkflowIntro();
+    });
+    el('copy-ai-prompt').addEventListener('click', () => copyText(el('ai-prompt').value, 'Copied AI prompt'));
+    bindImportSection();
+}
+
+function renderStockDetails() {
+    const stock = stocks.find(s => s.ticker === selectedTicker) || { ticker: selectedTicker, tags: [] };
+    el('work').innerHTML = `
+        <div class="section">
+            <div class="selected-title">${stock.ticker}</div>
+            <div class="muted">${stock.tags.length ? `${stock.tags.length} tags assigned` : 'No tags assigned'}</div>
+        </div>
+        <div class="section">
+            <div class="section-title">Tags</div>
+            <div class="stock-tags">
+                ${stock.tags.length ? stock.tags.map(tag => `
+                    <span class="chip"><span>${escapeHtml(tag.name)}</span><button data-remove-tag="${tag.id}" title="Remove tag">x</button></span>
+                `).join('') : '<span class="no-tags">No tags</span>'}
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-title">Add Multiple Tags</div>
+            <div class="row-actions">
+                <div class="tag-input-box">
+                    <span class="pending-tags" id="pending-tags"></span>
+                    <input id="stock-tag-input" placeholder="Search existing tags" value="${escapeAttr(tagInputQuery)}">
+                </div>
+                <button class="btn primary" id="add-stock-tags">Add</button>
+            </div>
+            <div class="tag-suggestions" id="tag-suggestions"></div>
+        </div>
+        <div class="section">
+            <div class="section-title">Available Tags</div>
+            <div class="stock-tags available-tags" id="available-tags"></div>
+        </div>
+    `;
+
+    el('add-stock-tags').addEventListener('click', () => addTagsToSelectedStock());
+    el('stock-tag-input').addEventListener('input', event => {
+        tagInputQuery = event.target.value;
+        renderTagPicker();
+    });
+    el('stock-tag-input').addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            const suggestion = matchingAvailableTags()[0];
+            if (suggestion) {
+                addPendingTags([suggestion.name]);
+            } else if (pendingTagNames.length) {
+                addTagsToSelectedStock();
+            } else {
+                setStatus('Select an existing tag from suggestions or the available list', 'error');
+            }
+        }
+    });
+    document.querySelectorAll('[data-remove-tag]').forEach(btn => {
+        btn.addEventListener('click', () => removeTagFromStock(stock.ticker, Number(btn.dataset.removeTag)));
+    });
+    renderTagPicker();
+    el('stock-tag-input')?.focus();
+}
+
+function renderSingleTagDetails() {
+    const tagId = [...selectedTagIds][0];
+    const tag = tags.find(t => t.id === tagId);
+    if (!tag) {
+        renderWorkflowIntro();
+        return;
+    }
+    const taggedStocks = stocks.filter(stock => stock.tags.some(t => t.id === tag.id));
+    el('work').innerHTML = `
+        <div class="section">
+            <div class="selected-title">
+                <span>${escapeHtml(tag.name)}</span>
+                <button class="icon-btn" id="edit-tag" title="Rename tag">✎</button>
+                <button class="icon-btn danger" id="delete-tag" title="Delete tag">×</button>
+            </div>
+            <div class="muted">${tag.stock_count} stocks assigned</div>
+        </div>
+        <div class="section">
+            <div class="section-title">Stocks</div>
+            <div class="stock-tags">
+                ${taggedStocks.map(stock => `<span class="chip"><span>${stock.ticker}</span></span>`).join('') || '<span class="no-tags">No stocks use this tag</span>'}
+            </div>
+        </div>
+    `;
+    el('edit-tag').addEventListener('click', () => renameSelectedTag());
+    el('delete-tag').addEventListener('click', () => deleteSelectedTag());
+}
+
+function renderMultiTagDetails() {
+    const selected = selectedTags();
+    const taggedStocks = visibleStocks();
+    el('work').innerHTML = `
+        <div class="section">
+            <div class="selected-title">
+                <span>${selected.length} tags selected</span>
+                <button class="btn" onclick="clearSelectedTags()">Clear</button>
+            </div>
+            <div class="stock-tags">
+                ${selected.map(tag => `<span class="chip"><span>${escapeHtml(tag.name)}</span></span>`).join('')}
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-title">Matching Stocks</div>
+            <div class="stock-tags">
+                ${taggedStocks.map(stock => `<span class="chip"><span>${stock.ticker}</span></span>`).join('') || '<span class="no-tags">No stocks match these tags</span>'}
+            </div>
+        </div>
+    `;
+}
+
+function renderImportSection() {
+    return `
+        <div class="section">
+            <div class="section-title">Import</div>
+            <div class="muted">Paste the JSON object returned by the AI. Import replaces each ticker's current tags.</div>
+        </div>
+        <div class="section">
+            <textarea id="import-content" placeholder='{"NVDA":["AI Infrastructure","Semiconductors"],"MSFT":["Cloud Computing","Enterprise Software"]}'></textarea>
+        </div>
+        <div class="section row-actions">
+            <button class="btn primary" id="preview-import">Preview</button>
+            <button class="btn" id="apply-import" disabled>Apply Import</button>
+        </div>
+        <div id="preview"></div>
+    `;
+}
+
+function bindImportSection() {
+    const previewBtn = el('preview-import');
+    const applyBtn = el('apply-import');
+    if (!previewBtn || !applyBtn) return;
+
+    previewBtn.addEventListener('click', previewImport);
+    applyBtn.addEventListener('click', applyImport);
+}
+
+function renderPreview(preview) {
+    const previewNode = el('preview');
+    const errors = preview.errors || [];
+    previewNode.innerHTML = `
+        <div class="stats">
+            <span class="stat"><b>${preview.rows_parsed}</b> rows</span>
+            <span class="stat"><b>${preview.new_tags.length}</b> new tags</span>
+            <span class="stat"><b>${preview.mappings_to_set}</b> set</span>
+            <span class="stat"><b>${preview.mappings_to_remove}</b> remove</span>
+            <span class="stat"><b>${preview.unknown_tickers.length}</b> unknown tickers</span>
+            <span class="stat"><b>${errors.length}</b> errors</span>
+        </div>
+        ${preview.new_tags.length ? `<div class="section"><div class="section-title">New Tags</div><div class="stock-tags">${preview.new_tags.map(tag => `<span class="chip new"><span>${escapeHtml(tag)}</span></span>`).join('')}</div></div>` : ''}
+        ${errors.length ? `<div class="errors">${errors.map(error => `<div>${error.row ? `Row ${error.row}: ` : ''}${escapeHtml(error.message)}</div>`).join('')}</div>` : ''}
+        <table class="preview-table">
+            <thead><tr><th>Ticker</th><th>Tags</th><th class="num">Set</th><th class="num">Remove</th></tr></thead>
+            <tbody>
+                ${preview.rows.map(row => `
+                    <tr>
+                        <td>${row.ticker}${row.unknown_ticker ? ' <span class="chip warn"><span>unknown</span></span>' : ''}</td>
+                        <td>${row.tags.length ? row.tags.map(tag => `<span class="chip ${row.new_tags.some(t => lower(t) === lower(tag)) ? 'new' : ''}"><span>${escapeHtml(tag)}</span></span>`).join(' ') : '<span class="no-tags">No tags</span>'}</td>
+                        <td class="num">${row.mappings_to_set}</td>
+                        <td class="num">${row.mappings_to_remove}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    el('apply-import').disabled = errors.length > 0 || preview.rows_parsed === 0;
+}
+
+async function createTag() {
+    const input = el('new-tag-name');
+    const name = input.value.trim();
+    if (!name) return;
+    try {
+        const tag = await api('/api/tags', { method: 'POST', body: JSON.stringify({ name }) });
+        untaggedSelected = false;
+        selectedTagIds = new Set([tag.id]);
+        input.value = '';
+        el('new-tag-form').style.display = 'none';
+        setStatus(`Created tag ${tag.name}`, 'ok');
+        await refreshData();
+    } catch (err) {
+        setStatus(err.message, 'error');
+    }
+}
+
+async function renameSelectedTag() {
+    if (selectedTagIds.size !== 1) return;
+    const selectedTagId = [...selectedTagIds][0];
+    const current = tags.find(tag => tag.id === selectedTagId);
+    const name = prompt('Rename tag', current?.name || '')?.trim();
+    if (!name) return;
+    try {
+        const tag = await api(`/api/tags/${selectedTagId}`, { method: 'PUT', body: JSON.stringify({ name }) });
+        selectedTagIds = new Set([tag.id]);
+        setStatus(`Renamed tag to ${tag.name}`, 'ok');
+        await refreshData();
+    } catch (err) {
+        setStatus(err.message, 'error');
+    }
+}
+
+async function deleteSelectedTag() {
+    if (selectedTagIds.size !== 1) return;
+    const selectedTagId = [...selectedTagIds][0];
+    try {
+        await api(`/api/tags/${selectedTagId}`, { method: 'DELETE' });
+        selectedTagIds.clear();
+        setStatus('Deleted tag', 'ok');
+        await refreshData();
+    } catch (err) {
+        setStatus(err.message, 'error');
+    }
+}
+
+async function addTagsToSelectedStock() {
+    const names = uniqueTagNames(pendingTagNames);
+    if (selectedTicker && names.length) {
+        const ok = await addTags(selectedTicker, names);
+        if (ok) {
+            pendingTagNames = [];
+            tagInputQuery = '';
+            renderAll();
+        }
+    } else {
+        setStatus('Select one or more existing tags before adding', 'error');
+    }
+}
+
+function addPendingTags(names) {
+    const stock = stocks.find(s => s.ticker === selectedTicker) || { tags: [] };
+    const assigned = stock.tags.map(tag => tag.name);
+    const known = tags.map(tag => tag.name);
+    pendingTagNames = uniqueTagNames([...pendingTagNames, ...names])
+        .filter(name => known.some(tag => lower(tag) === lower(name)))
+        .filter(name => !assigned.some(tag => lower(tag) === lower(name)));
+    tagInputQuery = '';
+    const input = el('stock-tag-input');
+    if (input) input.value = '';
+    renderTagPicker();
+    el('stock-tag-input')?.focus();
+}
+
+async function addTags(ticker, names) {
+    try {
+        const result = await api('/api/stock-tags/tags', {
+            method: 'POST',
+            body: JSON.stringify({ ticker, tags: names }),
+        });
+        setStatus(`Added ${result.added_tags.length} tags to ${ticker}`, 'ok');
+        await refreshData();
+        return true;
+    } catch (err) {
+        setStatus(err.message, 'error');
+        return false;
+    }
+}
+
+async function removeTagFromStock(ticker, tagId) {
+    try {
+        await api('/api/stock-tags/tags', {
+            method: 'DELETE',
+            body: JSON.stringify({ ticker, tag_id: tagId }),
+        });
+        setStatus(`Removed tag from ${ticker}`, 'ok');
+        await refreshData();
+    } catch (err) {
+        setStatus(err.message, 'error');
+    }
+}
+
+async function previewImport() {
+    try {
+        lastPreview = await api('/api/tag-import/preview', {
+            method: 'POST',
+            body: JSON.stringify({ content: el('import-content').value }),
+        });
+        renderPreview(lastPreview);
+        setStatus('Preview ready', 'ok');
+    } catch (err) {
+        lastPreview = null;
+        el('apply-import').disabled = true;
+        setStatus(err.message, 'error');
+    }
+}
+
+async function applyImport() {
+    try {
+        const result = await api('/api/tag-import', {
+            method: 'POST',
+            body: JSON.stringify({ content: el('import-content').value }),
+        });
+        setStatus(`Updated ${result.mappings_set} tag assignments and removed ${result.mappings_removed} old assignments`, 'ok');
+        await refreshData();
+        lastPreview = null;
+        el('apply-import').disabled = true;
+    } catch (err) {
+        setStatus(err.message, 'error');
+    }
+}
+
+async function copyText(text, message) {
+    try {
+        await navigator.clipboard.writeText(text);
+        setStatus(message, 'ok');
+    } catch (_) {
+        setStatus('Clipboard copy failed', 'error');
+    }
+}
+
+function splitTagInput(input) {
+    return input.split(/[;,]/).map(value => value.trim()).filter(Boolean);
+}
+
+function buildAiPrompt(includeTagged) {
+    const allowedTags = tags.map(tag => tag.name);
+    const selectedStocks = includeTagged
+        ? stocks.slice()
+        : stocks.filter(stock => untagged.includes(stock.ticker) || stock.tags.length === 0);
+    const inputMap = selectedStocks.length
+        ? Object.fromEntries(selectedStocks.map(stock => [
+            stock.ticker,
+            stock.tags.length ? stock.tags.map(tag => tag.name) : [],
+        ]))
+        : {};
+
+    return `You need to assign thematic tags to stocks. These tags must reflect the core business of each company. You will receive two JSON blocks.
+
+Rules:
+- Use only tags from the allowed tags JSON. Do not create new tags,
+  variants, synonyms, or near-duplicates.
+- Ignore existing tag values. Assign tags based solely on your knowledge
+  of each company's core business.
+- Assign all tags that are central to the company's business model.
+  Avoid tagging peripheral or minor activities.
+- If no allowed tag fits a ticker, leave its array empty.
+- Return the same JSON object shape as the input, with tag arrays
+  updated in place. Return JSON only - no explanation, no markdown.
+
+Allowed tags JSON:
+\`\`\`json
+${JSON.stringify(allowedTags, null, 2)}
+\`\`\`
+
+Input ticker-to-tags JSON:
+\`\`\`json
+${JSON.stringify(inputMap, null, 2)}
+\`\`\`
+
+Return the same JSON object shape as the input ticker-to-tags JSON, with the tag arrays updated in place.
+`;
+}
+
+function tagPickerState() {
+    const stock = stocks.find(s => s.ticker === selectedTicker) || { tags: [] };
+    const assigned = new Set(stock.tags.map(tag => lower(tag.name)));
+    const pending = new Set(pendingTagNames.map(lower));
+    return { assigned, pending };
+}
+
+function tagDisabledReason(tag, state = tagPickerState()) {
+    const key = lower(tag.name);
+    if (state.assigned.has(key)) return 'assigned';
+    if (state.pending.has(key)) return 'pending';
+    return '';
+}
+
+function renderTagPicker() {
+    const pendingNode = el('pending-tags');
+    if (pendingNode) {
+        pendingNode.innerHTML = pendingTagNames.map((name, idx) => `
+            <span class="chip new"><span>${escapeHtml(name)}</span><button data-remove-pending-tag="${idx}" title="Remove pending tag">x</button></span>
+        `).join('');
+        pendingNode.querySelectorAll('[data-remove-pending-tag]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                pendingTagNames.splice(Number(btn.dataset.removePendingTag), 1);
+                renderTagPicker();
+            });
+        });
+    }
+
+    const suggestionsNode = el('tag-suggestions');
+    if (suggestionsNode) {
+        const suggestions = matchingAvailableTags().slice(0, 10);
+        suggestionsNode.innerHTML = tagInputQuery
+            ? suggestions.map(tag => `<span class="chip new" data-suggested-tag="${escapeAttr(tag.name)}"><span>${escapeHtml(tag.name)}</span></span>`).join('') || '<span class="no-tags">No matching existing tags</span>'
+            : '';
+        suggestionsNode.querySelectorAll('[data-suggested-tag]').forEach(chip => {
+            chip.addEventListener('click', () => addPendingTags([chip.dataset.suggestedTag]));
+        });
+    }
+
+    const availableNode = el('available-tags');
+    if (availableNode) {
+        const state = tagPickerState();
+        availableNode.innerHTML = tags.map(tag => {
+            const reason = tagDisabledReason(tag, state);
+            const title = reason === 'assigned' ? 'Already assigned' : reason === 'pending' ? 'Queued to add' : 'Add to pending tags';
+            return `<span class="chip new ${reason ? 'disabled' : ''}" data-available-tag="${escapeAttr(tag.name)}" title="${title}"><span>${escapeHtml(tag.name)}</span></span>`;
+        }).join('') || '<span class="no-tags">No tags defined</span>';
+        availableNode.querySelectorAll('[data-available-tag]').forEach(chip => {
+            chip.addEventListener('click', () => {
+                if (!chip.classList.contains('disabled')) addPendingTags([chip.dataset.availableTag]);
+            });
+        });
+    }
+}
+
+function matchingAvailableTags() {
+    if (!selectedTicker || !tagInputQuery.trim()) return [];
+    const { assigned, pending } = tagPickerState();
+    const query = lower(tagInputQuery);
+    return tags
+        .filter(tag => !assigned.has(lower(tag.name)) && !pending.has(lower(tag.name)))
+        .filter(tag => lower(tag.name).includes(query));
+}
+
+function uniqueTagNames(names) {
+    return names
+        .map(name => name.split(/\s+/).filter(Boolean).join(' '))
+        .filter(Boolean)
+        .reduce((acc, name) => {
+            if (!acc.some(existing => lower(existing) === lower(name))) acc.push(name);
+            return acc;
+        }, []);
+}
+
+function tagName(id) {
+    return tags.find(tag => tag.id === id)?.name || 'Unknown';
+}
+
+function selectedTags() {
+    return tags.filter(tag => selectedTagIds.has(tag.id));
+}
+
+function selectedTagTitle() {
+    const selected = selectedTags();
+    if (selected.length === 1) return selected[0].name;
+    return `${selected.length} selected`;
+}
+
+function clearSelectedTags() {
+    untaggedSelected = true;
+    selectedTagIds.clear();
+    selectedTicker = null;
+    pendingTagNames = [];
+    tagInputQuery = '';
+    renderAll();
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function escapeAttr(value) {
+    return escapeHtml(value);
+}
+
+el('tag-search').addEventListener('input', renderTags);
+el('stock-search').addEventListener('input', renderStocks);
+el('clear-tag-search').addEventListener('click', () => {
+    el('tag-search').value = '';
+    renderTags();
+});
+el('clear-stock-search').addEventListener('click', () => {
+    el('stock-search').value = '';
+    renderStocks();
+});
+el('add-tag-btn').addEventListener('click', () => {
+    const form = el('new-tag-form');
+    form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+    if (form.style.display !== 'none') el('new-tag-name').focus();
+});
+el('save-new-tag').addEventListener('click', createTag);
+el('new-tag-name').addEventListener('keydown', event => {
+    if (event.key === 'Enter') createTag();
+});
+el('clear-selected-tags').addEventListener('click', clearSelectedTags);
+
+renderAll();
+</script>
+</body>
+</html>
