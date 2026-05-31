@@ -550,7 +550,14 @@
             color: #9ecbff;
             font-size: 9px;
             font-weight: 600;
+            text-decoration: none;
             white-space: nowrap;
+        }
+        .ticker-tag-chip:hover {
+            border-color: #4a9eff;
+            background: rgba(74,158,255,0.16);
+            color: #ffffff;
+            text-decoration: none;
         }
 
         .ticker-tag-tooltip {
@@ -589,6 +596,66 @@
             font-weight: 600;
             line-height: 1.3;
             white-space: nowrap;
+            text-decoration: none;
+        }
+        .ticker-tag-tooltip-line:hover {
+            color: #4a9eff;
+            text-decoration: underline;
+        }
+
+        .ticker-tag-tooltip-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 3px 0;
+            border: none;
+            background: transparent;
+            color: #d0d0d0;
+            font: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.3;
+            text-align: left;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .ticker-tag-tooltip-row:hover {
+            color: #4a9eff;
+        }
+        .ticker-tag-tooltip-row input {
+            flex: 0 0 auto;
+            width: 13px;
+            height: 13px;
+            accent-color: #4a9eff;
+            pointer-events: none;
+        }
+        .ticker-tag-tooltip-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+            padding-top: 8px;
+            border-top: 1px solid #2a2a2a;
+        }
+        .ticker-tag-tooltip-action {
+            border: 1px solid #333;
+            border-radius: 4px;
+            background: #222;
+            color: #d0d0d0;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 8px;
+            cursor: pointer;
+        }
+        .ticker-tag-tooltip-action.primary {
+            border-color: #4a9eff;
+            background: #1a3a52;
+            color: #9dccff;
+        }
+        .ticker-tag-tooltip-action:hover {
+            color: #fff;
+            border-color: #555;
         }
 
         .ticker-tag-tooltip-empty {
@@ -1025,7 +1092,10 @@
         const tags = tickerTags.get(ticker) || [];
         if (tags.length === 0) return '';
         return `<span class="ticker-tag-chips">${
-            tags.map(tag => `<span class="ticker-tag-chip">${escapeHtml(tag)}</span>`).join('')
+            tags.map(tag => {
+                const href = `/stock_tags.html?selected_tag=${encodeURIComponent(tag)}`;
+                return `<a class="ticker-tag-chip" href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(tag)}</a>`;
+            }).join('')
         }</span>`;
     }
 
@@ -1033,9 +1103,20 @@
         if (!tags || tags.length === 0) {
             return '<div class="ticker-tag-tooltip-panel"><div class="ticker-tag-tooltip-empty">No tags</div></div>';
         }
-        return `<div class="ticker-tag-tooltip-panel">${
-            tags.map(tag => `<div class="ticker-tag-tooltip-line">${escapeHtml(tag)}</div>`).join('')
-        }</div>`;
+        return `
+            <div class="ticker-tag-tooltip-panel">
+                ${tags.map(tag => `
+                    <label class="ticker-tag-tooltip-row">
+                        <input type="checkbox" data-tooltip-tag="${escapeHtml(tag)}" checked>
+                        <span>${escapeHtml(tag)}</span>
+                    </label>
+                `).join('')}
+                <div class="ticker-tag-tooltip-actions">
+                    <button class="ticker-tag-tooltip-action primary" data-open-selected-tags>Open selected</button>
+                    <button class="ticker-tag-tooltip-action" data-clear-selected-tags>Clear</button>
+                </div>
+            </div>
+        `;
     }
 
     function renderTextTooltip(lines) {
@@ -1056,6 +1137,33 @@
 
     function showTickerTagTooltip(tags) {
         showTooltipHtml(renderTickerTagTooltip(tags));
+        bindTickerTagTooltipActions();
+    }
+
+    function selectedTooltipTags() {
+        return [...document.querySelectorAll('#ticker-tag-tooltip [data-tooltip-tag]:checked')]
+            .map(input => input.dataset.tooltipTag);
+    }
+
+    function stockTagsUrl(tags) {
+        const params = new URLSearchParams();
+        tags.forEach(tag => params.append('selected_tag', tag));
+        return `/stock_tags.html?${params.toString()}`;
+    }
+
+    function bindTickerTagTooltipActions() {
+        const tooltip = document.getElementById('ticker-tag-tooltip');
+        if (!tooltip) return;
+        tooltip.querySelector('[data-open-selected-tags]')?.addEventListener('click', event => {
+            event.preventDefault();
+            const tags = selectedTooltipTags();
+            if (!tags.length) return;
+            window.open(stockTagsUrl(tags), '_blank', 'noopener,noreferrer');
+        });
+        tooltip.querySelector('[data-clear-selected-tags]')?.addEventListener('click', event => {
+            event.preventDefault();
+            tooltip.querySelectorAll('[data-tooltip-tag]').forEach(input => { input.checked = false; });
+        });
     }
 
     function hideTickerTagTooltip(delay = 0) {

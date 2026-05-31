@@ -589,6 +589,25 @@
         }
     };
 
+    function initialSelectedTagsFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const requested = [
+            ...params.getAll('selected_tag'),
+            ...params.getAll('selected_tag[]'),
+        ];
+        if (!requested.length) return new Set();
+
+        const groupsByName = new Map(
+            getVisibleTagGroups().map(group => [group.name.toLowerCase(), group.name])
+        );
+        const selected = new Set();
+        requested.forEach(name => {
+            const canonical = groupsByName.get(String(name).toLowerCase());
+            if (canonical) selected.add(canonical);
+        });
+        return selected;
+    }
+
     function formatVolume(v) {
         if (v == null) return '';
         if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B';
@@ -1244,6 +1263,7 @@
     }
 
     function initializeApp() {
+        AppState.selectedTags = initialSelectedTagsFromQuery();
         Renderers.renderAll();
         initChartToggle();
         DOM.get('benchmark-label').textContent = BENCHMARK_SYMBOL;
