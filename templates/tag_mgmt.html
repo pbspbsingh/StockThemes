@@ -489,7 +489,7 @@ let stocks = JSON.parse(document.getElementById('stocks-data').textContent);
 let untagged = JSON.parse(document.getElementById('untagged-data').textContent);
 const UNTAGGED_TAG_ID = '__untagged__';
 let selectedTagIds = new Set();
-let untaggedSelected = true;
+let untaggedSelected = false;
 let selectedTicker = null;
 let pendingTagNames = [];
 let tagInputQuery = '';
@@ -543,7 +543,7 @@ function renderTags() {
     const filtered = tags.filter(tag => lower(tag.name).includes(query));
     const selectedCount = selectedTagIds.size + (untaggedSelected ? 1 : 0);
     el('tag-count').textContent = selectedCount ? `${selectedCount}/${tags.length + 1}` : `${tags.length + 1}`;
-    el('clear-selected-tags').disabled = untaggedSelected && selectedTagIds.size === 0;
+    el('clear-selected-tags').disabled = !untaggedSelected && selectedTagIds.size === 0;
     const untaggedRow = !query || 'untagged'.includes(query) ? `
         <div class="item ${untaggedSelected ? 'selected' : ''}" data-tag-id="${UNTAGGED_TAG_ID}">
             <div class="tag-row">
@@ -565,7 +565,7 @@ function renderTags() {
         row.addEventListener('click', () => {
             const rawTagId = row.dataset.tagId;
             if (rawTagId === UNTAGGED_TAG_ID) {
-                untaggedSelected = true;
+                untaggedSelected = !untaggedSelected;
                 selectedTagIds.clear();
                 selectedTicker = null;
                 pendingTagNames = [];
@@ -581,7 +581,6 @@ function renderTags() {
             } else {
                 selectedTagIds.add(tagId);
             }
-            if (!selectedTagIds.size) untaggedSelected = true;
             selectedTicker = null;
             pendingTagNames = [];
             tagInputQuery = '';
@@ -864,6 +863,12 @@ function renderPreview(preview) {
     el('apply-import').disabled = errors.length > 0 || preview.rows_parsed === 0;
 }
 
+function renderImportError(message) {
+    const previewNode = el('preview');
+    if (!previewNode) return;
+    previewNode.innerHTML = `<div class="errors"><div>${escapeHtml(message)}</div></div>`;
+}
+
 async function createTag() {
     const input = el('new-tag-name');
     const name = input.value.trim();
@@ -977,6 +982,7 @@ async function previewImport() {
     } catch (err) {
         lastPreview = null;
         el('apply-import').disabled = true;
+        renderImportError(err.message);
         setStatus(err.message, 'error');
     }
 }
@@ -992,6 +998,7 @@ async function applyImport() {
         lastPreview = null;
         el('apply-import').disabled = true;
     } catch (err) {
+        renderImportError(err.message);
         setStatus(err.message, 'error');
     }
 }
@@ -1137,7 +1144,7 @@ function selectedTagTitle() {
 }
 
 function clearSelectedTags() {
-    untaggedSelected = true;
+    untaggedSelected = false;
     selectedTagIds.clear();
     selectedTicker = null;
     pendingTagNames = [];
