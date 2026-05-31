@@ -4,7 +4,7 @@ use clap::Parser;
 use stock_themes::Group;
 use tracing::{info, warn};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Instant;
 use stock_themes::{Stock, init_logger, metrics, rs, start_http_server, store::Store, util};
@@ -48,6 +48,7 @@ async fn main() -> anyhow::Result<()> {
 
     let stock_metrics = metrics::build_stock_metrics(&store, &yf, &stocks).await?;
     info!("Computed metrics for {} stocks", stock_metrics.len());
+    let ticker_tags = build_ticker_tags(&store, &stocks).await?;
 
     let summary = Summary::summarize(stocks);
     let html = summary.render(
@@ -55,9 +56,46 @@ async fn main() -> anyhow::Result<()> {
         rs_maps.industries,
         rs_maps.stocks,
         stock_metrics,
+        ticker_tags,
     );
 
     start_http_server(store, html).await
+}
+
+async fn build_ticker_tags(
+    store: &Store,
+    stocks: &[Stock],
+) -> anyhow::Result<HashMap<String, Vec<String>>> {
+    let page_tickers = stocks
+        .iter()
+        .map(|stock| stock.ticker.as_str())
+        .collect::<HashSet<_>>();
+    let tag_counts = store
+        .list_tags()
+        .await?
+        .into_iter()
+        .map(|tag| (tag.name.to_lowercase(), tag.stock_count))
+        .collect::<HashMap<_, _>>();
+    let mut ticker_tags = HashMap::new();
+
+    for stock in store.list_stock_tags().await? {
+        if !page_tickers.contains(stock.ticker.as_str()) {
+            continue;
+        }
+        let mut tags = stock
+            .tags
+            .into_iter()
+            .map(|tag| tag.name)
+            .collect::<Vec<_>>();
+        tags.sort_by(|a, b| {
+            let a_count = tag_counts.get(&a.to_lowercase()).copied().unwrap_or_default();
+            let b_count = tag_counts.get(&b.to_lowercase()).copied().unwrap_or_default();
+            b_count.cmp(&a_count).then_with(|| a.cmp(b))
+        });
+        ticker_tags.insert(stock.ticker, tags);
+    }
+
+    Ok(ticker_tags)
 }
 
 async fn fetch_stock_info(store: &Store, tickers: Vec<String>) -> anyhow::Result<Vec<Stock>> {
