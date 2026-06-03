@@ -117,9 +117,15 @@ impl YFinance {
     // Helpers
     // -------------------------------------------------------------------------
 
-    /// Maps HTTP status to an explicit `YfError::RateLimited` on 429,
+    /// Maps HTTP status to explicit errors for statuses callers handle,
     /// or a generic error for any other non-2xx status.
     fn check_status(status: StatusCode, url: &str) -> anyhow::Result<()> {
+        if status == StatusCode::NOT_FOUND {
+            return Err(YfError::NotFound {
+                url: url.to_string(),
+            }
+            .into());
+        }
         if status == StatusCode::TOO_MANY_REQUESTS {
             return Err(YfError::RateLimited.into());
         }

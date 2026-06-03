@@ -186,3 +186,16 @@ fn test_rate_limit_error_is_downcatable() {
     let err: anyhow::Error = YfError::RateLimited.into();
     assert!(err.downcast_ref::<YfError>().is_some());
 }
+
+/// Verify that 404 surfaces as YfError::NotFound and is downcasable.
+#[test]
+fn test_not_found_error_is_downcatable() {
+    let err: anyhow::Error = YfError::NotFound {
+        url: "https://query1.finance.yahoo.com/v8/finance/chart/MISSING".to_string(),
+    }
+    .into();
+    assert!(matches!(
+        err.downcast_ref::<YfError>(),
+        Some(YfError::NotFound { .. })
+    ));
+}

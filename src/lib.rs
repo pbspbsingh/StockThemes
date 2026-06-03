@@ -1,7 +1,7 @@
 use crate::config::APP_CONFIG;
 use crate::store::Store;
 use crate::util::is_upto_date;
-use crate::yf::{BarSize, Candle, Range, TimeSpec, YFinance};
+use crate::yf::{BarSize, Candle, Range, TimeSpec, YFinance, YfError};
 use anyhow::Context;
 use axum::extract::Extension;
 use axum::http::header::{CACHE_CONTROL, HeaderValue};
@@ -251,6 +251,9 @@ where
     loop {
         match f().await {
             Ok(val) => break Ok(val),
+            Err(e) if matches!(e.downcast_ref::<YfError>(), Some(YfError::NotFound { .. })) => {
+                break Err(e);
+            }
             Err(e) if attempt < MAX_RETRIES => {
                 let delay = BASE_DELAY_MS * 2u64.pow(attempt);
                 warn!(
