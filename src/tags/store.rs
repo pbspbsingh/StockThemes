@@ -2,7 +2,7 @@ use chrono::Local;
 use sqlx::Sqlite;
 use std::collections::HashMap;
 
-use crate::store::{DeleteTagResult, StockTags, Store, Tag};
+use crate::store::{DeleteTagResult, StockTags, Store, Tag, TagCategory};
 
 #[derive(Debug, Clone, Default)]
 pub struct AddTagsResult {
@@ -26,17 +26,69 @@ pub struct ReplaceImportResult {
 }
 
 impl Store {
+    pub async fn list_tag_categories(&self) -> sqlx::Result<Vec<TagCategory>> {
+        sqlx::query_as::<_, TagCategory>(
+            r#"
+            SELECT
+                c.id,
+                c.name,
+                c.sort_order,
+                COUNT(DISTINCT st.ticker) as stock_count
+            FROM tag_categories c
+            LEFT JOIN tags t ON t.category_id = c.id
+            LEFT JOIN stock_tags st ON st.tag_id = t.id
+            GROUP BY c.id, c.name, c.sort_order
+            ORDER BY stock_count DESC, c.sort_order, lower(c.name)
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn category_exists(&self, category_id: i64) -> sqlx::Result<bool> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tag_categories WHERE id = $1")
+            .bind(category_id)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(count > 0)
+    }
+
+    pub async fn create_tag_category(&self, name: &str) -> sqlx::Result<TagCategory> {
+        let name = normalize_tag_name(name);
+        let sort_order: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(sort_order), 0) + 10 FROM tag_categories WHERE sort_order < 999",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO tag_categories (name, sort_order, created_at, updated_at)
+            VALUES ($1, $2, $3, $3)
+            ON CONFLICT(name) DO UPDATE SET updated_at = tag_categories.updated_at
+            "#,
+        )
+        .bind(&name)
+        .bind(sort_order)
+        .bind(Local::now())
+        .execute(&self.pool)
+        .await?;
+
+        self.get_tag_category_by_name(&name).await
+    }
+
     pub async fn list_tags(&self) -> sqlx::Result<Vec<Tag>> {
         sqlx::query_as::<_, Tag>(
             r#"
             SELECT
                 t.id,
                 t.name,
+                t.category_id,
                 COUNT(st.ticker) as stock_count
             FROM tags t
             LEFT JOIN stock_tags st ON st.tag_id = t.id
-            GROUP BY t.id, t.name
-            ORDER BY lower(t.name)
+            GROUP BY t.id, t.name, t.category_id
+            ORDER BY t.category_id, stock_count DESC, lower(t.name)
             "#,
         )
         .fetch_all(&self.pool)
@@ -44,15 +96,24 @@ impl Store {
     }
 
     pub async fn create_tag(&self, name: &str) -> sqlx::Result<Tag> {
+        self.create_tag_in_category(name, None).await
+    }
+
+    pub async fn create_tag_in_category(
+        &self,
+        name: &str,
+        category_id: Option<i64>,
+    ) -> sqlx::Result<Tag> {
         let name = normalize_tag_name(name);
         sqlx::query(
             r#"
-            INSERT INTO tags (name, created_at, updated_at)
-            VALUES ($1, $2, $2)
+            INSERT INTO tags (name, category_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $3)
             ON CONFLICT(name) DO UPDATE SET updated_at = tags.updated_at
             "#,
         )
         .bind(&name)
+        .bind(category_id)
         .bind(Local::now())
         .execute(&self.pool)
         .await?;
@@ -64,6 +125,17 @@ impl Store {
         let name = normalize_tag_name(name);
         sqlx::query("UPDATE tags SET name = $1, updated_at = $2 WHERE id = $3")
             .bind(&name)
+            .bind(Local::now())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        self.get_tag_by_id(id).await
+    }
+
+    pub async fn move_tag_to_category(&self, id: i64, category_id: i64) -> sqlx::Result<Tag> {
+        sqlx::query("UPDATE tags SET category_id = $1, updated_at = $2 WHERE id = $3")
+            .bind(category_id)
             .bind(Local::now())
             .bind(id)
             .execute(&self.pool)
@@ -94,6 +166,7 @@ impl Store {
             ticker: String,
             tag_id: Option<i64>,
             tag_name: Option<String>,
+            tag_category_id: Option<i64>,
         }
 
         let rows = sqlx::query_as::<_, Row>(
@@ -106,7 +179,8 @@ impl Store {
             SELECT
                 all_tickers.ticker,
                 tags.id as tag_id,
-                tags.name as tag_name
+                tags.name as tag_name,
+                tags.category_id as tag_category_id
             FROM all_tickers
             LEFT JOIN stock_tags st ON st.ticker = all_tickers.ticker
             LEFT JOIN tags ON tags.id = st.tag_id
@@ -131,10 +205,13 @@ impl Store {
                     idx
                 }
             };
-            if let (Some(id), Some(name)) = (row.tag_id, row.tag_name) {
+            if let (Some(id), Some(name), Some(category_id)) =
+                (row.tag_id, row.tag_name, row.tag_category_id)
+            {
                 stocks[idx].tags.push(Tag {
                     id,
                     name,
+                    category_id,
                     stock_count: 0,
                 });
             }
@@ -341,11 +418,12 @@ impl Store {
             SELECT
                 t.id,
                 t.name,
+                t.category_id,
                 COUNT(st.ticker) as stock_count
             FROM tags t
             LEFT JOIN stock_tags st ON st.tag_id = t.id
             WHERE t.id = $1
-            GROUP BY t.id, t.name
+            GROUP BY t.id, t.name, t.category_id
             "#,
         )
         .bind(id)
@@ -359,11 +437,32 @@ impl Store {
             SELECT
                 t.id,
                 t.name,
+                t.category_id,
                 COUNT(st.ticker) as stock_count
             FROM tags t
             LEFT JOIN stock_tags st ON st.tag_id = t.id
             WHERE t.name = $1
-            GROUP BY t.id, t.name
+            GROUP BY t.id, t.name, t.category_id
+            "#,
+        )
+        .bind(name)
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    async fn get_tag_category_by_name(&self, name: &str) -> sqlx::Result<TagCategory> {
+        sqlx::query_as::<_, TagCategory>(
+            r#"
+            SELECT
+                c.id,
+                c.name,
+                c.sort_order,
+                COUNT(DISTINCT st.ticker) as stock_count
+            FROM tag_categories c
+            LEFT JOIN tags t ON t.category_id = c.id
+            LEFT JOIN stock_tags st ON st.tag_id = t.id
+            WHERE c.name = $1
+            GROUP BY c.id, c.name, c.sort_order
             "#,
         )
         .bind(name)

@@ -28,6 +28,15 @@ pub struct Store {
 pub struct Tag {
     pub id: i64,
     pub name: String,
+    pub category_id: i64,
+    pub stock_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct TagCategory {
+    pub id: i64,
+    pub name: String,
+    pub sort_order: i64,
     pub stock_count: i64,
 }
 

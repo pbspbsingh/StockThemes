@@ -17,7 +17,7 @@ use crate::config::APP_CONFIG;
 use crate::fetch_candles;
 use crate::html_error::HtmlError;
 use crate::metrics;
-use crate::store::{StockTags, Store, Tag};
+use crate::store::{StockTags, Store, Tag, TagCategory};
 use crate::util::compute_rs_candles;
 use crate::yf::YFinance;
 use tracing::warn;
@@ -32,13 +32,22 @@ struct StockTagsTemplate {
     real_tag_count: usize,
     tagged_stock_count: usize,
     untagged_stock_count: usize,
+    tag_categories: Vec<TagCategoryView>,
     tag_groups: Vec<TagGroupView>,
     ticker_info: HashMap<String, TickerInfoView>,
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct TagCategoryView {
+    id: i64,
+    name: String,
+    count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct TagGroupView {
     name: String,
+    category_id: Option<i64>,
     count: usize,
     tickers: Vec<TagTickerView>,
     is_untagged: bool,
@@ -125,6 +134,7 @@ pub async fn stock_tag_metrics_stream(
 
 async fn build_template(store: &Store) -> anyhow::Result<StockTagsTemplate> {
     let tags = store.list_tags().await?;
+    let categories = store.list_tag_categories().await?;
     let stock_tags = store.list_stock_tags().await?;
     let untagged = store.list_untagged_stocks().await?;
 
@@ -142,6 +152,7 @@ async fn build_template(store: &Store) -> anyhow::Result<StockTagsTemplate> {
         real_tag_count,
         tagged_stock_count,
         untagged_stock_count,
+        tag_categories: build_tag_categories(&categories),
         tag_groups,
         ticker_info,
     })
@@ -254,6 +265,7 @@ fn build_tag_groups(
                 tag.name.to_lowercase(),
                 TagGroupView {
                     name: tag.name.clone(),
+                    category_id: Some(tag.category_id),
                     count: tag.stock_count as usize,
                     tickers: Vec::new(),
                     is_untagged: false,
@@ -291,12 +303,24 @@ fn build_tag_groups(
     }
     result.push(TagGroupView {
         name: "Untagged".to_string(),
+        category_id: None,
         count: untagged.len(),
         tickers,
         is_untagged: true,
     });
     result.extend(rows);
     result
+}
+
+fn build_tag_categories(categories: &[TagCategory]) -> Vec<TagCategoryView> {
+    categories
+        .iter()
+        .map(|category| TagCategoryView {
+            id: category.id,
+            name: category.name.clone(),
+            count: category.stock_count as usize,
+        })
+        .collect()
 }
 
 fn build_ticker_info(

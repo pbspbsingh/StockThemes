@@ -23,12 +23,19 @@ struct TagState {
 #[template(path = "tags_mgmt.html")]
 struct TagMgmtTemplate {
     tags_json: String,
+    categories_json: String,
     stocks_json: String,
     untagged_json: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct TagNameRequest {
+    name: String,
+    category_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CategoryNameRequest {
     name: String,
 }
 
@@ -148,6 +155,10 @@ pub fn router(store: Arc<Store>) -> Router {
         .route("/tags_mgmt.html", routing::get(tag_mgmt_home))
         .route("/api/tags", routing::get(list_tags).post(create_tag))
         .route(
+            "/api/tag-categories",
+            routing::get(list_tag_categories).post(create_tag_category),
+        )
+        .route(
             "/api/tags/{id}",
             routing::put(rename_tag).delete(delete_tag),
         )
@@ -167,11 +178,13 @@ pub fn router(store: Arc<Store>) -> Router {
 
 async fn tag_mgmt_home(State(state): State<TagState>) -> Result<Html<String>, HtmlError> {
     let tags = state.store.list_tags().await?;
+    let categories = state.store.list_tag_categories().await?;
     let stocks = stock_views(&state.store).await?;
     let untagged = state.store.list_untagged_stocks().await?;
 
     let html = TagMgmtTemplate {
         tags_json: serde_json::to_string(&tags)?,
+        categories_json: serde_json::to_string(&categories)?,
         stocks_json: serde_json::to_string(&stocks)?,
         untagged_json: serde_json::to_string(&untagged)?,
     }
@@ -184,6 +197,21 @@ async fn list_tags(State(state): State<TagState>) -> Result<impl IntoResponse, A
     Ok(Json(state.store.list_tags().await?))
 }
 
+async fn list_tag_categories(State(state): State<TagState>) -> Result<impl IntoResponse, ApiError> {
+    Ok(Json(state.store.list_tag_categories().await?))
+}
+
+async fn create_tag_category(
+    State(state): State<TagState>,
+    Json(req): Json<CategoryNameRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    if req.name.trim().is_empty() {
+        return Err(ApiError::bad_request("Category name is required"));
+    }
+
+    Ok(Json(state.store.create_tag_category(&req.name).await?))
+}
+
 async fn create_tag(
     State(state): State<TagState>,
     Json(req): Json<TagNameRequest>,
@@ -191,8 +219,19 @@ async fn create_tag(
     if req.name.trim().is_empty() {
         return Err(ApiError::bad_request("Tag name is required"));
     }
+    let Some(category_id) = req.category_id else {
+        return Err(ApiError::bad_request("Category is required"));
+    };
+    if !state.store.category_exists(category_id).await? {
+        return Err(ApiError::bad_request("Category does not exist"));
+    }
 
-    Ok(Json(state.store.create_tag(&req.name).await?))
+    Ok(Json(
+        state
+            .store
+            .create_tag_in_category(&req.name, Some(category_id))
+            .await?,
+    ))
 }
 
 async fn rename_tag(
@@ -200,11 +239,22 @@ async fn rename_tag(
     Path(id): Path<i64>,
     Json(req): Json<TagNameRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    if req.name.trim().is_empty() {
+    let name = req.name.trim();
+    if let Some(category_id) = req.category_id {
+        if !state.store.category_exists(category_id).await? {
+            return Err(ApiError::bad_request("Category does not exist"));
+        }
+        if !name.is_empty() {
+            state.store.rename_tag(id, name).await?;
+        }
+        return Ok(Json(state.store.move_tag_to_category(id, category_id).await?));
+    };
+
+    if name.is_empty() {
         return Err(ApiError::bad_request("Tag name is required"));
     }
 
-    Ok(Json(state.store.rename_tag(id, &req.name).await?))
+    Ok(Json(state.store.rename_tag(id, name).await?))
 }
 
 async fn delete_tag(
@@ -346,6 +396,7 @@ mod tests {
         Tag {
             id: 1,
             name: name.to_string(),
+            category_id: 1,
             stock_count: 0,
         }
     }

@@ -90,6 +90,44 @@ body {
     padding-left: 7px;
 }
 
+.category-heading {
+    min-height: 28px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #242424;
+    background: #191919;
+    color: #8f8f8f;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.75);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.category-heading .count {
+    min-width: 22px;
+    padding: 1px 6px;
+    border: 1px solid #3a3a3a;
+    border-radius: 10px;
+    background: #222;
+    color: #d0d0d0;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+}
+.category-heading span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.category-heading + .item { border-top: none; }
+
 .tag-row, .stock-row-main {
     display: flex;
     align-items: center;
@@ -341,8 +379,16 @@ select { padding: 5px 8px; }
     padding: 0;
     line-height: 1;
 }
-.inline-form { display: flex; gap: 6px; }
-.inline-form input { flex: 1; }
+.inline-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+}
+.inline-form select {
+    grid-column: 1 / -1;
+    width: 100%;
+}
+.inline-form input { min-width: 0; }
 
 .work {
     flex: 1;
@@ -376,8 +422,8 @@ select { padding: 5px 8px; }
 
 .toast {
     position: fixed;
-    top: 14px;
-    right: 14px;
+    bottom: 28px;
+    left: 50%;
     z-index: 1000;
     max-width: min(420px, calc(100vw - 28px));
     padding: 10px 12px;
@@ -391,12 +437,12 @@ select { padding: 5px 8px; }
     line-height: 1.35;
     opacity: 0;
     pointer-events: none;
-    transform: translateY(-8px);
+    transform: translateX(-50%) translateY(12px);
     transition: opacity 0.18s ease, transform 0.18s ease;
 }
 .toast.show {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(-50%) translateY(0);
 }
 .toast.error { background: #231616; border-color: #5a2a2a; border-left-color: #e74c3c; color: #ffaaaa; }
 .toast.ok { background: #172116; border-color: #2d4a2b; border-left-color: #2ecc71; color: #b8e6c5; }
@@ -456,6 +502,7 @@ select { padding: 5px 8px; }
             <div class="header-actions">
                 <span class="header-count" id="tag-count"></span>
                 <button class="btn-clear" id="clear-selected-tags" title="Clear selected tags" disabled>Clear</button>
+                <button class="icon-btn" id="add-category-btn" title="Add category">⊞</button>
                 <button class="icon-btn" id="add-tag-btn" title="Add tag">+</button>
             </div>
         </div>
@@ -464,7 +511,12 @@ select { padding: 5px 8px; }
                 <input class="search" id="tag-search" placeholder="Search tags">
                 <button class="icon-btn search-clear" id="clear-tag-search" title="Clear tag search">×</button>
             </div>
+            <div class="inline-form" id="new-category-form" style="display:none">
+                <input id="new-category-name" placeholder="New category name">
+                <button class="btn primary" id="save-new-category">Add</button>
+            </div>
             <div class="inline-form" id="new-tag-form" style="display:none">
+                <select id="new-tag-category"></select>
                 <input id="new-tag-name" placeholder="New tag name">
                 <button class="btn primary" id="save-new-tag">Add</button>
             </div>
@@ -496,11 +548,13 @@ select { padding: 5px 8px; }
 <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script id="tags-data" type="application/json">{{ tags_json|safe }}</script>
+<script id="categories-data" type="application/json">{{ categories_json|safe }}</script>
 <script id="stocks-data" type="application/json">{{ stocks_json|safe }}</script>
 <script id="untagged-data" type="application/json">{{ untagged_json|safe }}</script>
 
 <script>
 let tags = JSON.parse(document.getElementById('tags-data').textContent);
+let categories = JSON.parse(document.getElementById('categories-data').textContent);
 let stocks = JSON.parse(document.getElementById('stocks-data').textContent);
 let untagged = JSON.parse(document.getElementById('untagged-data').textContent);
 const UNTAGGED_TAG_ID = '__untagged__';
@@ -555,8 +609,9 @@ async function api(path, options = {}) {
 }
 
 async function refreshData() {
-    [tags, stocks, untagged] = await Promise.all([
+    [tags, categories, stocks, untagged] = await Promise.all([
         api('/api/tags'),
+        api('/api/tag-categories'),
         api('/api/stock-tags'),
         api('/api/stock-tags/untagged'),
     ]);
@@ -564,9 +619,42 @@ async function refreshData() {
 }
 
 function renderAll() {
+    renderNewTagCategories();
     renderTags();
     renderStocks();
     renderWork();
+}
+
+function renderNewTagCategories() {
+    const select = el('new-tag-category');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">Select category</option>' + categories.map(category => (
+        `<option value="${category.id}">${escapeHtml(category.name)}</option>`
+    )).join('');
+    if (current && categories.some(category => String(category.id) === current)) {
+        select.value = current;
+    }
+}
+
+function tagsByCategory(filteredTags) {
+    const grouped = new Map(categories.map(category => [category.id, { category, tags: [] }]));
+    filteredTags.forEach(tag => {
+        if (!grouped.has(tag.category_id)) {
+            grouped.set(tag.category_id, {
+                category: { id: tag.category_id, name: 'Uncategorized', stock_count: 0, sort_order: 999 },
+                tags: [],
+            });
+        }
+        grouped.get(tag.category_id).tags.push(tag);
+    });
+    return [...grouped.values()].filter(group => group.tags.length);
+}
+
+function categoryOptionsHtml(selectedCategoryId) {
+    return categories.map(category => `
+        <option value="${category.id}" ${category.id === selectedCategoryId ? 'selected' : ''}>${escapeHtml(category.name)}</option>
+    `).join('');
 }
 
 function renderTags() {
@@ -584,14 +672,21 @@ function renderTags() {
             </div>
         </div>
     ` : '';
-    list.innerHTML = untaggedRow + (filtered.map(tag => `
-        <div class="item ${selectedTagIds.has(tag.id) ? 'selected' : ''}" data-tag-id="${tag.id}">
-            <div class="tag-row">
-                <span class="tag-name" title="${escapeHtml(tag.name)}">${escapeHtml(tag.name)}</span>
-                <span class="count">${tag.stock_count}</span>
-            </div>
+    const categoryRows = tagsByCategory(filtered).map(group => `
+        <div class="category-heading">
+            <span title="${escapeHtml(group.category.name)}">${escapeHtml(group.category.name)}</span>
+            <span class="count">${group.category.stock_count}</span>
         </div>
-    `).join('') || (!untaggedRow ? '<div class="item"><span class="no-tags">No tags</span></div>' : ''));
+        ${group.tags.map(tag => `
+            <div class="item ${selectedTagIds.has(tag.id) ? 'selected' : ''}" data-tag-id="${tag.id}">
+                <div class="tag-row">
+                    <span class="tag-name" title="${escapeHtml(tag.name)}">${escapeHtml(tag.name)}</span>
+                    <span class="count">${tag.stock_count}</span>
+                </div>
+            </div>
+        `).join('')}
+    `).join('');
+    list.innerHTML = untaggedRow + (categoryRows || (!untaggedRow ? '<div class="item"><span class="no-tags">No tags</span></div>' : ''));
 
     list.querySelectorAll('[data-tag-id]').forEach(row => {
         row.addEventListener('click', () => {
@@ -824,6 +919,15 @@ function renderSingleTagDetails() {
             <div class="muted">${tag.stock_count} stocks assigned</div>
         </div>
         <div class="section">
+            <div class="section-title">Category</div>
+            <div class="row-actions">
+                <select id="selected-tag-category">
+                    ${categoryOptionsHtml(tag.category_id)}
+                </select>
+                <button class="btn primary" id="update-tag-category" disabled>Update</button>
+            </div>
+        </div>
+        <div class="section">
             <div class="section-title">Stocks</div>
             <div class="stock-tags">
                 ${taggedStocks.map(stock => `<span class="chip"><span>${stock.ticker}</span></span>`).join('') || '<span class="no-tags">No stocks use this tag</span>'}
@@ -832,6 +936,12 @@ function renderSingleTagDetails() {
     `;
     el('edit-tag').addEventListener('click', () => renameSelectedTag());
     el('delete-tag').addEventListener('click', () => deleteSelectedTag());
+    el('selected-tag-category').addEventListener('change', event => {
+        el('update-tag-category').disabled = Number(event.target.value) === tag.category_id;
+    });
+    el('update-tag-category').addEventListener('click', () => {
+        moveSelectedTagToCategory(Number(el('selected-tag-category').value));
+    });
 }
 
 function renderMultiTagDetails() {
@@ -915,15 +1025,45 @@ function renderPreview(preview) {
 
 async function createTag() {
     const input = el('new-tag-name');
+    const categorySelect = el('new-tag-category');
     const name = input.value.trim();
     if (!name) return;
+    const categoryId = Number(categorySelect.value);
+    if (!categoryId) {
+        setStatus('Category is required', 'error');
+        categorySelect.focus();
+        return;
+    }
     try {
-        const tag = await api('/api/tags', { method: 'POST', body: JSON.stringify({ name }) });
+        const tag = await api('/api/tags', {
+            method: 'POST',
+            body: JSON.stringify({ name, category_id: categoryId }),
+        });
         untaggedSelected = false;
         selectedTagIds = new Set([tag.id]);
         input.value = '';
+        categorySelect.value = '';
         el('new-tag-form').style.display = 'none';
         setStatus(`Created tag ${tag.name}`, 'ok');
+        await refreshData();
+    } catch (err) {
+        setStatus(err.message, 'error');
+    }
+}
+
+async function createCategory() {
+    const input = el('new-category-name');
+    const name = input.value.trim();
+    if (!name) return;
+    try {
+        const category = await api('/api/tag-categories', {
+            method: 'POST',
+            body: JSON.stringify({ name }),
+        });
+        input.value = '';
+        el('new-category-form').style.display = 'none';
+        el('new-tag-category').value = String(category.id);
+        setStatus(`Created category ${category.name}`, 'ok');
         await refreshData();
     } catch (err) {
         setStatus(err.message, 'error');
@@ -943,6 +1083,23 @@ async function renameSelectedTag() {
         await refreshData();
     } catch (err) {
         setStatus(err.message, 'error');
+    }
+}
+
+async function moveSelectedTagToCategory(categoryId) {
+    if (selectedTagIds.size !== 1 || !categoryId) return;
+    const selectedTagId = [...selectedTagIds][0];
+    try {
+        const tag = await api(`/api/tags/${selectedTagId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name: '', category_id: categoryId }),
+        });
+        selectedTagIds = new Set([tag.id]);
+        setStatus(`Moved ${tag.name}`, 'ok');
+        await refreshData();
+    } catch (err) {
+        setStatus(err.message, 'error');
+        renderAll();
     }
 }
 
@@ -1224,12 +1381,27 @@ el('clear-stock-search').addEventListener('click', () => {
 });
 el('add-tag-btn').addEventListener('click', () => {
     const form = el('new-tag-form');
-    form.style.display = form.style.display === 'none' ? 'flex' : 'none';
-    if (form.style.display !== 'none') el('new-tag-name').focus();
+    form.style.display = form.style.display === 'none' ? 'grid' : 'none';
+    if (form.style.display !== 'none') {
+        el('new-category-form').style.display = 'none';
+        el('new-tag-name').focus();
+    }
+});
+el('add-category-btn').addEventListener('click', () => {
+    const form = el('new-category-form');
+    form.style.display = form.style.display === 'none' ? 'grid' : 'none';
+    if (form.style.display !== 'none') {
+        el('new-tag-form').style.display = 'none';
+        el('new-category-name').focus();
+    }
 });
 el('save-new-tag').addEventListener('click', createTag);
+el('save-new-category').addEventListener('click', createCategory);
 el('new-tag-name').addEventListener('keydown', event => {
     if (event.key === 'Enter') createTag();
+});
+el('new-category-name').addEventListener('keydown', event => {
+    if (event.key === 'Enter') createCategory();
 });
 el('clear-selected-tags').addEventListener('click', clearSelectedTags);
 

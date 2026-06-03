@@ -101,6 +101,45 @@
             background: rgba(98,196,98,0.06);
         }
 
+        .category-heading {
+            min-height: 28px;
+            padding: 6px 10px;
+            border-bottom: 1px solid #242424;
+            background: #191919;
+            color: #8f8f8f;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.75);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .category-heading .count {
+            min-width: 22px;
+            padding: 1px 6px;
+            border: 1px solid #3a3a3a;
+            border-radius: 10px;
+            background: #222;
+            color: #d0d0d0;
+            font-size: 10px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .category-heading span:first-child {
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
         .item-main {
             display: flex;
             align-items: center;
@@ -499,6 +538,7 @@
 <div class="toast" id="toast"></div>
 
 <script id="tag-groups" type="application/json">{{ tag_groups | json | safe }}</script>
+<script id="tag-categories" type="application/json">{{ tag_categories | json | safe }}</script>
 <script id="ticker-info" type="application/json">{{ ticker_info | json | safe }}</script>
 
 <script>
@@ -506,6 +546,7 @@
     document.getElementById('benchmark-label').textContent = BENCHMARK_SYMBOL;
 
     const TAG_GROUPS = JSON.parse(document.getElementById('tag-groups').textContent);
+    const TAG_CATEGORIES = JSON.parse(document.getElementById('tag-categories').textContent);
     const TICKER_INFO = new Map(Object.entries(JSON.parse(document.getElementById('ticker-info').textContent)));
     let STOCK_RS = new Map();
     let STOCK_METRICS = new Map();
@@ -823,6 +864,21 @@
         return getVisibleTagGroups().filter(group => selected.has(group.name));
     }
 
+    function tagGroupsByCategory(groups) {
+        const realGroups = groups.filter(group => !group.is_untagged);
+        const grouped = new Map(TAG_CATEGORIES.map(category => [category.id, { category, groups: [] }]));
+        realGroups.forEach(group => {
+            if (!grouped.has(group.category_id)) {
+                grouped.set(group.category_id, {
+                    category: { id: group.category_id, name: 'Uncategorized', count: 0 },
+                    groups: [],
+                });
+            }
+            grouped.get(group.category_id).groups.push(group);
+        });
+        return [...grouped.values()].filter(group => group.groups.length);
+    }
+
     function getFilteredTickers() {
         const dedup = new Map();
         const selected = AppState.selectedTags;
@@ -922,7 +978,23 @@
             clearBtn.disabled = AppState.selectedTags.size === 0;
             DOM.get('tag-header-count').textContent = `${AppState.selectedTags.size}/${REAL_TAG_COUNT}`;
 
-            getVisibleTagGroups().forEach(group => {
+            const rows = getVisibleTagGroups();
+            const untagged = rows.find(group => group.is_untagged);
+            if (untagged) {
+                this.renderTagRow(container, untagged);
+            }
+
+            tagGroupsByCategory(rows).forEach(categoryGroup => {
+                const heading = DOM.create('div', 'category-heading');
+                heading.innerHTML = `<span title="${escapeHtml(categoryGroup.category.name)}">${escapeHtml(categoryGroup.category.name)}</span><span class="count">${categoryGroup.category.count}</span>`;
+                container.appendChild(heading);
+                categoryGroup.groups.forEach(group => this.renderTagRow(container, group));
+            });
+
+            this.highlightTickerContext();
+        },
+
+        renderTagRow(container, group) {
                 const isSelected = AppState.selectedTags.has(group.name);
                 const item = DOM.create('div', `item${isSelected ? ' selected' : ''}`);
                 item.dataset.name = group.name;
@@ -933,9 +1005,6 @@
                     this.renderAll();
                 });
                 container.appendChild(item);
-            });
-
-            this.highlightTickerContext();
         },
 
         renderTickers() {
