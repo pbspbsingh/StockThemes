@@ -481,10 +481,11 @@
                         <button data-tf="W" title="Weekly timeframe">W</button>
                     </div>
                     <span class="bench-label">vs <strong id="benchmark-label"></strong></span>
+                    <a id="ticker-tag-mgmt-link" href="/tags_mgmt.html" class="rrg-link" target="_blank" rel="noopener noreferrer" style="display:none;">Edit Tags</a>
                 </div>
                 <div id="preview-nav-links" class="preview-nav-links">
                     <a href="/" class="rrg-link" target="_blank" rel="noopener noreferrer">Stock Themes</a>
-                    <a href="/tag_mgmt.html" class="rrg-link" target="_blank" rel="noopener noreferrer">Tag Mgmt</a>
+                    <a href="/tags_mgmt.html" class="rrg-link" target="_blank" rel="noopener noreferrer">Tag Mgmt</a>
                     <a href="/rrg.html" class="rrg-link" target="_blank" rel="noopener noreferrer">RRG</a>
                 </div>
             </div>
@@ -1018,6 +1019,7 @@
             const controls = DOM.get('chart-controls');
             const metrics = DOM.get('preview-metrics');
             const navLinks = DOM.get('preview-nav-links');
+            const tagMgmtLink = DOM.get('ticker-tag-mgmt-link');
 
             if (!tickerInfo) {
                 title.textContent = 'Preview';
@@ -1025,6 +1027,7 @@
                 controls.style.visibility = 'hidden';
                 controls.style.pointerEvents = 'none';
                 if (navLinks) navLinks.style.display = 'flex';
+                if (tagMgmtLink) tagMgmtLink.style.display = 'none';
                 return;
             }
 
@@ -1036,6 +1039,10 @@
             title.innerHTML =
                 `${escapeHtml(label)} \\ <a href="${tickerHref}" target="_blank" rel="noopener noreferrer">${escapeHtml(AppState.currentTickerSymbol)}</a>${tickerTagChips(tickerInfo.tags)}`;
             metrics.innerHTML = metricChipsHtml(AppState.currentTickerSymbol);
+            if (tagMgmtLink) {
+                tagMgmtLink.href = `/tags_mgmt.html?ticker=${encodeURIComponent(AppState.currentTickerSymbol)}`;
+                tagMgmtLink.style.display = 'inline-flex';
+            }
             controls.style.visibility = 'visible';
             controls.style.pointerEvents = '';
             if (navLinks) navLinks.style.display = 'none';

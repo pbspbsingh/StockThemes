@@ -20,7 +20,7 @@ struct TagState {
 }
 
 #[derive(Template)]
-#[template(path = "tag_mgmt.html")]
+#[template(path = "tags_mgmt.html")]
 struct TagMgmtTemplate {
     tags_json: String,
     stocks_json: String,
@@ -145,7 +145,7 @@ impl IntoResponse for ApiError {
 pub fn router(store: Arc<Store>) -> Router {
     let state = TagState { store };
     Router::new()
-        .route("/tag_mgmt.html", routing::get(tag_mgmt_home))
+        .route("/tags_mgmt.html", routing::get(tag_mgmt_home))
         .route("/api/tags", routing::get(list_tags).post(create_tag))
         .route(
             "/api/tags/{id}",

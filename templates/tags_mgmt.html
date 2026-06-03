@@ -516,6 +516,11 @@ let toastTimer = null;
 const el = id => document.getElementById(id);
 const lower = value => String(value || '').toLowerCase();
 
+function initialTickerFromQuery() {
+    const ticker = new URLSearchParams(window.location.search).get('ticker');
+    return ticker ? ticker.trim().toUpperCase() : null;
+}
+
 function setStatus(message, type = '') {
     const node = el('toast');
     if (!node) return;
@@ -676,6 +681,24 @@ function renderStocks() {
             }
             renderAll();
         });
+    });
+}
+
+function applyInitialTickerSelection() {
+    const ticker = initialTickerFromQuery();
+    if (!ticker) return;
+
+    selectedTicker = ticker;
+    untaggedSelected = false;
+    selectedTagIds.clear();
+}
+
+function scrollSelectedTickerIntoView() {
+    if (!selectedTicker) return;
+    requestAnimationFrame(() => {
+        const selectedRow = [...document.querySelectorAll('#stock-list [data-ticker]')]
+            .find(row => row.dataset.ticker === selectedTicker);
+        if (selectedRow) selectedRow.scrollIntoView({ block: 'nearest' });
     });
 }
 
@@ -1210,7 +1233,9 @@ el('new-tag-name').addEventListener('keydown', event => {
 });
 el('clear-selected-tags').addEventListener('click', clearSelectedTags);
 
+applyInitialTickerSelection();
 renderAll();
+scrollSelectedTickerIntoView();
 </script>
 </body>
 </html>
