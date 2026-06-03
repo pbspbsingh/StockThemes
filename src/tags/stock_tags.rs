@@ -32,8 +32,8 @@ struct StockTagsTemplate {
     real_tag_count: usize,
     tagged_stock_count: usize,
     untagged_stock_count: usize,
-    tag_groups_json: String,
-    ticker_info_json: String,
+    tag_groups: Vec<TagGroupView>,
+    ticker_info: HashMap<String, TickerInfoView>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -142,8 +142,8 @@ async fn build_template(store: &Store) -> anyhow::Result<StockTagsTemplate> {
         real_tag_count,
         tagged_stock_count,
         untagged_stock_count,
-        tag_groups_json: serde_json::to_string(&tag_groups)?,
-        ticker_info_json: serde_json::to_string(&ticker_info)?,
+        tag_groups,
+        ticker_info,
     })
 }
 

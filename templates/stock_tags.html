@@ -497,8 +497,8 @@
 
 <div class="toast" id="toast"></div>
 
-<script id="tag-groups" type="application/json">{{ tag_groups_json | safe }}</script>
-<script id="ticker-info" type="application/json">{{ ticker_info_json | safe }}</script>
+<script id="tag-groups" type="application/json">{{ tag_groups | json | safe }}</script>
+<script id="ticker-info" type="application/json">{{ ticker_info | json | safe }}</script>
 
 <script>
     const BENCHMARK_SYMBOL = '{{ benchmark_symbol }}';
@@ -648,8 +648,11 @@
     }
 
     function tickerLink(ticker, exchange) {
-        const tvUrl = exchange ? `https://www.tradingview.com/symbols/${exchange}-${ticker}/` : `https://www.tradingview.com/symbols/${ticker}/`;
-        return `<a href="${tvUrl}" target="_blank" class="ticker-chip-link">${escapeHtml(ticker)}</a>`;
+        const tvSymbol = exchange
+            ? `${encodeURIComponent(exchange)}-${encodeURIComponent(ticker)}`
+            : encodeURIComponent(ticker);
+        const tvUrl = `https://www.tradingview.com/symbols/${tvSymbol}/`;
+        return `<a href="${tvUrl}" target="_blank" rel="noopener noreferrer" class="ticker-chip-link">${escapeHtml(ticker)}</a>`;
     }
 
     function metricTickerSymbols(tickers) {
@@ -1026,11 +1029,12 @@
             }
 
             const label = selectionLabel();
-            const tickerHref = tickerInfo.exchange
-                ? `https://www.tradingview.com/symbols/${tickerInfo.exchange}-${AppState.currentTickerSymbol}/`
-                : `https://www.tradingview.com/symbols/${AppState.currentTickerSymbol}/`;
+            const tvSymbol = tickerInfo.exchange
+                ? `${encodeURIComponent(tickerInfo.exchange)}-${encodeURIComponent(AppState.currentTickerSymbol)}`
+                : encodeURIComponent(AppState.currentTickerSymbol);
+            const tickerHref = `https://www.tradingview.com/symbols/${tvSymbol}/`;
             title.innerHTML =
-                `${escapeHtml(label)} \\ <a href="${tickerHref}" target="_blank">${escapeHtml(AppState.currentTickerSymbol)}</a>${tickerTagChips(tickerInfo.tags)}`;
+                `${escapeHtml(label)} \\ <a href="${tickerHref}" target="_blank" rel="noopener noreferrer">${escapeHtml(AppState.currentTickerSymbol)}</a>${tickerTagChips(tickerInfo.tags)}`;
             metrics.innerHTML = metricChipsHtml(AppState.currentTickerSymbol);
             controls.style.visibility = 'visible';
             controls.style.pointerEvents = '';
