@@ -6,9 +6,9 @@ mod types;
 mod tests;
 
 pub use error::YfError;
-pub use types::{BarSize, Candle, Range, TickerInfo, TimeSpec};
+pub use types::{BarSize, Candle, CompanyProfile, Range, TickerInfo, TimeSpec};
 
-use crate::{Group, Stock, StockInfoFetcher, util};
+use crate::{Group, Stock, StockInfoFetcher, util::BROWSER_UA};
 use anyhow::Context;
 use chrono::{Local, TimeZone, Utc};
 use de::{ChartResponse, QuoteSummaryResponse};
@@ -22,7 +22,7 @@ use tracing::warn;
 // ============================================================================
 
 pub struct YFinance {
-    client: &'static Client,
+    client: Client,
     crumb: OnceCell<String>,
 }
 
@@ -35,7 +35,15 @@ impl Default for YFinance {
 impl YFinance {
     pub fn new() -> Self {
         Self {
-            client: &*util::HTTP_CLIENT,
+            client: Client::builder()
+                .user_agent(BROWSER_UA)
+                .cookie_store(true)
+                .gzip(true)
+                .deflate(true)
+                .http1_only()
+                .timeout(Duration::from_secs(20))
+                .build()
+                .expect("Failed to build Yahoo Finance HTTP client"),
             crumb: OnceCell::new(),
         }
     }
@@ -183,6 +191,39 @@ impl YFinance {
                 .asset_profile
                 .as_ref()
                 .and_then(|a| a.industry.clone()),
+        })
+    }
+
+    pub async fn fetch_company_profile(&self, symbol: &str) -> anyhow::Result<CompanyProfile> {
+        let crumb = self.crumb().await?;
+
+        let url = format!(
+            "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}\
+             ?modules=assetProfile&crumb={crumb}"
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header(header::ACCEPT, "application/json")
+            .send()
+            .await?;
+
+        Self::check_status(response.status(), &url)?;
+
+        let response = response.json::<QuoteSummaryResponse>().await?;
+        let result = response
+            .quote_summary
+            .result
+            .and_then(|v| v.into_iter().next())
+            .ok_or_else(|| anyhow::anyhow!("Empty result from Yahoo Finance for {symbol}"))?;
+        let asset_profile = result.asset_profile;
+
+        Ok(CompanyProfile {
+            symbol: symbol.to_string(),
+            sector: asset_profile.as_ref().and_then(|a| a.sector.clone()),
+            industry: asset_profile.as_ref().and_then(|a| a.industry.clone()),
+            summary: asset_profile.and_then(|a| a.long_business_summary),
         })
     }
 

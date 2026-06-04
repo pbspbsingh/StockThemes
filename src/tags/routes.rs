@@ -6,13 +6,17 @@ use axum::{
     response::{Html, IntoResponse, Response},
     routing,
 };
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use crate::html_error::HtmlError;
-use crate::store::{DeleteTagResult, Store, Tag};
+use crate::store::{CompanyProfile, DeleteTagResult, Store, Tag};
 use crate::tags::import::{ImportError, TagAssignment, normalize_assignments, parse_import};
+use crate::yf::YFinance;
+
+static YF: LazyLock<YFinance> = LazyLock::new(YFinance::new);
 
 #[derive(Clone)]
 struct TagState {
@@ -171,6 +175,10 @@ pub fn router(store: Arc<Store>) -> Router {
             "/api/stock-tags/untagged",
             routing::get(list_untagged_stocks),
         )
+        .route(
+            "/api/company-profiles/{ticker}",
+            routing::get(get_company_profile).post(refresh_company_profile),
+        )
         .route("/api/tag-import/preview", routing::post(preview_import))
         .route("/api/tag-import", routing::post(apply_import))
         .with_state(state)
@@ -247,7 +255,9 @@ async fn rename_tag(
         if !name.is_empty() {
             state.store.rename_tag(id, name).await?;
         }
-        return Ok(Json(state.store.move_tag_to_category(id, category_id).await?));
+        return Ok(Json(
+            state.store.move_tag_to_category(id, category_id).await?,
+        ));
     };
 
     if name.is_empty() {
@@ -315,6 +325,56 @@ async fn remove_stock_tag(
         .remove_tag_from_stock(&req.ticker, req.tag_id)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_company_profile(
+    State(state): State<TagState>,
+    Path(ticker): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ticker = normalize_ticker(&ticker)?;
+    let profile = match state.store.get_company_profile(&ticker).await? {
+        Some(profile) => profile,
+        None => fetch_and_cache_company_profile(&state.store, &ticker).await?,
+    };
+    Ok(Json(profile))
+}
+
+async fn refresh_company_profile(
+    State(state): State<TagState>,
+    Path(ticker): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ticker = normalize_ticker(&ticker)?;
+    Ok(Json(
+        fetch_and_cache_company_profile(&state.store, &ticker).await?,
+    ))
+}
+
+async fn fetch_and_cache_company_profile(
+    store: &Store,
+    ticker: &str,
+) -> Result<CompanyProfile, ApiError> {
+    let yf_profile = YF.fetch_company_profile(ticker).await?;
+    let profile = CompanyProfile {
+        ticker: yf_profile.symbol.trim().to_uppercase(),
+        summary: yf_profile
+            .summary
+            .map(|summary| summary.split_whitespace().collect::<Vec<_>>().join(" "))
+            .filter(|summary| !summary.is_empty()),
+        sector: yf_profile.sector,
+        industry: yf_profile.industry,
+        source: "Yahoo Finance".to_string(),
+        fetched_at: Local::now(),
+    };
+    store.save_company_profile(&profile).await?;
+    Ok(profile)
+}
+
+fn normalize_ticker(ticker: &str) -> Result<String, ApiError> {
+    let ticker = ticker.trim().to_uppercase();
+    if ticker.is_empty() {
+        return Err(ApiError::bad_request("Ticker is required"));
+    }
+    Ok(ticker)
 }
 
 async fn preview_import(

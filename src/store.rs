@@ -46,6 +46,16 @@ pub struct StockTags {
     pub tags: Vec<Tag>,
 }
 
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct CompanyProfile {
+    pub ticker: String,
+    pub summary: Option<String>,
+    pub sector: Option<String>,
+    pub industry: Option<String>,
+    pub source: String,
+    pub fetched_at: DateTime<Local>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum DeleteTagResult {
     Deleted,
@@ -181,6 +191,52 @@ impl Store {
         }
 
         tx.commit().await
+    }
+
+    pub async fn get_company_profile(
+        &self,
+        ticker: impl AsRef<str>,
+    ) -> sqlx::Result<Option<CompanyProfile>> {
+        let ticker = ticker.as_ref().trim().to_uppercase();
+        sqlx::query_as!(
+            CompanyProfile,
+            r#"
+            SELECT ticker, summary, sector, industry, source, fetched_at as "fetched_at: DateTime<Local>"
+            FROM company_profiles
+            WHERE ticker = $1
+            "#,
+            ticker,
+        )
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn save_company_profile(&self, profile: &CompanyProfile) -> sqlx::Result<()> {
+        let ticker = profile.ticker.trim().to_uppercase();
+        sqlx::query!(
+            r#"
+            INSERT INTO company_profiles
+                (ticker, summary, sector, industry, source, fetched_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $6)
+            ON CONFLICT(ticker) DO UPDATE SET
+                summary = excluded.summary,
+                sector = excluded.sector,
+                industry = excluded.industry,
+                source = excluded.source,
+                fetched_at = excluded.fetched_at,
+                updated_at = excluded.updated_at
+            "#,
+            ticker,
+            profile.summary,
+            profile.sector,
+            profile.industry,
+            profile.source,
+            profile.fetched_at,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 
     // ── Performance methods ──────────────────────────────────────────────────

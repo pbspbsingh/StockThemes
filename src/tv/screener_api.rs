@@ -1,4 +1,4 @@
-use crate::{Group, Stock, StockInfoFetcher, util};
+use crate::{Group, Stock, StockInfoFetcher, util::BROWSER_UA};
 use anyhow::Context;
 use chrono::Local;
 use futures::{StreamExt, TryStreamExt, stream};
@@ -6,6 +6,7 @@ use reqwest::{Client, header};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::time::Duration;
 
 use url::Url;
 
@@ -16,7 +17,7 @@ const SYMBOL_SEARCH_CONCURRENCY: usize = 8;
 
 #[derive(Clone)]
 pub struct ScreenerApi {
-    client: &'static Client,
+    client: Client,
 }
 
 impl Default for ScreenerApi {
@@ -28,7 +29,14 @@ impl Default for ScreenerApi {
 impl ScreenerApi {
     pub fn new() -> Self {
         Self {
-            client: &util::HTTP_CLIENT,
+            client: Client::builder()
+                .user_agent(BROWSER_UA)
+                .cookie_store(true)
+                .gzip(true)
+                .deflate(true)
+                .timeout(Duration::from_secs(10))
+                .build()
+                .expect("Failed to build TradingView HTTP client"),
         }
     }
 

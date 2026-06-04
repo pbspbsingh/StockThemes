@@ -69,6 +69,8 @@ pub(super) struct QuoteSummaryResult {
 pub(super) struct AssetProfile {
     pub(super) sector: Option<String>,
     pub(super) industry: Option<String>,
+    #[serde(rename = "longBusinessSummary")]
+    pub(super) long_business_summary: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

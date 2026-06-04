@@ -19,6 +19,18 @@ async fn test_crumb_is_reused() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn test_fetch_company_profile() -> anyhow::Result<()> {
+    let yf = YFinance::new();
+    let profile = yf.fetch_company_profile("AAPL").await?;
+
+    assert_eq!(profile.symbol, "AAPL");
+    assert!(profile.summary.is_some());
+    eprintln!("{profile:?}");
+
+    Ok(())
+}
+
 /// Daily candles via a named range — basic sanity check.
 #[tokio::test]
 async fn test_fetch_candles_range() -> anyhow::Result<()> {

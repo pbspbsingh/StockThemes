@@ -406,6 +406,33 @@ select { padding: 5px 8px; }
     letter-spacing: 0.5px;
     margin-bottom: 8px;
 }
+.section-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.section-title-row .section-title { margin-bottom: 0; }
+.profile-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin-bottom: 7px;
+}
+.profile-summary {
+    color: #d0d0d0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.profile-status {
+    margin-bottom: 7px;
+    color: #888;
+    font-size: 12px;
+}
+.profile-error {
+    color: #ffaaaa;
+}
 
 .selected-title {
     font-size: 22px;
@@ -566,6 +593,7 @@ let tagInputQuery = '';
 let includeAlreadyTagged = false;
 let lastPreview = null;
 let toastTimer = null;
+let companyProfiles = new Map();
 
 const el = id => document.getElementById(id);
 const lower = value => String(value || '').toLowerCase();
@@ -606,6 +634,91 @@ async function api(path, options = {}) {
     }
     if (response.status === 204) return null;
     return response.json();
+}
+
+function companyProfileKey(ticker) {
+    return String(ticker || '').trim().toUpperCase();
+}
+
+async function loadCompanyProfile(ticker, forceRefresh = false) {
+    const key = companyProfileKey(ticker);
+    if (!key) return;
+
+    const cached = companyProfiles.get(key);
+    if (!forceRefresh && cached?.profile) {
+        renderCompanyProfile(key);
+        return;
+    }
+    if (!forceRefresh && cached?.loading) {
+        renderCompanyProfile(key);
+        return;
+    }
+
+    companyProfiles.set(key, { loading: true, profile: forceRefresh ? cached?.profile : null, error: null });
+    renderCompanyProfile(key);
+
+    try {
+        const profile = await api(`/api/company-profiles/${encodeURIComponent(key)}`, {
+            method: forceRefresh ? 'POST' : 'GET',
+        });
+        companyProfiles.set(key, { loading: false, profile, error: null });
+        if (selectedTicker === key) renderCompanyProfile(key);
+        if (forceRefresh) setStatus(`Refreshed profile for ${key}`, 'ok');
+    } catch (err) {
+        companyProfiles.set(key, { loading: false, profile: cached?.profile || null, error: err.message });
+        if (selectedTicker === key) renderCompanyProfile(key);
+        setStatus(`Failed to load profile for ${key}: ${err.message}`, 'error');
+    }
+}
+
+function renderCompanyProfile(ticker) {
+    const node = el('company-profile-body');
+    if (!node) return;
+
+    const key = companyProfileKey(ticker);
+    const state = companyProfiles.get(key);
+    const refreshBtn = el('refresh-company-profile');
+    if (refreshBtn) refreshBtn.disabled = Boolean(state?.loading);
+
+    if (!state || state.loading && !state.profile) {
+        node.innerHTML = '<div class="profile-status">Loading company profile</div>';
+        return;
+    }
+
+    const profile = state.profile;
+    const error = state.error
+        ? `<div class="profile-status profile-error">${escapeHtml(state.error)}</div>`
+        : '';
+
+    if (!profile) {
+        node.innerHTML = `${error}<div class="profile-status">No company profile cached</div>`;
+        return;
+    }
+
+    const meta = [
+        profile.sector ? `Sector: ${profile.sector}` : '',
+        profile.industry ? `Industry: ${profile.industry}` : '',
+        profile.fetched_at ? `Fetched: ${formatDateTime(profile.fetched_at)}` : '',
+        profile.source ? `Source: ${profile.source}` : '',
+    ].filter(Boolean);
+    const summary = profile.summary || '';
+
+    node.innerHTML = `
+        ${error}
+        <div class="profile-meta">
+            ${meta.map(item => `<span class="stat">${escapeHtml(item)}</span>`).join('')}
+        </div>
+        <div class="profile-summary">
+            ${summary ? escapeHtml(summary) : '<span class="no-tags">No description available</span>'}
+        </div>
+        ${state.loading ? '<div class="profile-status">Refreshing profile</div>' : ''}
+    `;
+}
+
+function formatDateTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString();
 }
 
 async function refreshData() {
@@ -852,6 +965,15 @@ function renderStockDetails() {
             <div class="muted">${stock.tags.length ? `${stock.tags.length} tags assigned` : 'No tags assigned'}</div>
         </div>
         <div class="section">
+            <div class="section-title-row">
+                <div class="section-title">Company Profile</div>
+                <button class="btn" id="refresh-company-profile">Refresh</button>
+            </div>
+            <div id="company-profile-body">
+                <div class="profile-status">Loading company profile</div>
+            </div>
+        </div>
+        <div class="section">
             <div class="section-title">Tags</div>
             <div class="stock-tags">
                 ${stock.tags.length ? stock.tags.map(tag => `
@@ -897,6 +1019,8 @@ function renderStockDetails() {
     document.querySelectorAll('[data-remove-tag]').forEach(btn => {
         btn.addEventListener('click', () => removeTagFromStock(stock.ticker, Number(btn.dataset.removeTag)));
     });
+    el('refresh-company-profile').addEventListener('click', () => loadCompanyProfile(stock.ticker, true));
+    loadCompanyProfile(stock.ticker);
     renderTagPicker();
     el('stock-tag-input')?.focus();
 }

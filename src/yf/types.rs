@@ -118,6 +118,14 @@ pub struct TickerInfo {
     pub industry: Option<String>,
 }
 
+#[derive(Debug)]
+pub struct CompanyProfile {
+    pub symbol: String,
+    pub sector: Option<String>,
+    pub industry: Option<String>,
+    pub summary: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Candle {
     pub timestamp: DateTime<Utc>,

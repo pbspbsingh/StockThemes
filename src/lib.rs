@@ -17,7 +17,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex as AsyncMutex;
-use tracing::{debug, info, trace, warn};
+use tracing::{info, trace, warn};
 
 pub mod config;
 pub mod etf_map;
@@ -169,7 +169,7 @@ pub async fn fetch_candles(
     }
 
     let last_updated = candles.pop().unwrap().last_updated;
-    debug!("Last candle of {ticker} was updated {last_updated}, hence requires updating");
+    trace!("Last candle of {ticker} was updated {last_updated}, hence requires updating");
 
     let start = candles
         .last()
