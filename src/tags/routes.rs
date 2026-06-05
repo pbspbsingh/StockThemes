@@ -10,10 +10,13 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
+use tracing::info;
 
+use crate::config::APP_CONFIG;
 use crate::html_error::HtmlError;
 use crate::store::{CompanyProfile, DeleteTagResult, Store, Tag};
 use crate::tags::import::{ImportError, TagAssignment, normalize_assignments, parse_import};
+use crate::tags::suggest::{SuggestionStatus, TagSuggestionHandle, input_for_hash, prompt_hash};
 use crate::yf::YFinance;
 
 static YF: LazyLock<YFinance> = LazyLock::new(YFinance::new);
@@ -21,6 +24,7 @@ static YF: LazyLock<YFinance> = LazyLock::new(YFinance::new);
 #[derive(Clone)]
 struct TagState {
     store: Arc<Store>,
+    tag_suggestions: Option<TagSuggestionHandle>,
 }
 
 #[derive(Template)]
@@ -30,6 +34,7 @@ struct TagMgmtTemplate {
     categories_json: String,
     stocks_json: String,
     untagged_json: String,
+    tag_suggestion_enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +52,11 @@ struct CategoryNameRequest {
 struct SetStockTagsRequest {
     ticker: String,
     tags: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SuggestTagsRequest {
+    ticker: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,6 +129,13 @@ impl ApiError {
             message: message.into(),
         }
     }
+
+    fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            message: message.into(),
+        }
+    }
 }
 
 impl<E> From<E> for ApiError
@@ -146,7 +163,26 @@ impl IntoResponse for ApiError {
 }
 
 pub fn router(store: Arc<Store>) -> Router {
-    let state = TagState { store };
+    let tag_suggestions = APP_CONFIG.tag_suggestion.clone().and_then(|config| {
+        match TagSuggestionHandle::new(config, store.clone()) {
+            Ok(handle) => {
+                info!(
+                    "Tag suggestions enabled with provider={} model={}",
+                    handle.provider_name(),
+                    handle.model().unwrap_or_else(|_| "unknown".to_string())
+                );
+                Some(handle)
+            }
+            Err(err) => {
+                tracing::error!("Tag suggestion config is invalid: {err}");
+                None
+            }
+        }
+    });
+    let state = TagState {
+        store,
+        tag_suggestions,
+    };
     Router::new()
         .route("/tags_mgmt.html", routing::get(tag_mgmt_home))
         .route("/api/tags", routing::get(list_tags).post(create_tag))
@@ -160,6 +196,14 @@ pub fn router(store: Arc<Store>) -> Router {
         )
         .route("/api/stock-tags", routing::get(list_stock_tags))
         .route("/api/stock-tags/tags", routing::put(set_stock_tags))
+        .route(
+            "/api/stock-tags/suggest",
+            routing::post(queue_tag_suggestion),
+        )
+        .route(
+            "/api/stock-tags/suggest/{ticker}",
+            routing::get(get_tag_suggestion).delete(delete_tag_suggestion),
+        )
         .route(
             "/api/stock-tags/untagged",
             routing::get(list_untagged_stocks),
@@ -184,6 +228,7 @@ async fn tag_mgmt_home(State(state): State<TagState>) -> Result<Html<String>, Ht
         categories_json: serde_json::to_string(&categories)?,
         stocks_json: serde_json::to_string(&stocks)?,
         untagged_json: serde_json::to_string(&untagged)?,
+        tag_suggestion_enabled: state.tag_suggestions.is_some(),
     }
     .render()?;
 
@@ -319,6 +364,69 @@ async fn set_stock_tags(
     }))
 }
 
+async fn queue_tag_suggestion(
+    State(state): State<TagState>,
+    Json(req): Json<SuggestTagsRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ticker = normalize_ticker(&req.ticker)?;
+    let Some(handle) = state.tag_suggestions.as_ref() else {
+        return Err(ApiError::bad_request("Tag suggestions are not configured"));
+    };
+
+    let input = build_suggestion_input(&state.store, &ticker).await?;
+    let provider = handle.provider_name();
+    let model = handle.model()?;
+    let mut input = input;
+    input.prompt_hash = prompt_hash(&input, provider, &model);
+
+    let cached = state
+        .store
+        .get_tag_suggestion_for_prompt(&ticker, &input.prompt_hash)
+        .await?;
+    if let Some(cached) = cached
+        && cached.status == SuggestionStatus::Ready
+    {
+        info!("Serving cached tag suggestion for {ticker}");
+        return Ok(Json(cached));
+    }
+
+    let enqueued = handle.enqueue(input, provider, &model).await?;
+    if enqueued {
+        info!("Queued tag suggestion for {ticker} using {provider}/{model}");
+    } else {
+        info!("Tag suggestion for {ticker} is already queued");
+    }
+
+    Ok(Json(
+        state
+            .store
+            .get_tag_suggestion(&ticker)
+            .await?
+            .ok_or_else(|| ApiError::bad_request("Failed to queue tag suggestion"))?,
+    ))
+}
+
+async fn get_tag_suggestion(
+    State(state): State<TagState>,
+    Path(ticker): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ticker = normalize_ticker(&ticker)?;
+    match state.store.get_tag_suggestion(&ticker).await? {
+        Some(suggestion) => Ok(Json(suggestion)),
+        None => Err(ApiError::not_found("No tag suggestion found")),
+    }
+}
+
+async fn delete_tag_suggestion(
+    State(state): State<TagState>,
+    Path(ticker): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ticker = normalize_ticker(&ticker)?;
+    state.store.delete_tag_suggestion(&ticker).await?;
+    info!("Deleted cached tag suggestion for {ticker}");
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn get_company_profile(
     State(state): State<TagState>,
     Path(ticker): Path<String>,
@@ -367,6 +475,23 @@ fn normalize_ticker(ticker: &str) -> Result<String, ApiError> {
         return Err(ApiError::bad_request("Ticker is required"));
     }
     Ok(ticker)
+}
+
+async fn build_suggestion_input(
+    store: &Store,
+    ticker: &str,
+) -> Result<crate::tags::suggest::SuggestionInput, ApiError> {
+    let profile = match store.get_company_profile(ticker).await? {
+        Some(profile) => profile,
+        None => fetch_and_cache_company_profile(store, ticker).await?,
+    };
+    let allowed_tags = store
+        .list_tags()
+        .await?
+        .into_iter()
+        .map(|tag| tag.name)
+        .collect::<Vec<_>>();
+    Ok(input_for_hash(ticker.to_string(), profile, allowed_tags))
 }
 
 async fn preview_import(

@@ -235,21 +235,45 @@ body {
     display: contents;
 }
 .tag-suggestions {
-    margin-top: 7px;
+    margin: 0;
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
+    align-content: flex-start;
+}
+.tag-suggestions:not(:empty) {
+    margin: 5px 0 8px;
 }
 .tag-suggestions .chip {
     cursor: pointer;
-    font-size: 12px;
-    padding: 4px 8px;
-    border-radius: 12px;
+    max-width: 190px;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
 }
 .tag-suggestions .chip:hover {
     background: #1a3a52;
     border-color: #4a9eff;
     color: #fff;
+}
+.model-suggestion-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 40px;
+}
+.model-suggestion-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 32px;
+    align-content: flex-start;
+    align-items: flex-start;
+}
+.model-suggestion-meta {
+    color: #777;
+    font-size: 11px;
+    text-align: right;
 }
 
 .prompt-options {
@@ -414,6 +438,55 @@ select { padding: 5px 8px; }
     margin-bottom: 8px;
 }
 .section-title-row .section-title { margin-bottom: 0; }
+.ticker-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #2a2a2a;
+}
+.ticker-summary-main {
+    min-width: 0;
+}
+.ticker-summary-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin-top: 6px;
+}
+.tag-work-grid {
+    display: grid;
+    grid-template-columns: minmax(300px, 1fr) minmax(260px, 0.85fr);
+    gap: 0;
+    align-items: start;
+    padding: 12px;
+    margin-bottom: 18px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #1b1b1b;
+}
+.tag-work-grid.single {
+    grid-template-columns: 1fr;
+}
+.tag-work-grid .section {
+    margin-bottom: 0;
+}
+.editor-section {
+    min-width: 0;
+    padding-right: 18px;
+}
+.editor-section .tag-input-box {
+    width: 100%;
+}
+.editor-actions {
+    justify-content: flex-end;
+}
+.suggestion-section {
+    min-width: 0;
+    padding-left: 18px;
+    border-left: 1px solid #333;
+}
 .profile-meta {
     display: flex;
     flex-wrap: wrap;
@@ -446,6 +519,8 @@ select { padding: 5px 8px; }
 
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .row-actions input { flex: 1; min-width: 260px; }
+.edit-tag-controls { margin-bottom: 8px; }
+.edit-tag-actions, .suggestion-actions { justify-content: flex-start; }
 
 .toast {
     position: fixed;
@@ -519,6 +594,23 @@ select { padding: 5px 8px; }
     margin-top: 8px;
 }
 .errors div + div { margin-top: 4px; }
+
+@media (max-width: 1180px) {
+    .tag-work-grid {
+        grid-template-columns: 1fr;
+    }
+    .editor-section {
+        padding-right: 0;
+    }
+    .suggestion-section {
+        margin-top: 14px;
+        padding-top: 14px;
+        padding-left: 0;
+        border-left: none;
+        border-top: 1px solid #333;
+    }
+}
+
 </style>
 </head>
 <body>
@@ -580,6 +672,7 @@ select { padding: 5px 8px; }
 <script id="untagged-data" type="application/json">{{ untagged_json|safe }}</script>
 
 <script>
+const TAG_SUGGESTION_ENABLED = {{ tag_suggestion_enabled|json|safe }};
 let tags = JSON.parse(document.getElementById('tags-data').textContent);
 let categories = JSON.parse(document.getElementById('categories-data').textContent);
 let stocks = JSON.parse(document.getElementById('stocks-data').textContent);
@@ -596,6 +689,9 @@ let includeAlreadyTagged = false;
 let lastPreview = null;
 let toastTimer = null;
 let companyProfiles = new Map();
+let tagSuggestions = new Map();
+let loadedTagSuggestions = new Set();
+let tagSuggestionPollTimers = new Map();
 
 const el = id => document.getElementById(id);
 const lower = value => String(value || '').toLowerCase();
@@ -934,6 +1030,144 @@ function latestTagUpdatedText(stock) {
     return latest.toLocaleString();
 }
 
+function tagSuggestionFor(ticker) {
+    return tagSuggestions.get(String(ticker || '').toUpperCase()) || null;
+}
+
+function tagSuggestionControlsHtml(ticker) {
+    if (!TAG_SUGGESTION_ENABLED) return '';
+    const suggestion = tagSuggestionFor(ticker);
+    const pending = suggestion?.status === 'pending';
+    return `
+        <button class="btn" id="suggest-stock-tags" ${pending ? 'disabled' : ''}>${pending ? 'Suggesting' : 'Suggest tags'}</button>
+    `;
+}
+
+function tagSuggestionSectionHtml(ticker) {
+    if (!TAG_SUGGESTION_ENABLED) return '';
+    const suggestion = tagSuggestionFor(ticker);
+    if (!suggestion || suggestion.status !== 'ready') return '';
+
+    const tags = suggestion?.suggested_tags || [];
+    const meta = [
+        suggestion.generated_at ? `Generated ${formatDateTime(suggestion.generated_at)}` : '',
+        suggestion.provider && suggestion.model ? `via ${suggestion.provider}/${suggestion.model}` : '',
+    ].filter(Boolean).join(' ');
+    const body = tags.length
+        ? `
+            <div class="model-suggestion-tags">
+                ${tags.map(tag => `<span class="chip new"><span>${escapeHtml(tag)}</span></span>`).join('')}
+            </div>
+        `
+        : '<span class="no-tags">Model returned no matching tags</span>';
+    return `
+        <div class="section suggestion-section">
+            <div class="section-title-row">
+                <div class="section-title">Suggested Tags</div>
+                ${meta ? `<div class="model-suggestion-meta">${escapeHtml(meta)}</div>` : ''}
+            </div>
+            <div class="model-suggestion-body">${body}</div>
+            <div class="row-actions suggestion-actions">
+                ${tags.length ? '<button class="btn" id="apply-suggested-tags">Apply</button>' : ''}
+                <button class="btn danger" id="delete-tag-suggestion">Delete suggestion</button>
+            </div>
+        </div>
+    `;
+}
+
+async function loadCachedTagSuggestion(ticker) {
+    if (!TAG_SUGGESTION_ENABLED || !ticker) return;
+    const key = ticker.toUpperCase();
+    if (loadedTagSuggestions.has(key)) return;
+    loadedTagSuggestions.add(key);
+    try {
+        const suggestion = await api(`/api/stock-tags/suggest/${encodeURIComponent(key)}`);
+        tagSuggestions.set(key, suggestion);
+        if (suggestion.status === 'pending') {
+            requestTagSuggestion(key, { silent: true });
+        }
+        if (selectedTicker === key) renderStockDetails();
+    } catch (_) {
+        // Missing cached suggestions are expected before the first request.
+    }
+}
+
+async function requestTagSuggestion(ticker, options = {}) {
+    if (!TAG_SUGGESTION_ENABLED || !ticker) return;
+    const key = ticker.toUpperCase();
+    const silent = Boolean(options.silent);
+    try {
+        const suggestion = await api('/api/stock-tags/suggest', {
+            method: 'POST',
+            body: JSON.stringify({ ticker: key }),
+        });
+        loadedTagSuggestions.add(key);
+        tagSuggestions.set(key, suggestion);
+        if (suggestion.status === 'ready') {
+            if (!silent) setStatus(`Suggested ${suggestion.suggested_tags.length} tags for ${key}`, 'ok');
+        } else if (suggestion.status === 'failed') {
+            if (!silent) setStatus(suggestion.error || 'Tag suggestion failed', 'error');
+        } else {
+            if (!silent) setStatus(`Queued tag suggestion for ${key}`, 'ok');
+            pollTagSuggestion(key);
+        }
+        if (selectedTicker === key) renderStockDetails();
+    } catch (err) {
+        if (!silent) setStatus(err.message || 'Failed to request tag suggestion', 'error');
+    }
+}
+
+function pollTagSuggestion(ticker) {
+    const key = ticker.toUpperCase();
+    if (tagSuggestionPollTimers.has(key)) return;
+    const timer = setInterval(async () => {
+        try {
+            const suggestion = await api(`/api/stock-tags/suggest/${encodeURIComponent(key)}`);
+            tagSuggestions.set(key, suggestion);
+            if (suggestion.status !== 'pending') {
+                clearInterval(timer);
+                tagSuggestionPollTimers.delete(key);
+                if (suggestion.status === 'ready') {
+                    setStatus(`Suggested ${suggestion.suggested_tags.length} tags for ${key}`, 'ok');
+                } else {
+                    setStatus(suggestion.error || 'Tag suggestion failed', 'error');
+                }
+                if (selectedTicker === key) renderStockDetails();
+            }
+        } catch (err) {
+            clearInterval(timer);
+            tagSuggestionPollTimers.delete(key);
+            setStatus(err.message || 'Failed to load tag suggestion', 'error');
+            if (selectedTicker === key) renderStockDetails();
+        }
+    }, 2000);
+    tagSuggestionPollTimers.set(key, timer);
+}
+
+function applySuggestedTags(ticker) {
+    const suggestion = tagSuggestionFor(ticker);
+    if (!suggestion || suggestion.status !== 'ready') return;
+    pendingTagNames = uniqueTagNames(suggestion.suggested_tags || []);
+    pendingTagTicker = ticker.toUpperCase();
+    tagInputQuery = '';
+    renderStockDetails();
+    renderTagPicker();
+}
+
+async function deleteTagSuggestion(ticker) {
+    if (!TAG_SUGGESTION_ENABLED || !ticker) return;
+    const key = ticker.toUpperCase();
+    try {
+        await api(`/api/stock-tags/suggest/${encodeURIComponent(key)}`, { method: 'DELETE' });
+        tagSuggestions.delete(key);
+        loadedTagSuggestions.delete(key);
+        setStatus(`Deleted tag suggestion for ${key}`, 'ok');
+        if (selectedTicker === key) renderStockDetails();
+    } catch (err) {
+        setStatus(err.message || 'Failed to delete tag suggestion', 'error');
+    }
+}
+
 function renderWork() {
     el('work-title').textContent = 'AI Tagging Workflow';
     if (selectedTicker) {
@@ -984,10 +1218,16 @@ function renderWorkflowIntro() {
 function renderStockDetails() {
     const stock = stocks.find(s => s.ticker === selectedTicker) || { ticker: selectedTicker, tags: [] };
     syncTagEditorForStock(stock);
+    const latestUpdated = stock.tags.length ? latestTagUpdatedText(stock) : '';
+    const tagSuggestionHtml = tagSuggestionSectionHtml(stock.ticker);
     el('work').innerHTML = `
-        <div class="section">
-            <div class="selected-title">${stock.ticker}</div>
-            <div class="muted">${stock.tags.length ? `${stock.tags.length} tags assigned` : 'No tags assigned'}</div>
+        <div class="section ticker-summary">
+            <div class="ticker-summary-main">
+                <div class="selected-title">${stock.ticker}</div>
+                <div class="ticker-summary-meta">
+                    <span class="stat"><b>${stock.tags.length}</b> assigned tags</span>
+                </div>
+            </div>
         </div>
         <div class="section">
             <div class="section-title-row">
@@ -1000,8 +1240,8 @@ function renderStockDetails() {
         </div>
         <div class="section">
             <div class="section-title-row">
-                <div class="section-title">Tags</div>
-                ${stock.tags.length ? `<div class="muted">Last updated ${escapeHtml(latestTagUpdatedText(stock))}</div>` : ''}
+                <div class="section-title">Current Tags</div>
+                ${latestUpdated ? `<div class="muted">Last updated ${escapeHtml(latestUpdated)}</div>` : ''}
             </div>
             <div class="stock-tags">
                 ${stock.tags.length ? stock.tags.map(tag => `
@@ -1009,16 +1249,22 @@ function renderStockDetails() {
                 `).join('') : '<span class="no-tags">No tags</span>'}
             </div>
         </div>
-        <div class="section">
-            <div class="section-title">Edit Tags</div>
-            <div class="row-actions">
-                <div class="tag-input-box">
-                    <span class="pending-tags" id="pending-tags"></span>
-                    <input id="stock-tag-input" placeholder="Search existing tags to add" value="${escapeAttr(tagInputQuery)}">
+        <div class="tag-work-grid ${tagSuggestionHtml ? '' : 'single'}">
+            <div class="section editor-section">
+                <div class="section-title">Edit Tags</div>
+                <div class="row-actions edit-tag-controls">
+                    <div class="tag-input-box">
+                        <span class="pending-tags" id="pending-tags"></span>
+                        <input id="stock-tag-input" placeholder="Search existing tags to add" value="${escapeAttr(tagInputQuery)}">
+                    </div>
                 </div>
-                <button class="btn primary" id="update-stock-tags" ${isUpdatingStockTags ? 'disabled' : ''}>${isUpdatingStockTags ? 'Updating' : 'Update'}</button>
+                <div class="tag-suggestions" id="tag-suggestions"></div>
+                <div class="row-actions edit-tag-actions">
+                    <button class="btn primary" id="update-stock-tags" ${isUpdatingStockTags ? 'disabled' : ''}>${isUpdatingStockTags ? 'Updating' : 'Update'}</button>
+                    ${tagSuggestionControlsHtml(stock.ticker)}
+                </div>
             </div>
-            <div class="tag-suggestions" id="tag-suggestions"></div>
+            ${tagSuggestionHtml}
         </div>
         <div class="section">
             <div class="section-title">Available Tags</div>
@@ -1027,6 +1273,9 @@ function renderStockDetails() {
     `;
 
     el('update-stock-tags').addEventListener('click', () => updateTagsForSelectedStock());
+    el('suggest-stock-tags')?.addEventListener('click', () => requestTagSuggestion(stock.ticker));
+    el('apply-suggested-tags')?.addEventListener('click', () => applySuggestedTags(stock.ticker));
+    el('delete-tag-suggestion')?.addEventListener('click', () => deleteTagSuggestion(stock.ticker));
     el('stock-tag-input').addEventListener('input', event => {
         tagInputQuery = event.target.value;
         renderTagPicker();
@@ -1046,6 +1295,7 @@ function renderStockDetails() {
     });
     el('refresh-company-profile').addEventListener('click', () => loadCompanyProfile(stock.ticker, true));
     loadCompanyProfile(stock.ticker);
+    loadCachedTagSuggestion(stock.ticker);
     renderTagPicker();
     el('stock-tag-input')?.focus();
 }

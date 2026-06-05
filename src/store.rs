@@ -130,6 +130,16 @@ impl Store {
             warn!("Cleaned {old_hourly} old hourly candles");
         }
 
+        let pending_suggestions =
+            sqlx::query!("DELETE FROM tag_suggestions WHERE status = 'pending'")
+                .execute(&mut *tx)
+                .await
+                .context("Failed to clear stale pending tag suggestions")?
+                .rows_affected();
+        if pending_suggestions > 0 {
+            warn!("Cleared {pending_suggestions} stale pending tag suggestions");
+        }
+
         tx.commit()
             .await
             .context("Failed to commit cleanup transaction")

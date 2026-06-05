@@ -27,6 +27,9 @@ pub struct Config {
 
     #[serde(default)]
     pub metrics: MetricsConfig,
+
+    #[serde(default)]
+    pub tag_suggestion: Option<TagSuggestionConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -41,6 +44,33 @@ pub struct TradeAnalysisConfig {
 pub struct MetricsConfig {
     pub adr_days: usize,
     pub avg_volume_days: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TagSuggestionProvider {
+    Ollama,
+    Deepseek,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TagSuggestionConfig {
+    pub provider: TagSuggestionProvider,
+    pub ollama: Option<OllamaTagSuggestionConfig>,
+    pub deepseek: Option<DeepseekTagSuggestionConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OllamaTagSuggestionConfig {
+    pub base_url: String,
+    pub model: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DeepseekTagSuggestionConfig {
+    pub base_url: String,
+    pub model: String,
+    pub api_key: String,
 }
 
 pub static APP_CONFIG: LazyLock<Config> = LazyLock::new(|| {
