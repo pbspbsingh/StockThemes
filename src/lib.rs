@@ -3,16 +3,20 @@ use crate::store::Store;
 use crate::util::is_upto_date;
 use crate::yf::{BarSize, Candle, Range, TimeSpec, YFinance, YfError};
 use anyhow::Context;
-use axum::extract::Extension;
-use axum::http::header::{CACHE_CONTROL, HeaderValue};
+use axum::extract::{Extension, Path};
+use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, HeaderValue};
+use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::Html;
 use axum::response::Response;
 use axum::{Router, middleware, routing};
 use chrono::{DateTime, Local, Months, NaiveDate, TimeDelta, Utc};
+#[cfg(not(debug_assertions))]
+use include_dir::{Dir, include_dir};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -32,6 +36,9 @@ pub mod trades;
 pub mod tv;
 pub mod util;
 pub mod yf;
+
+#[cfg(not(debug_assertions))]
+static ASSETS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/assets");
 
 const TWO_YEARS: TimeDelta = TimeDelta::days(2 * 365);
 
@@ -118,12 +125,52 @@ pub async fn start_http_server(store: Arc<Store>, home: String) -> anyhow::Resul
             routing::get(tags::stock_tags::stock_tag_metrics_stream),
         )
         .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler))
+        .route("/assets/{*path}", routing::get(static_asset))
         .merge(tags::router(store.clone()))
         .layer(Extension(store))
         .layer(middleware::from_fn(no_cache));
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+pub async fn static_asset(Path(path): Path<String>) -> Result<Response, StatusCode> {
+    if path.is_empty() || path.starts_with('/') || path.contains("..") || path.contains('\\') {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    #[cfg(debug_assertions)]
+    let bytes = {
+        let full_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join(&path);
+        tokio::fs::read(&full_path)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?
+    };
+
+    #[cfg(not(debug_assertions))]
+    let bytes = ASSETS
+        .get_file(&path)
+        .ok_or(StatusCode::NOT_FOUND)?
+        .contents()
+        .to_vec();
+
+    let content_type = match PathBuf::from(&path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+    {
+        Some("js") => "text/javascript; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("json") => "application/json; charset=utf-8",
+        Some("svg") => "image/svg+xml",
+        _ => "application/octet-stream",
+    };
+
+    Response::builder()
+        .header(CONTENT_TYPE, content_type)
+        .body(bytes.into())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 pub async fn no_cache(request: axum::extract::Request, next: Next) -> Response {

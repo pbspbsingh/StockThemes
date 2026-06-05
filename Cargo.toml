@@ -46,3 +46,4 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 askama = { version = "0.15", features = ["serde_json"] }
 url = "2.5"
+include_dir = "0.7"

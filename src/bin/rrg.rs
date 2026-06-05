@@ -7,7 +7,7 @@ use clap::Parser;
 use stock_themes::config::APP_CONFIG;
 use stock_themes::rrg_util::RrgMode;
 use stock_themes::store::Store;
-use stock_themes::{etf_map, init_logger, no_cache, rrg_util, tags, util};
+use stock_themes::{etf_map, init_logger, no_cache, rrg_util, static_asset, tags, util};
 use tokio::net::TcpListener;
 use tracing::info;
 
@@ -64,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", routing::get(rrg_util::rrg_home))
         .route("/rrg.html", routing::get(rrg_util::rrg_home))
+        .route("/assets/{*path}", routing::get(static_asset))
         .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler))
         .merge(tags::router(store))
         .layer(Extension(mode))
