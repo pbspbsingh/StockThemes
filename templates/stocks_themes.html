@@ -388,6 +388,11 @@
             justify-self: stretch;
         }
 
+        .preview-actions-menu .ticker-tag-mgmt-link {
+            justify-content: center;
+            justify-self: stretch;
+        }
+
         .preview-actions-menu .preview-refresh-tags svg {
             width: 13px;
             height: 13px;
@@ -1095,6 +1100,10 @@
                                 </svg>
                                 <span>Refresh</span>
                             </button>
+                        </div>
+                        <div class="preview-actions-row">
+                            <span class="preview-actions-label">Manage</span>
+                            <a id="ticker-tag-mgmt-link" href="/tags_mgmt.html" class="rrg-link ticker-tag-mgmt-link" target="_blank" rel="noopener noreferrer">Edit tags</a>
                         </div>
                         <div class="preview-actions-row">
                             <span class="preview-actions-label">Timeframe</span>
@@ -1813,11 +1822,13 @@
             const controls = document.getElementById('chart-controls');
             const navLinks = document.getElementById('preview-nav-links');
             const directRefresh = document.querySelector('.preview-header [data-refresh-tags]');
+            const tickerTagMgmtLink = document.getElementById('ticker-tag-mgmt-link');
 
             if (tickerInfo) {
                 if (navLinks) navLinks.style.display = 'none';
                 if (controls) controls.style.display = 'flex';
                 if (directRefresh) directRefresh.style.display = 'none';
+                if (tickerTagMgmtLink) tickerTagMgmtLink.href = `/tags_mgmt.html?ticker=${encodeURIComponent(tickerInfo.ticker)}`;
                 const hasEtf = tickerInfo.sectorEtf || tickerInfo.industryEtf;
                 const chartBtn = hasEtf
                     ? `<button class="chart-icon-btn">${CANDLE_SVG}</button>`
