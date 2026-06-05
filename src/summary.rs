@@ -89,7 +89,6 @@ impl Summary {
         industry_rs: HashMap<String, f64>,
         stock_rs: HashMap<String, f64>,
         stock_metrics: MetricsMap,
-        ticker_tags: HashMap<String, Vec<String>>,
     ) -> String {
         #[derive(Template)]
         #[template(path = "./stocks_themes.html")]
@@ -101,7 +100,6 @@ impl Summary {
             industry_rs: HashMap<String, f64>,
             stock_rs: HashMap<String, f64>,
             stock_metrics: MetricsMap,
-            ticker_tags: HashMap<String, Vec<String>>,
         }
 
         let html = Html {
@@ -112,7 +110,6 @@ impl Summary {
             industry_rs,
             stock_rs,
             stock_metrics,
-            ticker_tags,
         };
 
         html.render().expect("Failed to render html")

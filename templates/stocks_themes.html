@@ -1177,9 +1177,6 @@
 <script id="stock-metrics" type="application/json">
     {{ stock_metrics|json|safe }}
 </script>
-<script id="ticker-tags" type="application/json">
-    {{ ticker_tags|json|safe }}
-</script>
 <script id="stock-data" type="application/json">
     {{ summary|json|safe }}
 </script>
@@ -1220,9 +1217,7 @@
     const stockMetrics = new Map(
         Object.entries(JSON.parse(document.getElementById('stock-metrics').textContent))
     );
-    const tickerTags = new Map(
-        Object.entries(JSON.parse(document.getElementById('ticker-tags').textContent))
-    );
+    const tickerTags = new Map();
 
     const stockData = JSON.parse(document.getElementById('stock-data').textContent);
     const pageTickers = new Set(
@@ -2728,6 +2723,7 @@
         document.querySelectorAll('[data-refresh-tags]').forEach(button => {
             button.addEventListener('click', refreshTickerTagMappings);
         });
+        refreshTickerTagMappings();
     }
 
     function closePreviewActionsMenu() {
