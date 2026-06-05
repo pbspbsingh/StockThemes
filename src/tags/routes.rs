@@ -44,15 +44,9 @@ struct CategoryNameRequest {
 }
 
 #[derive(Debug, Deserialize)]
-struct AddStockTagsRequest {
+struct SetStockTagsRequest {
     ticker: String,
     tags: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RemoveStockTagRequest {
-    ticker: String,
-    tag_id: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,11 +66,10 @@ struct TagStockView {
 }
 
 #[derive(Debug, Serialize)]
-struct AddStockTagsResponse {
+struct SetStockTagsResponse {
     ticker: String,
-    created_tags: Vec<String>,
-    added_tags: Vec<String>,
-    duplicates_skipped: Vec<String>,
+    set_tags: Vec<String>,
+    removed_tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -103,7 +96,6 @@ struct ImportPreviewResponse {
 #[derive(Debug, Serialize)]
 struct ImportApplyResponse {
     rows_parsed: usize,
-    created_tags: Vec<String>,
     mappings_set: usize,
     mappings_removed: usize,
 }
@@ -167,10 +159,7 @@ pub fn router(store: Arc<Store>) -> Router {
             routing::put(rename_tag).delete(delete_tag),
         )
         .route("/api/stock-tags", routing::get(list_stock_tags))
-        .route(
-            "/api/stock-tags/tags",
-            routing::post(add_stock_tags).delete(remove_stock_tag),
-        )
+        .route("/api/stock-tags/tags", routing::put(set_stock_tags))
         .route(
             "/api/stock-tags/untagged",
             routing::get(list_untagged_stocks),
@@ -289,42 +278,45 @@ async fn list_untagged_stocks(
     Ok(Json(state.store.list_untagged_stocks().await?))
 }
 
-async fn add_stock_tags(
+async fn set_stock_tags(
     State(state): State<TagState>,
-    Json(req): Json<AddStockTagsRequest>,
+    Json(req): Json<SetStockTagsRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     if req.ticker.trim().is_empty() {
         return Err(ApiError::bad_request("Ticker is required"));
     }
-    if req.tags.iter().all(|tag| tag.trim().is_empty()) {
-        return Err(ApiError::bad_request("At least one tag is required"));
+
+    let allowed_tags = state
+        .store
+        .list_tags()
+        .await?
+        .into_iter()
+        .map(|tag| tag.name.to_lowercase())
+        .collect::<HashSet<_>>();
+    let unknown_tags = req
+        .tags
+        .iter()
+        .map(|tag| tag.trim())
+        .filter(|tag| !tag.is_empty())
+        .filter(|tag| !allowed_tags.contains(&tag.to_lowercase()))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if !unknown_tags.is_empty() {
+        return Err(ApiError::bad_request(format!(
+            "Unknown tags: {}",
+            unknown_tags.join(", ")
+        )));
     }
 
     let result = state
         .store
-        .add_tags_to_stock(&req.ticker, &req.tags)
+        .set_tags_for_stock(&req.ticker, &req.tags)
         .await?;
-    Ok(Json(AddStockTagsResponse {
+    Ok(Json(SetStockTagsResponse {
         ticker: req.ticker.trim().to_uppercase(),
-        created_tags: result.created_tags,
-        added_tags: result.added_tags,
-        duplicates_skipped: result.duplicates_skipped,
+        set_tags: result.set_tags,
+        removed_tags: result.removed_tags,
     }))
-}
-
-async fn remove_stock_tag(
-    State(state): State<TagState>,
-    Json(req): Json<RemoveStockTagRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    if req.ticker.trim().is_empty() {
-        return Err(ApiError::bad_request("Ticker is required"));
-    }
-
-    state
-        .store
-        .remove_tag_from_stock(&req.ticker, req.tag_id)
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn get_company_profile(
@@ -407,7 +399,6 @@ async fn apply_import(
 
     Ok(Json(ImportApplyResponse {
         rows_parsed: import_rows.len(),
-        created_tags: result.created_tags,
         mappings_set: result.mappings_set,
         mappings_removed: result.mappings_removed,
     }))
@@ -458,6 +449,7 @@ mod tests {
             name: name.to_string(),
             category_id: 1,
             stock_count: 0,
+            assigned_at: None,
         }
     }
 

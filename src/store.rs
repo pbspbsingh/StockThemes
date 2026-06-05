@@ -30,6 +30,7 @@ pub struct Tag {
     pub name: String,
     pub category_id: i64,
     pub stock_count: i64,
+    pub assigned_at: Option<DateTime<Local>>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]

@@ -589,7 +589,9 @@ let selectedTagIds = new Set();
 let untaggedSelected = false;
 let selectedTicker = null;
 let pendingTagNames = [];
+let pendingTagTicker = null;
 let tagInputQuery = '';
+let isUpdatingStockTags = false;
 let includeAlreadyTagged = false;
 let lastPreview = null;
 let toastTimer = null;
@@ -620,20 +622,24 @@ function setStatus(message, type = '') {
 }
 
 async function api(path, options = {}) {
-    const response = await fetch(path, {
-        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-        ...options,
-    });
-    if (!response.ok) {
-        let message = response.statusText;
-        try {
-            const body = await response.json();
-            message = body.error || message;
-        } catch (_) {}
-        throw new Error(message);
+    try {
+        const response = await fetch(path, {
+            headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+            ...options,
+        });
+        if (!response.ok) {
+            let message = `HTTP ${response.status}`;
+            try {
+                const body = await response.json();
+                message = body.error || message;
+            } catch (_) {}
+            throw new Error(message);
+        }
+        if (response.status === 204) return null;
+        return response.json();
+    } catch (err) {
+        throw new Error(err.message || 'Request failed. Server may be unavailable.');
     }
-    if (response.status === 204) return null;
-    return response.json();
 }
 
 function companyProfileKey(ticker) {
@@ -808,8 +814,7 @@ function renderTags() {
                 untaggedSelected = !untaggedSelected;
                 selectedTagIds.clear();
                 selectedTicker = null;
-                pendingTagNames = [];
-                tagInputQuery = '';
+                clearStockTagEditor();
                 renderAll();
                 return;
             }
@@ -822,8 +827,7 @@ function renderTags() {
                 selectedTagIds.add(tagId);
             }
             selectedTicker = null;
-            pendingTagNames = [];
-            tagInputQuery = '';
+            clearStockTagEditor();
             renderAll();
         });
     });
@@ -878,12 +882,10 @@ function renderStocks() {
             const nextTicker = row.dataset.ticker;
             if (selectedTicker === nextTicker && !chip) {
                 selectedTicker = null;
-                pendingTagNames = [];
-                tagInputQuery = '';
+                clearStockTagEditor();
             } else {
                 if (selectedTicker !== nextTicker) {
-                    pendingTagNames = [];
-                    tagInputQuery = '';
+                    clearStockTagEditor();
                 }
                 selectedTicker = nextTicker;
             }
@@ -908,6 +910,28 @@ function scrollSelectedTickerIntoView() {
             .find(row => row.dataset.ticker === selectedTicker);
         if (selectedRow) selectedRow.scrollIntoView({ block: 'nearest' });
     });
+}
+
+function clearStockTagEditor() {
+    pendingTagNames = [];
+    pendingTagTicker = null;
+    tagInputQuery = '';
+}
+
+function syncTagEditorForStock(stock) {
+    if (pendingTagTicker === stock.ticker) return;
+    pendingTagNames = stock.tags.map(tag => tag.name);
+    pendingTagTicker = stock.ticker;
+    tagInputQuery = '';
+}
+
+function latestTagUpdatedText(stock) {
+    const timestamps = stock.tags
+        .map(tag => tag.assigned_at ? new Date(tag.assigned_at) : null)
+        .filter(date => date && !Number.isNaN(date.getTime()));
+    if (!timestamps.length) return 'unknown';
+    const latest = new Date(Math.max(...timestamps.map(date => date.getTime())));
+    return latest.toLocaleString();
 }
 
 function renderWork() {
@@ -959,6 +983,7 @@ function renderWorkflowIntro() {
 
 function renderStockDetails() {
     const stock = stocks.find(s => s.ticker === selectedTicker) || { ticker: selectedTicker, tags: [] };
+    syncTagEditorForStock(stock);
     el('work').innerHTML = `
         <div class="section">
             <div class="selected-title">${stock.ticker}</div>
@@ -974,21 +999,24 @@ function renderStockDetails() {
             </div>
         </div>
         <div class="section">
-            <div class="section-title">Tags</div>
+            <div class="section-title-row">
+                <div class="section-title">Tags</div>
+                ${stock.tags.length ? `<div class="muted">Last updated ${escapeHtml(latestTagUpdatedText(stock))}</div>` : ''}
+            </div>
             <div class="stock-tags">
                 ${stock.tags.length ? stock.tags.map(tag => `
-                    <span class="chip"><span>${escapeHtml(tag.name)}</span><button data-remove-tag="${tag.id}" title="Remove tag">x</button></span>
+                    <span class="chip"><span>${escapeHtml(tag.name)}</span></span>
                 `).join('') : '<span class="no-tags">No tags</span>'}
             </div>
         </div>
         <div class="section">
-            <div class="section-title">Add Multiple Tags</div>
+            <div class="section-title">Edit Tags</div>
             <div class="row-actions">
                 <div class="tag-input-box">
                     <span class="pending-tags" id="pending-tags"></span>
-                    <input id="stock-tag-input" placeholder="Search existing tags" value="${escapeAttr(tagInputQuery)}">
+                    <input id="stock-tag-input" placeholder="Search existing tags to add" value="${escapeAttr(tagInputQuery)}">
                 </div>
-                <button class="btn primary" id="add-stock-tags">Add</button>
+                <button class="btn primary" id="update-stock-tags" ${isUpdatingStockTags ? 'disabled' : ''}>${isUpdatingStockTags ? 'Updating' : 'Update'}</button>
             </div>
             <div class="tag-suggestions" id="tag-suggestions"></div>
         </div>
@@ -998,7 +1026,7 @@ function renderStockDetails() {
         </div>
     `;
 
-    el('add-stock-tags').addEventListener('click', () => addTagsToSelectedStock());
+    el('update-stock-tags').addEventListener('click', () => updateTagsForSelectedStock());
     el('stock-tag-input').addEventListener('input', event => {
         tagInputQuery = event.target.value;
         renderTagPicker();
@@ -1009,15 +1037,12 @@ function renderStockDetails() {
             const suggestion = matchingAvailableTags()[0];
             if (suggestion) {
                 addPendingTags([suggestion.name]);
-            } else if (pendingTagNames.length) {
-                addTagsToSelectedStock();
+            } else if (!tagInputQuery.trim()) {
+                updateTagsForSelectedStock();
             } else {
                 setStatus('Select an existing tag from suggestions or the available list', 'error');
             }
         }
-    });
-    document.querySelectorAll('[data-remove-tag]').forEach(btn => {
-        btn.addEventListener('click', () => removeTagFromStock(stock.ticker, Number(btn.dataset.removeTag)));
     });
     el('refresh-company-profile').addEventListener('click', () => loadCompanyProfile(stock.ticker, true));
     loadCompanyProfile(stock.ticker);
@@ -1240,27 +1265,26 @@ async function deleteSelectedTag() {
     }
 }
 
-async function addTagsToSelectedStock() {
+async function updateTagsForSelectedStock() {
+    if (isUpdatingStockTags) return;
     const names = uniqueTagNames(pendingTagNames);
-    if (selectedTicker && names.length) {
-        const ok = await addTags(selectedTicker, names);
-        if (ok) {
-            pendingTagNames = [];
-            tagInputQuery = '';
-            renderAll();
-        }
-    } else {
-        setStatus('Select one or more existing tags before adding', 'error');
+    if (!selectedTicker) return;
+
+    isUpdatingStockTags = true;
+    renderStockDetails();
+    try {
+        const ok = await setTagsForSelectedStock(selectedTicker, names);
+        if (ok) pendingTagTicker = null;
+    } finally {
+        isUpdatingStockTags = false;
+        renderAll();
     }
 }
 
 function addPendingTags(names) {
-    const stock = stocks.find(s => s.ticker === selectedTicker) || { tags: [] };
-    const assigned = stock.tags.map(tag => tag.name);
     const known = tags.map(tag => tag.name);
     pendingTagNames = uniqueTagNames([...pendingTagNames, ...names])
-        .filter(name => known.some(tag => lower(tag) === lower(name)))
-        .filter(name => !assigned.some(tag => lower(tag) === lower(name)));
+        .filter(name => known.some(tag => lower(tag) === lower(name)));
     tagInputQuery = '';
     const input = el('stock-tag-input');
     if (input) input.value = '';
@@ -1268,31 +1292,18 @@ function addPendingTags(names) {
     el('stock-tag-input')?.focus();
 }
 
-async function addTags(ticker, names) {
+async function setTagsForSelectedStock(ticker, names) {
     try {
         const result = await api('/api/stock-tags/tags', {
-            method: 'POST',
+            method: 'PUT',
             body: JSON.stringify({ ticker, tags: names }),
         });
-        setStatus(`Added ${result.added_tags.length} tags to ${ticker}`, 'ok');
+        setStatus(`Updated ${result.ticker}: ${result.set_tags.length} tags set, ${result.removed_tags.length} removed`, 'ok');
         await refreshData();
         return true;
     } catch (err) {
-        setStatus(err.message, 'error');
+        setStatus(err.message || 'Failed to update tags', 'error');
         return false;
-    }
-}
-
-async function removeTagFromStock(ticker, tagId) {
-    try {
-        await api('/api/stock-tags/tags', {
-            method: 'DELETE',
-            body: JSON.stringify({ ticker, tag_id: tagId }),
-        });
-        setStatus(`Removed tag from ${ticker}`, 'ok');
-        await refreshData();
-    } catch (err) {
-        setStatus(err.message, 'error');
     }
 }
 
@@ -1384,15 +1395,12 @@ Return the same JSON object shape as the input ticker-to-tags JSON, with the tag
 }
 
 function tagPickerState() {
-    const stock = stocks.find(s => s.ticker === selectedTicker) || { tags: [] };
-    const assigned = new Set(stock.tags.map(tag => lower(tag.name)));
     const pending = new Set(pendingTagNames.map(lower));
-    return { assigned, pending };
+    return { pending };
 }
 
 function tagDisabledReason(tag, state = tagPickerState()) {
     const key = lower(tag.name);
-    if (state.assigned.has(key)) return 'assigned';
     if (state.pending.has(key)) return 'pending';
     return '';
 }
@@ -1427,7 +1435,7 @@ function renderTagPicker() {
         const state = tagPickerState();
         availableNode.innerHTML = tags.map(tag => {
             const reason = tagDisabledReason(tag, state);
-            const title = reason === 'assigned' ? 'Already assigned' : reason === 'pending' ? 'Queued to add' : 'Add to pending tags';
+            const title = reason === 'pending' ? 'Already selected' : 'Add to edited tags';
             return `<span class="chip new ${reason ? 'disabled' : ''}" data-available-tag="${escapeAttr(tag.name)}" title="${title}"><span>${escapeHtml(tag.name)}</span></span>`;
         }).join('') || '<span class="no-tags">No tags defined</span>';
         availableNode.querySelectorAll('[data-available-tag]').forEach(chip => {
@@ -1440,10 +1448,10 @@ function renderTagPicker() {
 
 function matchingAvailableTags() {
     if (!selectedTicker || !tagInputQuery.trim()) return [];
-    const { assigned, pending } = tagPickerState();
+    const { pending } = tagPickerState();
     const query = lower(tagInputQuery);
     return tags
-        .filter(tag => !assigned.has(lower(tag.name)) && !pending.has(lower(tag.name)))
+        .filter(tag => !pending.has(lower(tag.name)))
         .filter(tag => lower(tag.name).includes(query));
 }
 
@@ -1475,8 +1483,7 @@ function clearSelectedTags() {
     untaggedSelected = false;
     selectedTagIds.clear();
     selectedTicker = null;
-    pendingTagNames = [];
-    tagInputQuery = '';
+    clearStockTagEditor();
     renderAll();
 }
 

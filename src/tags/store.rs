@@ -5,22 +5,13 @@ use std::collections::HashMap;
 use crate::store::{DeleteTagResult, StockTags, Store, Tag, TagCategory};
 
 #[derive(Debug, Clone, Default)]
-pub struct AddTagsResult {
-    pub created_tags: Vec<String>,
-    pub added_tags: Vec<String>,
-    pub duplicates_skipped: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default)]
 pub struct ReplaceTagsResult {
-    pub created_tags: Vec<String>,
     pub set_tags: Vec<String>,
     pub removed_tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ReplaceImportResult {
-    pub created_tags: Vec<String>,
     pub mappings_set: usize,
     pub mappings_removed: usize,
 }
@@ -84,7 +75,8 @@ impl Store {
                 t.id,
                 t.name,
                 t.category_id,
-                COUNT(st.ticker) as stock_count
+                COUNT(st.ticker) as stock_count,
+                NULL as assigned_at
             FROM tags t
             LEFT JOIN stock_tags st ON st.tag_id = t.id
             GROUP BY t.id, t.name, t.category_id
@@ -167,6 +159,7 @@ impl Store {
             tag_id: Option<i64>,
             tag_name: Option<String>,
             tag_category_id: Option<i64>,
+            tag_assigned_at: Option<chrono::DateTime<Local>>,
         }
 
         let rows = sqlx::query_as::<_, Row>(
@@ -180,7 +173,8 @@ impl Store {
                 all_tickers.ticker,
                 tags.id as tag_id,
                 tags.name as tag_name,
-                tags.category_id as tag_category_id
+                tags.category_id as tag_category_id,
+                st.created_at as tag_assigned_at
             FROM all_tickers
             LEFT JOIN stock_tags st ON st.ticker = all_tickers.ticker
             LEFT JOIN tags ON tags.id = st.tag_id
@@ -205,14 +199,18 @@ impl Store {
                     idx
                 }
             };
-            if let (Some(id), Some(name), Some(category_id)) =
-                (row.tag_id, row.tag_name, row.tag_category_id)
-            {
+            if let (Some(id), Some(name), Some(category_id), Some(assigned_at)) = (
+                row.tag_id,
+                row.tag_name,
+                row.tag_category_id,
+                row.tag_assigned_at,
+            ) {
                 stocks[idx].tags.push(Tag {
                     id,
                     name,
                     category_id,
                     stock_count: 0,
+                    assigned_at: Some(assigned_at),
                 });
             }
         }
@@ -233,58 +231,6 @@ impl Store {
         .await
     }
 
-    pub async fn add_tags_to_stock(
-        &self,
-        ticker: &str,
-        tags: &[String],
-    ) -> sqlx::Result<AddTagsResult> {
-        let ticker = ticker.trim().to_uppercase();
-        let tags = normalize_tag_names(tags);
-        let mut result = AddTagsResult::default();
-        let mut tx = self.pool.begin().await?;
-
-        for tag in tags {
-            let insert_tag = sqlx::query(
-                r#"
-                INSERT OR IGNORE INTO tags (name, created_at, updated_at)
-                VALUES ($1, $2, $2)
-                "#,
-            )
-            .bind(&tag)
-            .bind(Local::now())
-            .execute(&mut *tx)
-            .await?;
-            if insert_tag.rows_affected() > 0 {
-                result.created_tags.push(tag.clone());
-            }
-
-            let tag_id: i64 = sqlx::query_scalar("SELECT id FROM tags WHERE name = $1")
-                .bind(&tag)
-                .fetch_one(&mut *tx)
-                .await?;
-
-            let insert_mapping = sqlx::query(
-                r#"
-                INSERT OR IGNORE INTO stock_tags (ticker, tag_id, created_at)
-                VALUES ($1, $2, $3)
-                "#,
-            )
-            .bind(&ticker)
-            .bind(tag_id)
-            .bind(Local::now())
-            .execute(&mut *tx)
-            .await?;
-            if insert_mapping.rows_affected() > 0 {
-                result.added_tags.push(tag);
-            } else {
-                result.duplicates_skipped.push(tag);
-            }
-        }
-
-        tx.commit().await?;
-        Ok(result)
-    }
-
     pub async fn replace_tags_for_stocks(
         &self,
         assignments: &[(String, Vec<String>)],
@@ -294,20 +240,10 @@ impl Store {
 
         for (ticker, tags) in assignments {
             let row_result = Self::replace_tags_for_stock_in_tx(&mut tx, ticker, tags).await?;
-            for tag in row_result.created_tags {
-                if !result
-                    .created_tags
-                    .iter()
-                    .any(|existing| existing.eq_ignore_ascii_case(&tag))
-                {
-                    result.created_tags.push(tag);
-                }
-            }
             result.mappings_set += row_result.set_tags.len();
             result.mappings_removed += row_result.removed_tags.len();
         }
 
-        result.created_tags.sort_by_key(|tag| tag.to_lowercase());
         tx.commit().await?;
         Ok(result)
     }
@@ -402,16 +338,6 @@ impl Store {
         Ok(result)
     }
 
-    pub async fn remove_tag_from_stock(&self, ticker: &str, tag_id: i64) -> sqlx::Result<()> {
-        let ticker = ticker.trim().to_uppercase();
-        sqlx::query("DELETE FROM stock_tags WHERE ticker = $1 AND tag_id = $2")
-            .bind(ticker)
-            .bind(tag_id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
-
     async fn get_tag_by_id(&self, id: i64) -> sqlx::Result<Tag> {
         sqlx::query_as::<_, Tag>(
             r#"
@@ -419,7 +345,8 @@ impl Store {
                 t.id,
                 t.name,
                 t.category_id,
-                COUNT(st.ticker) as stock_count
+                COUNT(st.ticker) as stock_count,
+                NULL as assigned_at
             FROM tags t
             LEFT JOIN stock_tags st ON st.tag_id = t.id
             WHERE t.id = $1
@@ -438,7 +365,8 @@ impl Store {
                 t.id,
                 t.name,
                 t.category_id,
-                COUNT(st.ticker) as stock_count
+                COUNT(st.ticker) as stock_count,
+                NULL as assigned_at
             FROM tags t
             LEFT JOIN stock_tags st ON st.tag_id = t.id
             WHERE t.name = $1
