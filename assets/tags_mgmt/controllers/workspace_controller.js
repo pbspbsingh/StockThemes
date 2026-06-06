@@ -137,7 +137,6 @@ export default class extends Controller {
                 </table>
             </div>
         `;
-        if (!state.batch.visibleTickers.length) this.applyBatchFilters();
         await this.refreshBatchStatuses({ silent: true });
         this.startBatchPolling();
         this.renderBatchRows();
@@ -216,6 +215,8 @@ export default class extends Controller {
     renderBatchRows() {
         const rowsNode = document.getElementById("batch-rows");
         if (!rowsNode) return;
+        this.applyBatchFilters();
+        this.pruneBatchSelectionToVisible();
         const visible = state.batch.visibleTickers
             .map(ticker => state.stocks.find(stock => stock.ticker === ticker))
             .filter(Boolean);

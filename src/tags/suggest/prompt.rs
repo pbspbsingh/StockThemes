@@ -2,21 +2,7 @@ use crate::store::CompanyProfile;
 
 use super::SuggestionInput;
 
-pub fn prompt_hash(input: &SuggestionInput, provider: &str, model: &str) -> String {
-    let payload = serde_json::json!({
-        "ticker": input.ticker,
-        "summary": input.profile.summary,
-        "sector": input.profile.sector,
-        "industry": input.profile.industry,
-        "profile_fetched_at": input.profile.fetched_at.timestamp_millis(),
-        "allowed_tags": input.allowed_tags,
-        "provider": provider,
-        "model": model,
-    });
-    stable_hash(payload.to_string().as_bytes())
-}
-
-pub fn input_for_hash(
+pub fn suggestion_input(
     ticker: String,
     profile: CompanyProfile,
     allowed_tags: Vec<String>,
@@ -25,7 +11,6 @@ pub fn input_for_hash(
         ticker,
         profile,
         allowed_tags,
-        prompt_hash: String::new(),
     }
 }
 
@@ -60,13 +45,4 @@ Allowed tags JSON:
         summary = profile.summary.as_deref().unwrap_or("No summary available"),
         allowed_tags = allowed_tags,
     )
-}
-
-fn stable_hash(bytes: &[u8]) -> String {
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("{hash:016x}")
 }

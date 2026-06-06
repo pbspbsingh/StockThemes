@@ -5,7 +5,7 @@ mod providers;
 mod store;
 
 pub use handle::TagSuggestionHandle;
-pub use prompt::{input_for_hash, prompt_hash};
+pub use prompt::suggestion_input;
 
 use chrono::{DateTime, Local};
 use serde::Serialize;
@@ -37,5 +37,4 @@ pub struct SuggestionInput {
     pub ticker: String,
     pub profile: CompanyProfile,
     pub allowed_tags: Vec<String>,
-    pub prompt_hash: String,
 }

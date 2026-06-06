@@ -44,60 +44,20 @@ impl Store {
         .transpose()
     }
 
-    pub async fn get_tag_suggestion_for_prompt(
+    pub async fn save_pending_tag_suggestion_request(
         &self,
         ticker: &str,
-        prompt_hash: &str,
-    ) -> sqlx::Result<Option<CachedTagSuggestion>> {
-        let ticker = ticker.trim().to_uppercase();
-        let row = sqlx::query!(
-            r#"
-            SELECT
-                ticker as "ticker!: String",
-                status,
-                suggested_tags as "suggested_tags!: String",
-                error,
-                generated_at as "generated_at?: chrono::DateTime<Local>",
-                requested_at as "requested_at: chrono::DateTime<Local>",
-                provider,
-                model
-            FROM tag_suggestions
-            WHERE ticker = $1 AND prompt_hash = $2
-            "#,
-            ticker,
-            prompt_hash,
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        row.map(|row| {
-            cached_suggestion_from_row(CachedSuggestionRow {
-                ticker: row.ticker,
-                status: row.status,
-                suggested_tags: row.suggested_tags,
-                error: row.error,
-                generated_at: row.generated_at,
-                requested_at: row.requested_at,
-                provider: row.provider,
-                model: row.model,
-            })
-        })
-        .transpose()
-    }
-
-    pub async fn save_pending_tag_suggestion(
-        &self,
-        input: &SuggestionInput,
         provider: &str,
         model: &str,
     ) -> sqlx::Result<()> {
+        let ticker = ticker.trim().to_uppercase();
         let requested_at = Local::now();
         sqlx::query!(
             r#"
             INSERT INTO tag_suggestions
-                (ticker, status, suggested_tags, error, profile_fetched_at, generated_at, requested_at, provider, model, prompt_hash)
+                (ticker, status, suggested_tags, error, profile_fetched_at, generated_at, requested_at, provider, model)
             VALUES
-                ($1, 'pending', '[]', NULL, $2, NULL, $3, $4, $5, $6)
+                ($1, 'pending', '[]', NULL, $2, NULL, $3, $4, $5)
             ON CONFLICT(ticker) DO UPDATE SET
                 status = excluded.status,
                 suggested_tags = excluded.suggested_tags,
@@ -106,25 +66,43 @@ impl Store {
                 generated_at = excluded.generated_at,
                 requested_at = excluded.requested_at,
                 provider = excluded.provider,
-                model = excluded.model,
-                prompt_hash = excluded.prompt_hash
+                model = excluded.model
             "#,
-            input.ticker,
-            input.profile.fetched_at,
+            ticker,
+            requested_at,
             requested_at,
             provider,
             model,
-            input.prompt_hash,
         )
         .execute(&self.pool)
         .await?;
         Ok(())
     }
 
+    pub async fn update_pending_tag_suggestion_profile(
+        &self,
+        ticker: &str,
+        input: &SuggestionInput,
+    ) -> sqlx::Result<bool> {
+        let ticker = ticker.trim().to_uppercase();
+        let result = sqlx::query!(
+            r#"
+            UPDATE tag_suggestions
+            SET profile_fetched_at = $1
+            WHERE ticker = $2
+              AND status = 'pending'
+            "#,
+            input.profile.fetched_at,
+            ticker,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn save_ready_tag_suggestion(
         &self,
         ticker: &str,
-        prompt_hash: &str,
         suggested_tags: &[String],
     ) -> sqlx::Result<bool> {
         let ticker = ticker.trim().to_uppercase();
@@ -138,12 +116,12 @@ impl Store {
                 suggested_tags = $1,
                 error = NULL,
                 generated_at = $2
-            WHERE ticker = $3 AND prompt_hash = $4
+            WHERE ticker = $3
+              AND status = 'pending'
             "#,
             suggested_tags,
             generated_at,
             ticker,
-            prompt_hash,
         )
         .execute(&self.pool)
         .await?;
@@ -153,7 +131,6 @@ impl Store {
     pub async fn save_failed_tag_suggestion(
         &self,
         ticker: &str,
-        prompt_hash: &str,
         error: &str,
     ) -> sqlx::Result<bool> {
         let ticker = ticker.trim().to_uppercase();
@@ -164,12 +141,12 @@ impl Store {
             SET status = 'failed',
                 error = $1,
                 generated_at = $2
-            WHERE ticker = $3 AND prompt_hash = $4
+            WHERE ticker = $3
+              AND status = 'pending'
             "#,
             error,
             generated_at,
             ticker,
-            prompt_hash,
         )
         .execute(&self.pool)
         .await?;

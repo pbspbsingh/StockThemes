@@ -16,7 +16,7 @@ use crate::config::APP_CONFIG;
 use crate::html_error::HtmlError;
 use crate::store::{CompanyProfile, DeleteTagResult, Store, Tag};
 use crate::tags::import::{ImportError, TagAssignment, normalize_assignments, parse_import};
-use crate::tags::suggest::{SuggestionStatus, TagSuggestionHandle, input_for_hash, prompt_hash};
+use crate::tags::suggest::{SuggestionStatus, TagSuggestionHandle};
 use crate::yf::YFinance;
 
 static YF: LazyLock<YFinance> = LazyLock::new(YFinance::new);
@@ -440,26 +440,9 @@ async fn queue_one_tag_suggestion(
     handle: &TagSuggestionHandle,
     ticker: &str,
 ) -> Result<BatchSuggestionItem, ApiError> {
-    let input = build_suggestion_input(&state.store, &ticker).await?;
-    let provider = handle.provider_name();
-    let model = handle.model()?;
-    let mut input = input;
-    input.prompt_hash = prompt_hash(&input, provider, &model);
-
-    let cached = state
-        .store
-        .get_tag_suggestion_for_prompt(&ticker, &input.prompt_hash)
-        .await?;
-    if let Some(cached) = cached
-        && cached.status == SuggestionStatus::Ready
-    {
-        info!("Serving cached tag suggestion for {ticker}");
-        return Ok(BatchSuggestionItem::from(cached));
-    }
-
-    let enqueued = handle.enqueue(input, provider, &model).await?;
+    let enqueued = handle.enqueue(ticker.to_string()).await?;
     if enqueued {
-        info!("Queued tag suggestion for {ticker} using {provider}/{model}");
+        info!("Queued tag suggestion for {ticker}");
     } else {
         info!("Tag suggestion for {ticker} is already queued");
     }
@@ -679,23 +662,6 @@ impl BatchSuggestionItem {
             model: None,
         }
     }
-}
-
-async fn build_suggestion_input(
-    store: &Store,
-    ticker: &str,
-) -> Result<crate::tags::suggest::SuggestionInput, ApiError> {
-    let profile = match store.get_company_profile(ticker).await? {
-        Some(profile) => profile,
-        None => fetch_and_cache_company_profile(store, ticker).await?,
-    };
-    let allowed_tags = store
-        .list_tags()
-        .await?
-        .into_iter()
-        .map(|tag| tag.name)
-        .collect::<Vec<_>>();
-    Ok(input_for_hash(ticker.to_string(), profile, allowed_tags))
 }
 
 async fn preview_import(

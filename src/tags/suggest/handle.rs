@@ -1,20 +1,24 @@
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
 use anyhow::anyhow;
+use chrono::Local;
 use reqwest::Client;
 use tokio::sync::{Mutex, mpsc};
 use tracing::{debug, error, info, warn};
 
 use crate::config::{TagSuggestionConfig, TagSuggestionProvider};
-use crate::store::Store;
+use crate::store::{CompanyProfile, Store};
+use crate::yf::YFinance;
 
 use super::SuggestionInput;
 use super::parse::parse_suggested_tags;
-use super::prompt::build_prompt;
+use super::prompt::{build_prompt, suggestion_input};
 use super::providers::{call_deepseek, call_ollama};
 use super::providers::{model_for_config, provider_name, validate_config};
+
+static YF: LazyLock<YFinance> = LazyLock::new(YFinance::new);
 
 #[derive(Clone)]
 pub struct TagSuggestionHandle {
@@ -25,7 +29,7 @@ pub struct TagSuggestionHandle {
 }
 
 pub(super) struct SuggestionJob {
-    pub(super) input: SuggestionInput,
+    pub(super) ticker: String,
 }
 
 struct TagSuggestionActor {
@@ -70,13 +74,10 @@ impl TagSuggestionHandle {
         model_for_config(&self.config)
     }
 
-    pub async fn enqueue(
-        &self,
-        input: SuggestionInput,
-        provider: &str,
-        model: &str,
-    ) -> anyhow::Result<bool> {
-        let ticker = input.ticker.clone();
+    pub async fn enqueue(&self, ticker: String) -> anyhow::Result<bool> {
+        let ticker = ticker.trim().to_uppercase();
+        let provider = self.provider_name().to_string();
+        let model = self.model()?;
         {
             let mut queued = self.queued_tickers.lock().await;
             if !queued.insert(ticker.clone()) {
@@ -85,13 +86,15 @@ impl TagSuggestionHandle {
             }
             if let Err(err) = self
                 .store
-                .save_pending_tag_suggestion(&input, provider, model)
+                .save_pending_tag_suggestion_request(&ticker, &provider, &model)
                 .await
             {
                 queued.remove(&ticker);
                 return Err(err.into());
             }
-            if let Err(err) = self.sender.send(SuggestionJob { input }) {
+            if let Err(err) = self.sender.send(SuggestionJob {
+                ticker: ticker.clone(),
+            }) {
                 queued.remove(&ticker);
                 return Err(anyhow!("Tag suggestion worker is not running: {err}"));
             }
@@ -103,15 +106,46 @@ impl TagSuggestionHandle {
 impl TagSuggestionActor {
     async fn process(&self, job: SuggestionJob) {
         let started_at = Instant::now();
-        let ticker = job.input.ticker.clone();
+        let ticker = job.ticker.clone();
         info!("Starting tag suggestion for {ticker}");
-        let result = self.suggest(&job.input).await;
+        let input = match self.prepare_input(&job).await {
+            Ok(Some(input)) => input,
+            Ok(None) => {
+                warn!("Discarded stale queued tag suggestion for {ticker}");
+                self.finish_job(&ticker).await;
+                return;
+            }
+            Err(err) => {
+                warn!(
+                    "Failed to prepare tag suggestion for {} after {:.2?}s: {err}",
+                    ticker,
+                    started_at.elapsed(),
+                );
+                match self
+                    .store
+                    .save_failed_tag_suggestion(&ticker, &err.to_string())
+                    .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        warn!("Discarded stale tag suggestion preparation failure for {ticker}");
+                    }
+                    Err(save_err) => {
+                        error!("Failed to save tag suggestion error for {ticker}: {save_err}");
+                    }
+                }
+                self.finish_job(&ticker).await;
+                return;
+            }
+        };
+
+        let result = self.suggest(&input).await;
         match result {
             Ok(tags) => {
                 let tag_count = tags.len();
                 match self
                     .store
-                    .save_ready_tag_suggestion(&job.input.ticker, &job.input.prompt_hash, &tags)
+                    .save_ready_tag_suggestion(&input.ticker, &tags)
                     .await
                 {
                     Ok(true) => {
@@ -126,23 +160,16 @@ impl TagSuggestionActor {
                         warn!("Discarded stale tag suggestion result for {ticker}");
                     }
                     Err(err) => {
-                        error!(
-                            "Failed to save tag suggestion for {}: {err}",
-                            job.input.ticker
-                        );
+                        error!("Failed to save tag suggestion for {}: {err}", input.ticker);
                         let error_message = format!("Failed to save tag suggestion: {err}");
                         if let Err(save_err) = self
                             .store
-                            .save_failed_tag_suggestion(
-                                &job.input.ticker,
-                                &job.input.prompt_hash,
-                                &error_message,
-                            )
+                            .save_failed_tag_suggestion(&input.ticker, &error_message)
                             .await
                         {
                             error!(
                                 "Failed to save tag suggestion error for {}: {save_err}",
-                                job.input.ticker
+                                input.ticker
                             );
                         }
                     }
@@ -151,16 +178,12 @@ impl TagSuggestionActor {
             Err(err) => {
                 warn!(
                     "Tag suggestion failed for {} after {:.2?}s: {err}",
-                    job.input.ticker,
+                    input.ticker,
                     started_at.elapsed(),
                 );
                 match self
                     .store
-                    .save_failed_tag_suggestion(
-                        &job.input.ticker,
-                        &job.input.prompt_hash,
-                        &err.to_string(),
-                    )
+                    .save_failed_tag_suggestion(&input.ticker, &err.to_string())
                     .await
                 {
                     Ok(true) => {}
@@ -170,13 +193,58 @@ impl TagSuggestionActor {
                     Err(save_err) => {
                         error!(
                             "Failed to save tag suggestion error for {}: {save_err}",
-                            job.input.ticker
+                            input.ticker
                         );
                     }
                 }
             }
         }
-        self.queued_tickers.lock().await.remove(&ticker);
+        self.finish_job(&ticker).await;
+    }
+
+    async fn prepare_input(&self, job: &SuggestionJob) -> anyhow::Result<Option<SuggestionInput>> {
+        let input = self.build_suggestion_input(&job.ticker).await?;
+        let updated = self
+            .store
+            .update_pending_tag_suggestion_profile(&job.ticker, &input)
+            .await?;
+        Ok(updated.then_some(input))
+    }
+
+    async fn build_suggestion_input(&self, ticker: &str) -> anyhow::Result<SuggestionInput> {
+        let profile = match self.store.get_company_profile(ticker).await? {
+            Some(profile) => profile,
+            None => self.fetch_and_cache_company_profile(ticker).await?,
+        };
+        let allowed_tags = self
+            .store
+            .list_tags()
+            .await?
+            .into_iter()
+            .map(|tag| tag.name)
+            .collect::<Vec<_>>();
+        Ok(suggestion_input(ticker.to_string(), profile, allowed_tags))
+    }
+
+    async fn fetch_and_cache_company_profile(&self, ticker: &str) -> anyhow::Result<CompanyProfile> {
+        let yf_profile = YF.fetch_company_profile(ticker).await?;
+        let profile = CompanyProfile {
+            ticker: yf_profile.symbol.trim().to_uppercase(),
+            summary: yf_profile
+                .summary
+                .map(|summary| summary.split_whitespace().collect::<Vec<_>>().join(" "))
+                .filter(|summary| !summary.is_empty()),
+            sector: yf_profile.sector,
+            industry: yf_profile.industry,
+            source: "Yahoo Finance".to_string(),
+            fetched_at: Local::now(),
+        };
+        self.store.save_company_profile(&profile).await?;
+        Ok(profile)
+    }
+
+    async fn finish_job(&self, ticker: &str) {
+        self.queued_tickers.lock().await.remove(ticker);
     }
 
     async fn suggest(&self, input: &SuggestionInput) -> anyhow::Result<Vec<String>> {
