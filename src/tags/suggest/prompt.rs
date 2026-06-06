@@ -18,7 +18,7 @@ pub(super) fn build_prompt(input: &SuggestionInput) -> String {
     let profile = &input.profile;
     let allowed_tags = serde_json::to_string_pretty(&input.allowed_tags).unwrap_or_default();
     format!(
-        r#"You are assigning stock theme tags.
+        r#"You need to assign thematic tags to stocks. These tags must reflect the core business of the company.
 
 Return JSON only in this exact shape:
 {{"tags":["Tag Name"]}}
