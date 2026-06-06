@@ -56,7 +56,17 @@ struct SetStockTagsRequest {
 
 #[derive(Debug, Deserialize)]
 struct SuggestTagsRequest {
-    ticker: String,
+    tickers: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SuggestTagsStatusRequest {
+    tickers: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApplySuggestionsRequest {
+    tickers: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,6 +120,46 @@ struct ImportApplyResponse {
     mappings_removed: usize,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum BatchSuggestionStatus {
+    NotRequested,
+    Pending,
+    Ready,
+    Failed,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchSuggestionItem {
+    ticker: String,
+    status: BatchSuggestionStatus,
+    suggested_tags: Vec<String>,
+    error: Option<String>,
+    generated_at: Option<chrono::DateTime<Local>>,
+    requested_at: Option<chrono::DateTime<Local>>,
+    provider: Option<String>,
+    model: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchSuggestionsResponse {
+    items: Vec<BatchSuggestionItem>,
+}
+
+#[derive(Debug, Serialize)]
+struct ApplySuggestionItem {
+    ticker: String,
+    applied: bool,
+    set_tags: Vec<String>,
+    removed_tags: Vec<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ApplySuggestionsResponse {
+    items: Vec<ApplySuggestionItem>,
+}
+
 struct ApiError {
     status: StatusCode,
     message: String,
@@ -126,13 +176,6 @@ impl ApiError {
     fn conflict(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::CONFLICT,
-            message: message.into(),
-        }
-    }
-
-    fn not_found(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::NOT_FOUND,
             message: message.into(),
         }
     }
@@ -201,8 +244,16 @@ pub fn router(store: Arc<Store>) -> Router {
             routing::post(queue_tag_suggestion),
         )
         .route(
+            "/api/stock-tags/suggest/status",
+            routing::post(get_tag_suggestion_statuses),
+        )
+        .route(
+            "/api/stock-tags/suggest/apply",
+            routing::post(apply_tag_suggestions),
+        )
+        .route(
             "/api/stock-tags/suggest/{ticker}",
-            routing::get(get_tag_suggestion).delete(delete_tag_suggestion),
+            routing::delete(delete_tag_suggestion),
         )
         .route(
             "/api/stock-tags/untagged",
@@ -368,11 +419,27 @@ async fn queue_tag_suggestion(
     State(state): State<TagState>,
     Json(req): Json<SuggestTagsRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let ticker = normalize_ticker(&req.ticker)?;
     let Some(handle) = state.tag_suggestions.as_ref() else {
         return Err(ApiError::bad_request("Tag suggestions are not configured"));
     };
+    let tickers = normalize_tickers(&req.tickers)?;
+    let mut items = Vec::with_capacity(tickers.len());
 
+    for ticker in tickers {
+        match queue_one_tag_suggestion(&state, handle, &ticker).await {
+            Ok(item) => items.push(item),
+            Err(err) => items.push(BatchSuggestionItem::request_error(ticker, err.message)),
+        }
+    }
+
+    Ok(Json(BatchSuggestionsResponse { items }))
+}
+
+async fn queue_one_tag_suggestion(
+    state: &TagState,
+    handle: &TagSuggestionHandle,
+    ticker: &str,
+) -> Result<BatchSuggestionItem, ApiError> {
     let input = build_suggestion_input(&state.store, &ticker).await?;
     let provider = handle.provider_name();
     let model = handle.model()?;
@@ -387,7 +454,7 @@ async fn queue_tag_suggestion(
         && cached.status == SuggestionStatus::Ready
     {
         info!("Serving cached tag suggestion for {ticker}");
-        return Ok(Json(cached));
+        return Ok(BatchSuggestionItem::from(cached));
     }
 
     let enqueued = handle.enqueue(input, provider, &model).await?;
@@ -397,24 +464,92 @@ async fn queue_tag_suggestion(
         info!("Tag suggestion for {ticker} is already queued");
     }
 
-    Ok(Json(
-        state
-            .store
-            .get_tag_suggestion(&ticker)
-            .await?
-            .ok_or_else(|| ApiError::bad_request("Failed to queue tag suggestion"))?,
-    ))
+    let suggestion = state
+        .store
+        .get_tag_suggestion(&ticker)
+        .await?
+        .ok_or_else(|| ApiError::bad_request("Failed to queue tag suggestion"))?;
+    Ok(BatchSuggestionItem::from(suggestion))
 }
 
-async fn get_tag_suggestion(
+async fn get_tag_suggestion_statuses(
     State(state): State<TagState>,
-    Path(ticker): Path<String>,
+    Json(req): Json<SuggestTagsStatusRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let ticker = normalize_ticker(&ticker)?;
-    match state.store.get_tag_suggestion(&ticker).await? {
-        Some(suggestion) => Ok(Json(suggestion)),
-        None => Err(ApiError::not_found("No tag suggestion found")),
+    let tickers = normalize_tickers(&req.tickers)?;
+    let mut items = Vec::with_capacity(tickers.len());
+    for ticker in tickers {
+        items.push(suggestion_status_item(&state.store, &ticker).await?);
     }
+    Ok(Json(BatchSuggestionsResponse { items }))
+}
+
+async fn apply_tag_suggestions(
+    State(state): State<TagState>,
+    Json(req): Json<ApplySuggestionsRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let tickers = normalize_tickers(&req.tickers)?;
+    let mut items = Vec::with_capacity(tickers.len());
+
+    for ticker in tickers {
+        let Some(suggestion) = state.store.get_tag_suggestion(&ticker).await? else {
+            items.push(ApplySuggestionItem {
+                ticker,
+                applied: false,
+                set_tags: Vec::new(),
+                removed_tags: Vec::new(),
+                error: Some("No suggestion requested".to_string()),
+            });
+            continue;
+        };
+        if suggestion.status != SuggestionStatus::Ready {
+            items.push(ApplySuggestionItem {
+                ticker,
+                applied: false,
+                set_tags: Vec::new(),
+                removed_tags: Vec::new(),
+                error: Some("Suggestion is not ready".to_string()),
+            });
+            continue;
+        }
+        if suggestion.suggested_tags.is_empty() {
+            items.push(ApplySuggestionItem {
+                ticker,
+                applied: false,
+                set_tags: Vec::new(),
+                removed_tags: Vec::new(),
+                error: Some("Suggestion has no tags".to_string()),
+            });
+            continue;
+        }
+
+        let result = match state
+            .store
+            .set_tags_for_stock(&ticker, &suggestion.suggested_tags)
+            .await
+        {
+            Ok(result) => result,
+            Err(err) => {
+                items.push(ApplySuggestionItem {
+                    ticker,
+                    applied: false,
+                    set_tags: Vec::new(),
+                    removed_tags: Vec::new(),
+                    error: Some(err.to_string()),
+                });
+                continue;
+            }
+        };
+        items.push(ApplySuggestionItem {
+            ticker,
+            applied: true,
+            set_tags: result.set_tags,
+            removed_tags: result.removed_tags,
+            error: None,
+        });
+    }
+
+    Ok(Json(ApplySuggestionsResponse { items }))
 }
 
 async fn delete_tag_suggestion(
@@ -475,6 +610,75 @@ fn normalize_ticker(ticker: &str) -> Result<String, ApiError> {
         return Err(ApiError::bad_request("Ticker is required"));
     }
     Ok(ticker)
+}
+
+fn normalize_tickers(tickers: &[String]) -> Result<Vec<String>, ApiError> {
+    let mut normalized = Vec::new();
+    let mut seen = HashSet::new();
+    for ticker in tickers {
+        let ticker = normalize_ticker(ticker)?;
+        if seen.insert(ticker.clone()) {
+            normalized.push(ticker);
+        }
+    }
+    if normalized.is_empty() {
+        return Err(ApiError::bad_request("At least one ticker is required"));
+    }
+    Ok(normalized)
+}
+
+async fn suggestion_status_item(
+    store: &Store,
+    ticker: &str,
+) -> Result<BatchSuggestionItem, ApiError> {
+    match store.get_tag_suggestion(ticker).await? {
+        Some(suggestion) => Ok(BatchSuggestionItem::from(suggestion)),
+        None => Ok(BatchSuggestionItem {
+            ticker: ticker.to_string(),
+            status: BatchSuggestionStatus::NotRequested,
+            suggested_tags: Vec::new(),
+            error: None,
+            generated_at: None,
+            requested_at: None,
+            provider: None,
+            model: None,
+        }),
+    }
+}
+
+impl From<crate::tags::suggest::CachedTagSuggestion> for BatchSuggestionItem {
+    fn from(suggestion: crate::tags::suggest::CachedTagSuggestion) -> Self {
+        let status = match suggestion.status {
+            SuggestionStatus::Pending => BatchSuggestionStatus::Pending,
+            SuggestionStatus::Ready => BatchSuggestionStatus::Ready,
+            SuggestionStatus::Failed => BatchSuggestionStatus::Failed,
+        };
+        Self {
+            ticker: suggestion.ticker,
+            status,
+            suggested_tags: suggestion.suggested_tags,
+            error: suggestion.error,
+            generated_at: suggestion.generated_at,
+            requested_at: Some(suggestion.requested_at),
+            provider: Some(suggestion.provider),
+            model: Some(suggestion.model),
+        }
+    }
+}
+
+impl BatchSuggestionItem {
+    fn request_error(ticker: String, error: String) -> Self {
+        Self {
+            ticker,
+            status: BatchSuggestionStatus::Failed,
+            suggested_tags: Vec::new(),
+            error: Some(error.clone()),
+            generated_at: None,
+            requested_at: None,
+            provider: None,
+            model: None,
+        }
+    }
 }
 
 async fn build_suggestion_input(

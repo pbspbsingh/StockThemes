@@ -14,11 +14,23 @@ export const state = {
     tagInputQuery: "",
     isUpdatingStockTags: false,
     includeAlreadyTagged: false,
+    homeTab: "manual",
     lastPreview: null,
     companyProfiles: new Map(),
     tagSuggestions: new Map(),
     loadedTagSuggestions: new Set(),
     tagSuggestionPollTimers: new Map(),
+    batch: {
+        tickerSearch: "",
+        tagState: "all",
+        suggestionState: "all",
+        tagSearch: "",
+        visibleTickers: [],
+        selectedTickers: new Set(),
+        requestingSuggestions: false,
+        applyingSuggestions: false,
+        pollTimer: null,
+    },
 };
 
 export function setData({ tags, categories, stocks, untagged }) {
@@ -33,7 +45,8 @@ export function requestRender() {
 }
 
 export function initialTickerFromQuery() {
-    const ticker = new URLSearchParams(window.location.search).get("ticker");
+    const params = new URLSearchParams(window.location.search);
+    const ticker = params.get("selectedTicker") || params.get("ticker");
     return ticker ? ticker.trim().toUpperCase() : null;
 }
 

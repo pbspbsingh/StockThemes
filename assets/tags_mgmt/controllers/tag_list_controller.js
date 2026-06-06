@@ -4,7 +4,6 @@ import { api, refreshAllTagData } from "../api.js";
 import {
     clearStockTagEditor,
     requestRender,
-    selectedTags,
     state,
 } from "../state.js";
 import { showStatus } from "../status.js";
@@ -206,9 +205,5 @@ export default class extends Controller {
         } catch (err) {
             showStatus(err.message, "error");
         }
-    }
-
-    selectedTags() {
-        return selectedTags();
     }
 }

@@ -31,6 +31,10 @@ export default class extends Controller {
             clearInterval(timer);
         }
         state.tagSuggestionPollTimers.clear();
+        if (state.batch.pollTimer) {
+            clearInterval(state.batch.pollTimer);
+            state.batch.pollTimer = null;
+        }
     }
 
     render() {
@@ -47,8 +51,23 @@ export default class extends Controller {
     }
 
     renderWorkflowIntro() {
-        const prompt = this.buildAiPrompt(state.includeAlreadyTagged);
         this.bodyTarget.innerHTML = `
+            <div class="home-tabs">
+                <button class="${state.homeTab === "manual" ? "active" : ""}" data-tab="manual" data-action="click->workspace#switchHomeTab">Manual</button>
+                <button class="${state.homeTab === "batch" ? "active" : ""}" data-tab="batch" data-action="click->workspace#switchHomeTab">Batch</button>
+            </div>
+            <div id="home-tab-body"></div>
+        `;
+        if (state.homeTab === "batch") {
+            this.renderBatchWorkflow();
+        } else {
+            this.renderManualWorkflow();
+        }
+    }
+
+    renderManualWorkflow() {
+        const prompt = this.buildAiPrompt(state.includeAlreadyTagged);
+        document.getElementById("home-tab-body").innerHTML = `
             <div class="section">
                 <div class="selected-title">AI Tagging Workflow</div>
                 <div class="muted">Generate a prompt for an AI agent, then paste the JSON response below.</div>
@@ -71,6 +90,327 @@ export default class extends Controller {
             </div>
             ${this.renderImportSection()}
         `;
+    }
+
+    switchHomeTab(event) {
+        state.homeTab = event.currentTarget.dataset.tab || "manual";
+        this.renderWorkflowIntro();
+    }
+
+    async renderBatchWorkflow() {
+        const body = document.getElementById("home-tab-body");
+        body.innerHTML = `
+            <div class="section">
+                <div class="selected-title">Batch Suggestions</div>
+                <div class="muted">Filter tickers, request AI suggestions, then manually apply ready rows.</div>
+            </div>
+            <div class="batch-filters">
+                <select id="batch-tag-state" data-action="change->workspace#batchFilterChanged">
+                    ${this.optionHtml("all", "All tag states", state.batch.tagState)}
+                    ${this.optionHtml("untagged", "Untagged", state.batch.tagState)}
+                    ${this.optionHtml("tagged", "Tagged", state.batch.tagState)}
+                </select>
+                <select id="batch-suggestion-state" data-action="change->workspace#batchFilterChanged">
+                    ${this.optionHtml("all", "All suggestion states", state.batch.suggestionState)}
+                    ${this.optionHtml("not_requested", "Not requested", state.batch.suggestionState)}
+                    ${this.optionHtml("pending", "Pending", state.batch.suggestionState)}
+                    ${this.optionHtml("ready_nonempty", "Ready with tags", state.batch.suggestionState)}
+                    ${this.optionHtml("ready_empty", "Ready empty", state.batch.suggestionState)}
+                    ${this.optionHtml("failed", "Failed", state.batch.suggestionState)}
+                </select>
+                <input id="batch-ticker-search" placeholder="Search tickers" value="${escapeAttr(state.batch.tickerSearch)}" data-action="input->workspace#batchFilterChanged">
+                <input id="batch-tag-search" placeholder="Search current tags" value="${escapeAttr(state.batch.tagSearch)}" data-action="input->workspace#batchFilterChanged">
+            </div>
+            <div class="section row-actions" id="batch-actions">
+                <button class="btn" data-action="click->workspace#selectVisibleBatchRows">Select visible</button>
+                <button class="btn" data-action="click->workspace#clearBatchSelection">Clear selection</button>
+                <button class="btn primary" data-batch-action="request" ${state.batch.requestingSuggestions || state.batch.selectedTickers.size === 0 ? "disabled" : ""} data-action="click->workspace#requestSelectedBatchSuggestions">${state.batch.requestingSuggestions ? "Requesting" : "Request selected"}</button>
+                <button class="btn primary" data-batch-action="apply" ${state.batch.applyingSuggestions || this.selectedApplyableBatchTickers().length === 0 ? "disabled" : ""} data-action="click->workspace#applySelectedBatchSuggestions">${state.batch.applyingSuggestions ? "Applying" : "Apply selected ready"}</button>
+            </div>
+            <div class="stats" id="batch-stats"></div>
+            <div class="batch-table-wrap">
+                <table class="batch-table">
+                    <thead>
+                        <tr><th>Check</th><th>Ticker</th><th>Current tags</th><th>Suggestion status</th><th>Apply</th></tr>
+                    </thead>
+                    <tbody id="batch-rows"></tbody>
+                </table>
+            </div>
+        `;
+        if (!state.batch.visibleTickers.length) this.applyBatchFilters();
+        await this.refreshBatchStatuses({ silent: true });
+        this.startBatchPolling();
+        this.renderBatchRows();
+    }
+
+    renderBatchActions() {
+        const request = document.querySelector('[data-batch-action="request"]');
+        if (request) {
+            request.disabled = state.batch.requestingSuggestions || state.batch.selectedTickers.size === 0;
+            request.textContent = state.batch.requestingSuggestions ? "Requesting" : "Request selected";
+        }
+        const apply = document.querySelector('[data-batch-action="apply"]');
+        if (apply) {
+            apply.disabled = state.batch.applyingSuggestions || this.selectedApplyableBatchTickers().length === 0;
+            apply.textContent = state.batch.applyingSuggestions ? "Applying" : "Apply selected ready";
+        }
+    }
+
+    optionHtml(value, label, selected) {
+        return `<option value="${value}" ${value === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+    }
+
+    batchFilterChanged() {
+        state.batch.tickerSearch = document.getElementById("batch-ticker-search")?.value || "";
+        state.batch.tagState = document.getElementById("batch-tag-state")?.value || "all";
+        state.batch.suggestionState = document.getElementById("batch-suggestion-state")?.value || "all";
+        state.batch.tagSearch = document.getElementById("batch-tag-search")?.value || "";
+        this.applyBatchFilters();
+        this.pruneBatchSelectionToVisible();
+        this.startBatchPolling();
+        this.renderBatchRows();
+    }
+
+    applyBatchFilters() {
+        state.batch.visibleTickers = state.stocks
+            .filter(stock => this.matchesBatchFilters(stock))
+            .map(stock => stock.ticker);
+    }
+
+    pruneBatchSelectionToVisible() {
+        const visible = new Set(state.batch.visibleTickers);
+        state.batch.selectedTickers = new Set(
+            [...state.batch.selectedTickers].filter(ticker => visible.has(ticker))
+        );
+    }
+
+    matchesBatchFilters(stock) {
+        const tickerQuery = lower(state.batch.tickerSearch);
+        if (tickerQuery && !lower(stock.ticker).includes(tickerQuery)) return false;
+
+        if (state.batch.tagState === "untagged" && stock.tags.length) return false;
+        if (state.batch.tagState === "tagged" && !stock.tags.length) return false;
+
+        const tagQuery = lower(state.batch.tagSearch);
+        if (tagQuery && !stock.tags.some(tag => lower(tag.name).includes(tagQuery))) return false;
+
+        const suggestionKind = this.batchSuggestionKind(stock.ticker);
+        if (state.batch.suggestionState !== "all" && suggestionKind !== state.batch.suggestionState) {
+            return false;
+        }
+
+        return true;
+    }
+
+    batchSuggestionKind(ticker) {
+        const suggestion = tagSuggestionFor(ticker);
+        if (!suggestion || suggestion.status === "not_requested") return "not_requested";
+        if (suggestion.status === "pending") return "pending";
+        if (suggestion.status === "failed") return "failed";
+        if (suggestion.status === "ready") {
+            return (suggestion.suggested_tags || []).length ? "ready_nonempty" : "ready_empty";
+        }
+        return "not_requested";
+    }
+
+    renderBatchRows() {
+        const rowsNode = document.getElementById("batch-rows");
+        if (!rowsNode) return;
+        const visible = state.batch.visibleTickers
+            .map(ticker => state.stocks.find(stock => stock.ticker === ticker))
+            .filter(Boolean);
+
+        rowsNode.innerHTML = visible.map(stock => {
+            const suggestion = tagSuggestionFor(stock.ticker);
+            const readyWithTags = suggestion?.status === "ready" && (suggestion.suggested_tags || []).length > 0;
+            const matchesCurrent = readyWithTags && this.suggestionMatchesCurrentTags(stock, suggestion);
+            const checked = state.batch.selectedTickers.has(stock.ticker);
+            return `
+                <tr>
+                    <td><input type="checkbox" data-batch-ticker="${stock.ticker}" ${checked ? "checked" : ""} data-action="change->workspace#toggleBatchTicker"></td>
+                    <td class="ticker"><a class="ticker-link" href="/tags_mgmt.html?selectedTicker=${encodeURIComponent(stock.ticker)}" target="_blank" rel="noopener noreferrer">${stock.ticker}</a></td>
+                    <td><div class="stock-tags">${this.tagsHtml(stock.tags)}</div></td>
+                    <td>${this.batchSuggestionStatusHtml(suggestion)}</td>
+                    <td><button class="btn" data-apply-ticker="${stock.ticker}" ${readyWithTags && !matchesCurrent ? "" : "disabled"} data-action="click->workspace#applyOneBatchSuggestion">${matchesCurrent ? "Applied" : "Apply"}</button></td>
+                </tr>
+            `;
+        }).join("") || '<tr><td colspan="5"><span class="no-tags">No tickers match these filters</span></td></tr>';
+
+        const selectedReady = this.selectedApplyableBatchTickers().length;
+        const pending = visible.filter(stock => tagSuggestionFor(stock.ticker)?.status === "pending").length;
+        const stats = document.getElementById("batch-stats");
+        if (stats) {
+            stats.innerHTML = `
+                <span class="stat"><b>${visible.length}</b> visible</span>
+                <span class="stat"><b>${state.batch.selectedTickers.size}</b> selected</span>
+                <span class="stat"><b>${selectedReady}</b> selected ready</span>
+                <span class="stat"><b>${pending}</b> pending visible</span>
+            `;
+        }
+        this.renderBatchActions();
+    }
+
+    tagsHtml(tags) {
+        return tags.length
+            ? tags.map(tag => `<span class="chip"><span>${escapeHtml(tag.name)}</span></span>`).join("")
+            : '<span class="no-tags">No tags</span>';
+    }
+
+    suggestionMatchesCurrentTags(stock, suggestion) {
+        const current = stock.tags.map(tag => lower(tag.name)).sort();
+        const suggested = (suggestion.suggested_tags || []).map(lower).sort();
+        return current.length === suggested.length && current.every((tag, idx) => tag === suggested[idx]);
+    }
+
+    batchSuggestionStatusHtml(suggestion) {
+        if (!suggestion || suggestion.status === "not_requested") return '<span class="no-tags">Not requested</span>';
+        if (suggestion.status === "pending") return '<span class="chip warn"><span>Pending</span></span>';
+        if (suggestion.status === "failed") {
+            return `<div class="batch-suggestion"><span class="chip warn"><span>Failed</span></span>${suggestion.error ? `<div class="profile-error">${escapeHtml(suggestion.error)}</div>` : ""}</div>`;
+        }
+        if (suggestion.status === "ready") {
+            const tags = suggestion.suggested_tags || [];
+            return tags.length
+                ? `<div class="stock-tags">${tags.map(tag => `<span class="chip new"><span>${escapeHtml(tag)}</span></span>`).join("")}</div>`
+                : '<span class="chip"><span>Ready: no tags</span></span>';
+        }
+        return '<span class="no-tags">Not requested</span>';
+    }
+
+    toggleBatchTicker(event) {
+        const ticker = event.currentTarget.dataset.batchTicker;
+        if (!ticker) return;
+        if (event.currentTarget.checked) {
+            state.batch.selectedTickers.add(ticker);
+        } else {
+            state.batch.selectedTickers.delete(ticker);
+        }
+        this.renderBatchRows();
+    }
+
+    selectVisibleBatchRows() {
+        state.batch.visibleTickers.forEach(ticker => state.batch.selectedTickers.add(ticker));
+        this.renderBatchRows();
+    }
+
+    clearBatchSelection() {
+        state.batch.selectedTickers.clear();
+        this.renderBatchRows();
+    }
+
+    async refreshBatchStatuses(options = {}) {
+        const silent = Boolean(options.silent);
+        const tickers = state.stocks.map(stock => stock.ticker);
+        if (!tickers.length) return;
+        try {
+            const response = await api("/api/stock-tags/suggest/status", {
+                method: "POST",
+                body: JSON.stringify({ tickers }),
+            });
+            this.storeSuggestionItems(response.items || []);
+        } catch (err) {
+            if (!silent) showStatus(err.message || "Failed to refresh suggestion statuses", "error");
+        } finally {
+            this.renderBatchRows();
+        }
+    }
+
+    async requestSelectedBatchSuggestions() {
+        const visible = new Set(state.batch.visibleTickers);
+        const tickers = [...state.batch.selectedTickers].filter(ticker => visible.has(ticker));
+        if (!tickers.length) return;
+        state.batch.requestingSuggestions = true;
+        this.renderBatchActions();
+        try {
+            const response = await api("/api/stock-tags/suggest", {
+                method: "POST",
+                body: JSON.stringify({ tickers }),
+            });
+            this.storeSuggestionItems(response.items || []);
+            showStatus(`Requested suggestions for ${tickers.length} tickers`, "ok");
+            this.startBatchPolling();
+        } catch (err) {
+            showStatus(err.message || "Failed to request suggestions", "error");
+        } finally {
+            state.batch.requestingSuggestions = false;
+            this.renderBatchActions();
+            this.renderBatchRows();
+        }
+    }
+
+    async applyOneBatchSuggestion(event) {
+        const ticker = event.currentTarget.dataset.applyTicker;
+        if (!ticker) return;
+        await this.applyBatchSuggestions([ticker]);
+    }
+
+    async applySelectedBatchSuggestions() {
+        const tickers = this.selectedApplyableBatchTickers();
+        if (!tickers.length) return;
+        await this.applyBatchSuggestions(tickers);
+    }
+
+    selectedApplyableBatchTickers() {
+        const visible = new Set(state.batch.visibleTickers);
+        return [...state.batch.selectedTickers].filter(ticker => {
+            if (!visible.has(ticker)) return false;
+            const suggestion = tagSuggestionFor(ticker);
+            const stock = state.stocks.find(stock => stock.ticker === ticker);
+            return stock && suggestion?.status === "ready" && (suggestion.suggested_tags || []).length > 0 && !this.suggestionMatchesCurrentTags(stock, suggestion);
+        });
+    }
+
+    async applyBatchSuggestions(tickers) {
+        state.batch.applyingSuggestions = true;
+        this.renderBatchActions();
+        try {
+            const response = await api("/api/stock-tags/suggest/apply", {
+                method: "POST",
+                body: JSON.stringify({ tickers }),
+            });
+            const applied = (response.items || []).filter(item => item.applied).length;
+            const failed = (response.items || []).length - applied;
+            await refreshAllTagData();
+            await this.refreshBatchStatuses({ silent: true });
+            showStatus(`Applied ${applied} suggestions${failed ? `, ${failed} skipped` : ""}`, failed ? "error" : "ok");
+        } catch (err) {
+            showStatus(err.message || "Failed to apply suggestions", "error");
+        } finally {
+            state.batch.applyingSuggestions = false;
+            this.renderBatchActions();
+            this.renderBatchRows();
+        }
+    }
+
+    storeSuggestionItems(items) {
+        items.forEach(item => {
+            state.loadedTagSuggestions.add(item.ticker);
+            state.tagSuggestions.set(item.ticker, item);
+        });
+    }
+
+    startBatchPolling() {
+        if (state.batch.pollTimer) return;
+        state.batch.pollTimer = setInterval(async () => {
+            const pending = state.batch.visibleTickers.filter(ticker => tagSuggestionFor(ticker)?.status === "pending");
+            if (!pending.length) {
+                clearInterval(state.batch.pollTimer);
+                state.batch.pollTimer = null;
+                return;
+            }
+            try {
+                const response = await api("/api/stock-tags/suggest/status", {
+                    method: "POST",
+                    body: JSON.stringify({ tickers: pending }),
+                });
+                this.storeSuggestionItems(response.items || []);
+                this.renderBatchRows();
+            } catch (err) {
+                showStatus(err.message || "Failed to poll suggestion statuses", "error");
+                clearInterval(state.batch.pollTimer);
+                state.batch.pollTimer = null;
+            }
+        }, 3000);
     }
 
     renderStockDetails() {
@@ -556,10 +896,12 @@ export default class extends Controller {
         const key = ticker.toUpperCase();
         const silent = Boolean(options.silent);
         try {
-            const suggestion = await api("/api/stock-tags/suggest", {
+            const response = await api("/api/stock-tags/suggest", {
                 method: "POST",
-                body: JSON.stringify({ ticker: key }),
+                body: JSON.stringify({ tickers: [key] }),
             });
+            const suggestion = response.items?.[0];
+            if (!suggestion) throw new Error("No suggestion status returned");
             state.loadedTagSuggestions.add(key);
             state.tagSuggestions.set(key, suggestion);
             if (suggestion.status === "ready") {
@@ -582,14 +924,20 @@ export default class extends Controller {
         if (state.loadedTagSuggestions.has(key)) return;
         state.loadedTagSuggestions.add(key);
         try {
-            const suggestion = await api(`/api/stock-tags/suggest/${encodeURIComponent(key)}`);
+            const suggestion = await this.loadTagSuggestionStatus(key);
             state.tagSuggestions.set(key, suggestion);
             if (suggestion.status === "pending") {
                 this.requestTagSuggestionForTicker(key, { silent: true });
             }
             if (state.selectedTicker === key) this.renderStockDetails();
-        } catch (_) {
-            // Missing cached suggestions are expected before the first request.
+        } catch (err) {
+            state.tagSuggestions.set(key, {
+                ticker: key,
+                status: "failed",
+                suggested_tags: [],
+                error: err.message || "Failed to load tag suggestion",
+            });
+            if (state.selectedTicker === key) this.renderStockDetails();
         }
     }
 
@@ -598,13 +946,15 @@ export default class extends Controller {
         if (state.tagSuggestionPollTimers.has(key)) return;
         const timer = setInterval(async () => {
             try {
-                const suggestion = await api(`/api/stock-tags/suggest/${encodeURIComponent(key)}`);
+                const suggestion = await this.loadTagSuggestionStatus(key);
                 state.tagSuggestions.set(key, suggestion);
                 if (suggestion.status !== "pending") {
                     clearInterval(timer);
                     state.tagSuggestionPollTimers.delete(key);
                     if (suggestion.status === "ready") {
                         showStatus(`Suggested ${suggestion.suggested_tags.length} tags for ${key}`, "ok");
+                    } else if (suggestion.status === "not_requested") {
+                        showStatus(`No tag suggestion found for ${key}`, "ok");
                     } else {
                         showStatus(suggestion.error || "Tag suggestion failed", "error");
                     }
@@ -618,6 +968,17 @@ export default class extends Controller {
             }
         }, 2000);
         state.tagSuggestionPollTimers.set(key, timer);
+    }
+
+    async loadTagSuggestionStatus(ticker) {
+        const key = ticker.toUpperCase();
+        const response = await api("/api/stock-tags/suggest/status", {
+            method: "POST",
+            body: JSON.stringify({ tickers: [key] }),
+        });
+        const suggestion = response.items?.[0];
+        if (!suggestion) throw new Error("No suggestion status returned");
+        return suggestion;
     }
 
     applySuggestedTags() {
