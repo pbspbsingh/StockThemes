@@ -25,11 +25,13 @@ export default class extends Controller {
     connect() {
         this.handleRender = () => this.render();
         window.addEventListener("tags:render", this.handleRender);
+        window.addEventListener("tags:sidebar-render", this.handleRender);
         this.render();
     }
 
     disconnect() {
         window.removeEventListener("tags:render", this.handleRender);
+        window.removeEventListener("tags:sidebar-render", this.handleRender);
     }
 
     render() {

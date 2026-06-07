@@ -1,6 +1,6 @@
 import { Controller } from "https://unpkg.com/@hotwired/stimulus@3.2.2/dist/stimulus.js";
 
-import { api, refreshAllTagData } from "../api.js";
+import { api, fetchAllTagData, refreshAllTagData } from "../api.js";
 import {
     addPendingTags,
     clearSelectedTags,
@@ -8,6 +8,7 @@ import {
     latestTagUpdatedText,
     requestRender,
     selectedTags,
+    setData,
     state,
     syncTagEditorForStock,
     tagSuggestionFor,
@@ -193,7 +194,7 @@ export default class extends Controller {
         const tagQuery = lower(state.batch.tagSearch);
         if (tagQuery && !stock.tags.some(tag => lower(tag.name).includes(tagQuery))) return false;
 
-        const suggestionKind = this.batchSuggestionKind(stock.ticker);
+        const suggestionKind = this.batchSuggestionKind(stock);
         if (state.batch.suggestionState !== "all" && suggestionKind !== state.batch.suggestionState) {
             return false;
         }
@@ -201,13 +202,14 @@ export default class extends Controller {
         return true;
     }
 
-    batchSuggestionKind(ticker) {
-        const suggestion = tagSuggestionFor(ticker);
+    batchSuggestionKind(stock) {
+        const suggestion = tagSuggestionFor(stock.ticker);
         if (!suggestion || suggestion.status === "not_requested") return "not_requested";
         if (suggestion.status === "pending") return "pending";
         if (suggestion.status === "failed") return "failed";
         if (suggestion.status === "ready") {
-            return (suggestion.suggested_tags || []).length ? "ready_nonempty" : "ready_empty";
+            if (!(suggestion.suggested_tags || []).length) return "ready_empty";
+            return this.suggestionMatchesCurrentTags(stock, suggestion) ? "applied" : "ready_nonempty";
         }
         return "not_requested";
     }
@@ -221,33 +223,63 @@ export default class extends Controller {
             .map(ticker => state.stocks.find(stock => stock.ticker === ticker))
             .filter(Boolean);
 
-        rowsNode.innerHTML = visible.map(stock => {
-            const suggestion = tagSuggestionFor(stock.ticker);
-            const readyWithTags = suggestion?.status === "ready" && (suggestion.suggested_tags || []).length > 0;
-            const matchesCurrent = readyWithTags && this.suggestionMatchesCurrentTags(stock, suggestion);
-            const checked = state.batch.selectedTickers.has(stock.ticker);
-            return `
-                <tr>
-                    <td><input type="checkbox" data-batch-ticker="${stock.ticker}" ${checked ? "checked" : ""} data-action="change->workspace#toggleBatchTicker"></td>
-                    <td class="ticker"><a class="ticker-link" href="/tags_mgmt.html?selectedTicker=${encodeURIComponent(stock.ticker)}" target="_blank" rel="noopener noreferrer">${stock.ticker}</a></td>
-                    <td><div class="stock-tags">${this.tagsHtml(stock.tags)}</div></td>
-                    <td>${this.batchSuggestionStatusHtml(suggestion)}</td>
-                    <td><button class="btn" data-apply-ticker="${stock.ticker}" ${readyWithTags && !matchesCurrent ? "" : "disabled"} data-action="click->workspace#applyOneBatchSuggestion">${matchesCurrent ? "Applied" : "Apply"}</button></td>
-                </tr>
-            `;
-        }).join("") || '<tr><td colspan="5"><span class="no-tags">No tickers match these filters</span></td></tr>';
+        rowsNode.innerHTML = visible.map(stock => this.batchRowHtml(stock)).join("")
+            || '<tr><td colspan="5"><span class="no-tags">No tickers match these filters</span></td></tr>';
+        this.renderBatchStats(visible);
+        this.renderBatchActions();
+    }
 
+    batchRowHtml(stock) {
+        const suggestion = tagSuggestionFor(stock.ticker);
+        const readyWithTags = suggestion?.status === "ready" && (suggestion.suggested_tags || []).length > 0;
+        const matchesCurrent = readyWithTags && this.suggestionMatchesCurrentTags(stock, suggestion);
+        const checked = state.batch.selectedTickers.has(stock.ticker);
+        return `
+            <tr data-batch-row-ticker="${stock.ticker}">
+                <td><input type="checkbox" data-batch-ticker="${stock.ticker}" ${checked ? "checked" : ""} data-action="change->workspace#toggleBatchTicker"></td>
+                <td class="ticker"><a class="ticker-link" href="/tags_mgmt.html?selectedTicker=${encodeURIComponent(stock.ticker)}" target="_blank" rel="noopener noreferrer">${stock.ticker}</a></td>
+                <td><div class="stock-tags">${this.tagsHtml(stock.tags)}</div></td>
+                <td>${this.batchSuggestionStatusHtml(suggestion)}</td>
+                <td><button class="btn" data-apply-ticker="${stock.ticker}" ${readyWithTags && !matchesCurrent ? "" : "disabled"} data-action="click->workspace#applyOneBatchSuggestion">${matchesCurrent ? "Applied" : "Apply"}</button></td>
+            </tr>
+        `;
+    }
+
+    renderBatchStats(visible = null) {
+        const visibleStocks = visible || state.batch.visibleTickers
+            .map(ticker => state.stocks.find(stock => stock.ticker === ticker))
+            .filter(Boolean);
         const selectedReady = this.selectedApplyableBatchTickers().length;
-        const pending = visible.filter(stock => tagSuggestionFor(stock.ticker)?.status === "pending").length;
+        const pending = visibleStocks.filter(stock => tagSuggestionFor(stock.ticker)?.status === "pending").length;
         const stats = document.getElementById("batch-stats");
         if (stats) {
             stats.innerHTML = `
-                <span class="stat"><b>${visible.length}</b> visible</span>
+                <span class="stat"><b>${visibleStocks.length}</b> visible</span>
                 <span class="stat"><b>${state.batch.selectedTickers.size}</b> selected</span>
                 <span class="stat"><b>${selectedReady}</b> selected ready</span>
                 <span class="stat"><b>${pending}</b> pending visible</span>
             `;
         }
+    }
+
+    renderBatchRowsForTickers(tickers) {
+        this.applyBatchFilters();
+        this.pruneBatchSelectionToVisible();
+        tickers.forEach(ticker => {
+            const stock = state.stocks.find(stock => stock.ticker === ticker);
+            const row = document.querySelector(`[data-batch-row-ticker="${CSS.escape(ticker)}"]`);
+            if (!stock || !row) return;
+            if (this.matchesBatchFilters(stock)) {
+                row.outerHTML = this.batchRowHtml(stock);
+            } else {
+                row.remove();
+            }
+        });
+        const rowsNode = document.getElementById("batch-rows");
+        if (rowsNode && !rowsNode.children.length) {
+            rowsNode.innerHTML = '<tr><td colspan="5"><span class="no-tags">No tickers match these filters</span></td></tr>';
+        }
+        this.renderBatchStats();
         this.renderBatchActions();
     }
 
@@ -371,15 +403,21 @@ export default class extends Controller {
             });
             const applied = (response.items || []).filter(item => item.applied).length;
             const failed = (response.items || []).length - applied;
-            await refreshAllTagData();
-            await this.refreshBatchStatuses({ silent: true });
+            const appliedTickers = (response.items || [])
+                .filter(item => item.applied)
+                .map(item => item.ticker);
+            if (appliedTickers.length) {
+                const refreshed = await fetchAllTagData();
+                setData(refreshed);
+                window.dispatchEvent(new CustomEvent("tags:sidebar-render"));
+            }
+            this.renderBatchRowsForTickers(appliedTickers);
             showStatus(`Applied ${applied} suggestions${failed ? `, ${failed} skipped` : ""}`, failed ? "error" : "ok");
         } catch (err) {
             showStatus(err.message || "Failed to apply suggestions", "error");
         } finally {
             state.batch.applyingSuggestions = false;
             this.renderBatchActions();
-            this.renderBatchRows();
         }
     }
 
