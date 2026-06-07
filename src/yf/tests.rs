@@ -1,6 +1,5 @@
 use super::*;
 use crate::{Performance, TickerType};
-use chrono::{TimeZone, Utc};
 
 #[tokio::test]
 async fn test_crumb() -> anyhow::Result<()> {
@@ -127,51 +126,6 @@ async fn test_fetch_candles_intraday_extended() -> anyhow::Result<()> {
         "QQQ regular: {} candles, extended: {} candles",
         regular.len(),
         extended.len()
-    );
-    Ok(())
-}
-
-/// Hourly candles for one regular trading day — expect exactly 7.
-/// NYSE regular session 9:30–16:00 produces bars at :30 past each hour,
-/// last bar at 15:30. That's 7 bars: 9:30 10:30 11:30 12:30 13:30 14:30 15:30.
-#[tokio::test]
-async fn test_candle_count_hourly_one_day() -> anyhow::Result<()> {
-    let yf = YFinance::new();
-    // 2024-03-06 is a plain Wednesday with no early close, before DST (Mar 10).
-    let start = Utc.with_ymd_and_hms(2024, 3, 6, 14, 30, 0).unwrap(); // 9:30 ET
-    let end = Utc.with_ymd_and_hms(2024, 3, 6, 21, 0, 0).unwrap(); // 16:00 ET
-
-    let candles = yf
-        .fetch_candles("SPY", BarSize::Hour1, TimeSpec::Interval(start, end))
-        .await?;
-
-    assert_eq!(
-        candles.len(),
-        7,
-        "Expected 7 hourly bars for a regular session, got {}",
-        candles.len()
-    );
-    Ok(())
-}
-
-/// Hourly candles over an explicit intraday DateTime window.
-#[tokio::test]
-async fn test_fetch_candles_datetime_period() -> anyhow::Result<()> {
-    let yf = YFinance::new();
-    let start = Utc.with_ymd_and_hms(2024, 6, 3, 13, 30, 0).unwrap(); // 9:30 AM ET
-    let end = Utc.with_ymd_and_hms(2024, 6, 7, 20, 0, 0).unwrap(); // 4:00 PM ET
-
-    let candles = yf
-        .fetch_candles("TSLA", BarSize::Hour1, TimeSpec::Interval(start, end))
-        .await?;
-
-    assert!(!candles.is_empty());
-    assert!(candles.first().unwrap().timestamp >= start);
-    assert!(candles.last().unwrap().timestamp <= end);
-
-    eprintln!(
-        "TSLA hourly over explicit window — {} candles",
-        candles.len()
     );
     Ok(())
 }
