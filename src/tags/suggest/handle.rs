@@ -226,7 +226,10 @@ impl TagSuggestionActor {
         Ok(suggestion_input(ticker.to_string(), profile, allowed_tags))
     }
 
-    async fn fetch_and_cache_company_profile(&self, ticker: &str) -> anyhow::Result<CompanyProfile> {
+    async fn fetch_and_cache_company_profile(
+        &self,
+        ticker: &str,
+    ) -> anyhow::Result<CompanyProfile> {
         let yf_profile = YF.fetch_company_profile(ticker).await?;
         let profile = CompanyProfile {
             ticker: yf_profile.symbol.trim().to_uppercase(),

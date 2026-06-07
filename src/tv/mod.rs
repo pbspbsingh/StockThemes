@@ -1,3 +1,4 @@
+pub mod fundamentals;
 mod perf_util;
 pub mod screener_api;
 mod screenshot;
