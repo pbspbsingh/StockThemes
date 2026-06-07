@@ -1135,33 +1135,40 @@
 <div id="ticker-tag-tooltip" class="ticker-tag-tooltip"></div>
 
 <!-- ── TV Chart Popup ───────────────────────────────────────── -->
-<div class="tv-popup-backdrop" id="tv-popup-backdrop">
+<div class="tv-popup-backdrop" id="tv-popup-backdrop"
+     data-controller="ticker-popup"
+     data-ticker-popup-target="backdrop"
+     data-action="click->ticker-popup#closeFromBackdrop keydown.esc@window->ticker-popup#closeOnEscape">
     <div class="tv-popup-modal">
         <div class="tv-popup-header">
             <div class="popup-tabs">
-                <button class="popup-tab-btn active" id="popup-tab-charts" data-tab="charts">Charts</button>
-                <button class="popup-tab-btn" id="popup-tab-rrg" data-tab="rrg">RRG</button>
+                <button class="popup-tab-btn active" id="popup-tab-charts" data-tab="charts"
+                        data-ticker-popup-target="chartsTab" data-action="click->ticker-popup#switchTab">Charts</button>
+                <button class="popup-tab-btn" id="popup-tab-rrg" data-tab="rrg"
+                        data-ticker-popup-target="rrgTab" data-action="click->ticker-popup#switchTab">RRG</button>
             </div>
-            <div class="tv-popup-title" id="tv-popup-title">Sector &amp; Industry Charts</div>
-            <button class="rrg-ticker-toggle active" id="rrg-ticker-toggle" title="Show/hide ticker line">Ticker</button>
+            <div class="tv-popup-title" id="tv-popup-title" data-ticker-popup-target="title">Sector &amp; Industry Charts</div>
+            <button class="rrg-ticker-toggle active" id="rrg-ticker-toggle" title="Show/hide ticker line"
+                    data-ticker-popup-target="rrgTickerToggle" data-action="click->ticker-popup#toggleRrgTicker">Ticker</button>
             <span class="tv-popup-hint">Esc to close</span>
-            <button class="tv-popup-close" id="tv-popup-close" title="Close (Esc)">✕</button>
+            <button class="tv-popup-close" id="tv-popup-close" title="Close (Esc)"
+                    data-action="click->ticker-popup#close">✕</button>
         </div>
-        <div class="popup-tab-panel active" id="popup-tab-panel-charts">
+        <div class="popup-tab-panel active" id="popup-tab-panel-charts" data-ticker-popup-target="chartsPanel">
             <div class="tv-popup-charts">
                 <div class="tv-chart-panel">
-                    <div class="tv-panel-label" id="tv-sector-label"></div>
-                    <div class="tv-chart-container" id="tv-chart-sector"></div>
+                    <div class="tv-panel-label" id="tv-sector-label" data-ticker-popup-target="sectorLabel"></div>
+                    <div class="tv-chart-container" id="tv-chart-sector" data-ticker-popup-target="sectorContainer"></div>
                 </div>
-                <div class="tv-chart-panel">
-                    <div class="tv-panel-label" id="tv-industry-label"></div>
-                    <div class="tv-chart-container" id="tv-chart-industry"></div>
+                <div class="tv-chart-panel" data-ticker-popup-target="industryPanel">
+                    <div class="tv-panel-label" id="tv-industry-label" data-ticker-popup-target="industryLabel"></div>
+                    <div class="tv-chart-container" id="tv-chart-industry" data-ticker-popup-target="industryContainer"></div>
                 </div>
             </div>
         </div>
-        <div class="popup-tab-panel" id="popup-tab-panel-rrg">
-            <div class="rrg-popup-body" id="rrg-popup-body">
-                <canvas id="rrg-popup-canvas"></canvas>
+        <div class="popup-tab-panel" id="popup-tab-panel-rrg" data-ticker-popup-target="rrgPanel">
+            <div class="rrg-popup-body" id="rrg-popup-body" data-ticker-popup-target="rrgBody">
+                <canvas id="rrg-popup-canvas" data-ticker-popup-target="rrgCanvas"></canvas>
             </div>
         </div>
     </div>
@@ -1467,7 +1474,6 @@
 
         timeframe:   localStorage.getItem('timeframe')   || 'D',    // 'D' | 'W'
         compareMode: localStorage.getItem('compareMode') || 'off',  // 'off' | 'group' | 'bench'
-        popupInfo: null,
         currentTickerSymbol: null,
 
         clearIndustrySelection() {
@@ -1885,7 +1891,7 @@
                     chartIconBtn.addEventListener('click', e => {
                         e.preventDefault();
                         const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
-                        if (info) openRrgPopup(info);
+                        if (info) window.StockThemesPopup.open(info, 'rrg');
                     });
                 }
 
@@ -2218,16 +2224,16 @@
                 const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
                 if (!info) return;
                 if (event.key === 'ArrowLeft') {
-                    if (!document.getElementById('tv-popup-backdrop').classList.contains('open')) {
-                        openChartPopup(info);
+                    if (!window.StockThemesPopup.isOpen()) {
+                        window.StockThemesPopup.open(info, 'charts');
                     } else {
-                        switchPopupTab('charts');
+                        window.StockThemesPopup.switchTo('charts');
                     }
                 } else {
-                    if (!document.getElementById('tv-popup-backdrop').classList.contains('open')) {
-                        openRrgPopup(info);
+                    if (!window.StockThemesPopup.isOpen()) {
+                        window.StockThemesPopup.open(info, 'rrg');
                     } else {
-                        switchPopupTab('rrg');
+                        window.StockThemesPopup.switchTo('rrg');
                     }
                 }
                 return;
@@ -2289,9 +2295,9 @@
                 const ticker = AppState.currentTickers[AppState.selectedTickerIndex].ticker;
                 TradingViewWidget.show(ticker);
                 // If the popup is open, update it to reflect the new ticker
-                if (document.getElementById('tv-popup-backdrop').classList.contains('open')) {
+                if (window.StockThemesPopup.isOpen()) {
                     const info = DataHelpers.findTickerInfo(ticker);
-                    if (info) openUnifiedPopup(info, activePopupTab());
+                    if (info) window.StockThemesPopup.open(info, window.StockThemesPopup.activeTab());
                 }
             }, 300);
         },
@@ -2305,422 +2311,6 @@
         }
     };
 
-    // ============================================================
-    // TABBED POPUP
-    // ============================================================
-
-    function activePopupTab() {
-        return document.getElementById('popup-tab-rrg').classList.contains('active') ? 'rrg' : 'charts';
-    }
-
-    function switchPopupTab(tab) {
-        const isRrg = tab === 'rrg';
-        document.getElementById('popup-tab-charts').classList.toggle('active', !isRrg);
-        document.getElementById('popup-tab-rrg').classList.toggle('active', isRrg);
-        document.getElementById('popup-tab-panel-charts').classList.toggle('active', !isRrg);
-        document.getElementById('popup-tab-panel-rrg').classList.toggle('active', isRrg);
-        document.getElementById('rrg-ticker-toggle').style.display = isRrg ? '' : 'none';
-
-        if (isRrg && AppState.popupInfo) {
-            renderRrgTab(AppState.popupInfo);
-        } else if (!isRrg) {
-            if (_rrgAnimFrame) {
-                cancelAnimationFrame(_rrgAnimFrame);
-                _rrgAnimFrame = null;
-            }
-            if (AppState.popupInfo) {
-                renderChartTab(AppState.popupInfo);
-            }
-        }
-    }
-
-    function openUnifiedPopup(info, tab = 'charts') {
-        AppState.popupInfo = info;
-        document.getElementById('tv-popup-title').innerHTML =
-            `<span style="color:#4a9eff;font-weight:600">${info.ticker}</span>` +
-            `<span style="color:#555;font-weight:400;font-size:11px;margin-left:6px">Sector &amp; Industry / RRG</span>`;
-
-        document.getElementById('tv-popup-backdrop').classList.add('open');
-        document.body.style.overflow = 'hidden';
-        if (tab === 'charts') {
-            renderChartTab(info);
-        }
-        switchPopupTab(tab);
-    }
-
-    function openChartPopup(info) {
-        openUnifiedPopup(info, 'charts');
-    }
-
-    function openRrgPopup(info) {
-        openUnifiedPopup(info, 'rrg');
-    }
-
-    function renderChartTab(info) {
-        const sameEtf = !!(info.sectorEtf && info.sectorEtf === info.industryEtf);
-
-        document.getElementById('tv-sector-label').innerHTML = info.sectorEtf
-            ? `<span style="color:#d0d0d0">${info.sectorEtf}</span> <span style="color:#555">— ${sameEtf ? `${info.sector} / ${info.industry}` : info.sector}</span>`
-            : `<span style="color:#555">${info.sector}</span>`;
-        document.getElementById('tv-industry-label').innerHTML = info.industryEtf
-            ? `<span style="color:#d0d0d0">${info.industryEtf}</span> <span style="color:#555">— ${info.industry}</span>`
-            : `<span style="color:#555">${info.industry}</span>`;
-
-        const industryPanel = document.getElementById('tv-chart-industry').closest('.tv-chart-panel');
-        industryPanel.style.display = sameEtf ? 'none' : '';
-
-        TradingViewWidget._destroy('tv-chart-sector');
-        TradingViewWidget._destroy('tv-chart-industry');
-        const sectorContainer  = document.getElementById('tv-chart-sector');
-        const industryContainer = document.getElementById('tv-chart-industry');
-        sectorContainer.innerHTML  = '';
-        industryContainer.innerHTML = '';
-
-        if (info.sectorEtf) {
-            TradingViewWidget.createWidget(info.sectorEtf, 'tv-chart-sector', 'D');
-        } else {
-            sectorContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.sector}</div>`;
-        }
-
-        if (!sameEtf) {
-            if (info.industryEtf) {
-                TradingViewWidget.createWidget(info.industryEtf, 'tv-chart-industry', 'D');
-            } else {
-                industryContainer.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">No ETF mapped for ${info.industry}</div>`;
-            }
-        }
-    }
-
-    function closeChartPopup() {
-        const backdrop = document.getElementById('tv-popup-backdrop');
-        if (!backdrop.classList.contains('open')) return;
-        backdrop.classList.remove('open');
-        document.body.style.overflow = '';
-        TradingViewWidget._destroy('tv-chart-sector');
-        TradingViewWidget._destroy('tv-chart-industry');
-        document.getElementById('tv-chart-sector').innerHTML = '';
-        document.getElementById('tv-chart-industry').innerHTML = '';
-        if (_rrgAnimFrame) { cancelAnimationFrame(_rrgAnimFrame); _rrgAnimFrame = null; }
-        AppState.popupInfo = null;
-    }
-
-    // Close on backdrop click (outside modal)
-    document.getElementById('tv-popup-backdrop').addEventListener('click', e => {
-        if (e.target === document.getElementById('tv-popup-backdrop')) closeChartPopup();
-    });
-
-    // Close button
-    document.getElementById('tv-popup-close').addEventListener('click', closeChartPopup);
-
-    document.getElementById('popup-tab-charts').addEventListener('click', () => switchPopupTab('charts'));
-    document.getElementById('popup-tab-rrg').addEventListener('click', () => switchPopupTab('rrg'));
-
-    // Esc to close
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') { closeChartPopup(); closeRrgPopup(); }
-    });
-
-    // ============================================================
-    // RRG POPUP
-    // ============================================================
-    let _rrgAnimFrame  = null;
-    let _rrgShowTicker = localStorage.getItem('rrgShowTicker') !== 'false';
-    const RRG_PARAMS = 'timeframe=daily&tail=20&history=200&period_weeks=10';
-
-    function renderRrgTab(info) {
-        const toggleBtn = document.getElementById('rrg-ticker-toggle');
-        toggleBtn.classList.toggle('active', _rrgShowTicker);
-
-        // Wait one frame so the flex layout has resolved before reading dimensions
-        requestAnimationFrame(() => {
-            const body   = document.getElementById('rrg-popup-body');
-            const canvas = document.getElementById('rrg-popup-canvas');
-            const dpr = window.devicePixelRatio || 1;
-            const cssW = body.clientWidth;
-            const cssH = body.clientHeight;
-            canvas.width  = cssW * dpr;
-            canvas.height = cssH * dpr;
-            canvas.style.width  = cssW + 'px';
-            canvas.style.height = cssH + 'px';
-            const ctx = canvas.getContext('2d');
-            ctx.scale(dpr, dpr);
-
-            // Loading placeholder
-            ctx.fillStyle = '#1e1e1e';
-            ctx.fillRect(0, 0, cssW, cssH);
-            ctx.fillStyle = '#555';
-            ctx.font = '13px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('Loading\u2026', cssW / 2, cssH / 2);
-
-            fetchAndDrawRrg(info, canvas);
-        });
-    }
-
-    function closeRrgPopup() {
-        closeChartPopup();
-    }
-
-    async function fetchAndDrawRrg(info, canvas, { animate = true } = {}) {
-        const samEtf = info.sectorEtf && info.sectorEtf === info.industryEtf;
-        const etfs = [
-            ...(samEtf
-                ? [{ etf: info.sectorEtf, name: `${info.sector} / ${info.industry}`, color: '#f39c12' }]
-                : [
-                    info.sectorEtf   ? { etf: info.sectorEtf,   name: info.sector,   color: '#f39c12' } : null,
-                    info.industryEtf ? { etf: info.industryEtf, name: info.industry, color: '#4a9eff' } : null,
-                  ].filter(Boolean)
-            ),
-            { etf: info.ticker, name: info.ticker, color: '#c678dd', isTicker: true },
-        ];
-
-        let datasets;
-        try {
-            datasets = await Promise.all(
-                etfs.map(e =>
-                    fetch(`/api/rrg/${e.etf}?${RRG_PARAMS}`)
-                        .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-                        .then(d => ({ ...d, name: e.name, etf: e.etf, color: e.color, isTicker: e.isTicker ?? false }))
-                )
-            );
-        } catch (_) {
-            if (!document.getElementById('tv-popup-backdrop').classList.contains('open')) return;
-            const dpr2 = window.devicePixelRatio || 1;
-            const eW = canvas.width / dpr2, eH = canvas.height / dpr2;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#1e1e1e';
-            ctx.fillRect(0, 0, eW, eH);
-            ctx.fillStyle = '#e74c3c';
-            ctx.font = '13px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('Failed to load RRG data', eW / 2, eH / 2);
-            return;
-        }
-
-        if (!document.getElementById('tv-popup-backdrop').classList.contains('open')) return;
-        const visible = _rrgShowTicker ? datasets : datasets.filter(d => !d.isTicker);
-        drawRrgAnimated(canvas, visible, { animate });
-    }
-
-    function drawRrgAnimated(canvas, datasets, { animate = true } = {}) {
-        if (_rrgAnimFrame) { cancelAnimationFrame(_rrgAnimFrame); _rrgAnimFrame = null; }
-
-        const ctx = canvas.getContext('2d');
-        const dpr = window.devicePixelRatio || 1;
-        const W = canvas.width / dpr, H = canvas.height / dpr;
-        const PAD = 50;
-
-        // Build full sequences: tail points (oldest→newest) + current position
-        const sequences = datasets.map(d => ({
-            pts: [
-                ...(d.tail || []).map(t => ({ x: t.rs_ratio, y: t.rs_momentum })),
-                { x: d.rs_ratio, y: d.rs_momentum },
-            ],
-            label: d.name,
-            sublabel: d.etf !== d.name ? d.etf : null,
-            isTicker: d.isTicker,
-            color: d.color,
-        }));
-
-        // Viewport — matches rrg.html computeViewport exactly
-        const allPts = [...sequences.flatMap(s => s.pts), { x: 100, y: 100 }];
-        const vpad = 1.5;
-        let minX = Math.min(...allPts.map(p => p.x)) - vpad;
-        let maxX = Math.max(...allPts.map(p => p.x)) + vpad;
-        let minY = Math.min(...allPts.map(p => p.y)) - vpad;
-        let maxY = Math.max(...allPts.map(p => p.y)) + vpad;
-
-        // Square the range so both axes have equal scale
-        const xRange = maxX - minX, yRange = maxY - minY;
-        if (xRange > yRange) { const d = xRange - yRange; minY -= d / 2; maxY += d / 2; }
-        else                  { const d = yRange - xRange; minX -= d / 2; maxX += d / 2; }
-
-        const M = { top: PAD, right: PAD, bottom: PAD, left: PAD };
-        const plotW = W - M.left - M.right;
-        const plotH = H - M.top  - M.bottom;
-
-        function toX(v) { return M.left + (v - minX) / (maxX - minX) * plotW; }
-        function toY(v) { return M.top  + (maxY - v) / (maxY - minY) * plotH; }
-
-        // Pre-compute canvas coords — ETFs first, ticker last so it renders on top
-        const seqs = sequences
-            .slice().sort((a, b) => (a.isTicker ? 1 : 0) - (b.isTicker ? 1 : 0))
-            .map(s => ({
-                cpts: s.pts.map(p => [toX(p.x), toY(p.y)]),
-                label: s.label,
-                sublabel: s.sublabel,
-                color: s.color,
-                isTicker: s.isTicker,
-            }));
-
-        const cxC = toX(100), cyC = toY(100);  // crosshair center
-
-        const DURATION  = animate ? 750 : 0;
-        const startTime = performance.now();
-
-        function easeInOut(t) {
-            return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-        }
-
-        function drawFrame(now) {
-            const raw = Math.min(1, (now - startTime) / DURATION);
-            const t   = easeInOut(raw);
-
-            // Background
-            ctx.clearRect(0, 0, W, H);
-            ctx.fillStyle = '#1e1e1e';
-            ctx.fillRect(0, 0, W, H);
-
-            // Quadrant fills
-            ctx.fillStyle = 'rgba(23,162,184,0.07)';
-            ctx.fillRect(M.left, M.top, cxC - M.left, cyC - M.top);                     // Recovering (TL)
-            ctx.fillStyle = 'rgba(40,167,69,0.07)';
-            ctx.fillRect(cxC, M.top, M.left + plotW - cxC, cyC - M.top);                // Leading (TR)
-            ctx.fillStyle = 'rgba(220,53,69,0.07)';
-            ctx.fillRect(M.left, cyC, cxC - M.left, M.top + plotH - cyC);               // Lagging (BL)
-            ctx.fillStyle = 'rgba(255,193,7,0.07)';
-            ctx.fillRect(cxC, cyC, M.left + plotW - cxC, M.top + plotH - cyC);          // Weakening (BR)
-
-            // Quadrant labels
-            ctx.font = '600 10px sans-serif';
-            ctx.globalAlpha = 0.5;
-            ctx.textBaseline = 'top';
-            ctx.fillStyle = 'rgba(23,162,184,0.9)';
-            ctx.textAlign = 'left';  ctx.fillText('RECOVERING', M.left + 6, M.top + 6);
-            ctx.fillStyle = 'rgba(40,167,69,0.9)';
-            ctx.textAlign = 'right'; ctx.fillText('LEADING',    M.left + plotW - 6, M.top + 6);
-            ctx.textBaseline = 'bottom';
-            ctx.fillStyle = 'rgba(220,53,69,0.9)';
-            ctx.textAlign = 'left';  ctx.fillText('LAGGING',    M.left + 6, M.top + plotH - 6);
-            ctx.fillStyle = 'rgba(255,193,7,0.9)';
-            ctx.textAlign = 'right'; ctx.fillText('WEAKENING',  M.left + plotW - 6, M.top + plotH - 6);
-            ctx.globalAlpha = 1;
-
-            // Crosshair
-            ctx.strokeStyle = '#3a3a3a';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([4, 4]);
-            ctx.beginPath();
-            ctx.moveTo(cxC, M.top); ctx.lineTo(cxC, M.top + plotH);
-            ctx.moveTo(M.left, cyC); ctx.lineTo(M.left + plotW, cyC);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // Axis labels
-            ctx.font = '11px sans-serif';
-            ctx.fillStyle = '#555';
-            ctx.textBaseline = 'bottom';
-            ctx.textAlign = 'center';
-            ctx.fillText('RS-Ratio \u2192', M.left + plotW / 2, H - 2);
-            ctx.save();
-            ctx.translate(12, M.top + plotH / 2);
-            ctx.rotate(-Math.PI / 2);
-            ctx.textBaseline = 'top';
-            ctx.fillText('RS-Momentum \u2192', 0, 0);
-            ctx.restore();
-
-            // Animated tails
-            seqs.forEach(seq => {
-                const pts = seq.cpts;
-                if (pts.length === 0) return;
-
-                let tipX = pts[0][0], tipY = pts[0][1];
-
-                if (pts.length >= 2) {
-                    const progress = t * (pts.length - 1);
-                    const segIdx = Math.min(Math.floor(progress), pts.length - 2);
-                    const frac   = progress - segIdx;
-                    tipX = pts[segIdx][0] + (pts[segIdx + 1][0] - pts[segIdx][0]) * frac;
-                    tipY = pts[segIdx][1] + (pts[segIdx + 1][1] - pts[segIdx][1]) * frac;
-
-                    ctx.beginPath();
-                    ctx.strokeStyle = seq.color;
-                    ctx.lineWidth = 1.5;
-                    ctx.globalAlpha = 0.65;
-                    ctx.moveTo(pts[0][0], pts[0][1]);
-                    for (let i = 1; i <= segIdx; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-                    ctx.lineTo(tipX, tipY);
-                    ctx.stroke();
-                    ctx.globalAlpha = 1;
-                }
-
-                // Small tracking dot during animation
-                if (raw < 1) {
-                    ctx.beginPath();
-                    ctx.arc(tipX, tipY, 3, 0, Math.PI * 2);
-                    ctx.fillStyle = seq.color;
-                    ctx.fill();
-                }
-            });
-
-            // Final frame: arrowhead + dot + label
-            if (raw >= 1) {
-                seqs.forEach(seq => {
-                    const pts = seq.cpts;
-                    if (pts.length === 0) return;
-                    const last = pts[pts.length - 1];
-                    const prev = pts.length >= 2 ? pts[pts.length - 2] : last;
-
-                    // Arrowhead pointing in the direction of travel
-                    if (pts.length >= 2) {
-                        const angle = Math.atan2(last[1] - prev[1], last[0] - prev[0]);
-                        const aLen  = seq.isTicker ? 12 : 9;
-                        ctx.fillStyle = seq.color;
-                        ctx.beginPath();
-                        ctx.moveTo(last[0], last[1]);
-                        ctx.lineTo(
-                            last[0] - aLen * Math.cos(angle - Math.PI / 6),
-                            last[1] - aLen * Math.sin(angle - Math.PI / 6)
-                        );
-                        ctx.lineTo(
-                            last[0] - aLen * Math.cos(angle + Math.PI / 6),
-                            last[1] - aLen * Math.sin(angle + Math.PI / 6)
-                        );
-                        ctx.closePath();
-                        ctx.fill();
-                    }
-
-                    // Label: name on first line, ETF ticker smaller below
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    const lx = last[0] + 9;
-                    if (seq.sublabel) {
-                        ctx.font = 'bold 12px sans-serif';
-                        ctx.fillStyle = seq.color;
-                        ctx.fillText(seq.label, lx, last[1] - 7);
-                        ctx.font = '10px sans-serif';
-                        ctx.fillStyle = 'rgba(255,255,255,0.45)';
-                        ctx.fillText(seq.sublabel, lx, last[1] + 6);
-                    } else {
-                        ctx.font = 'bold 12px sans-serif';
-                        ctx.fillStyle = seq.color;
-                        ctx.fillText(seq.label, lx, last[1]);
-                    }
-                });
-            }
-
-            if (raw < 1) {
-                _rrgAnimFrame = requestAnimationFrame(drawFrame);
-            } else {
-                _rrgAnimFrame = null;
-            }
-        }
-
-        _rrgAnimFrame = requestAnimationFrame(drawFrame);
-    }
-
-    // Ticker toggle
-    document.getElementById('rrg-ticker-toggle').addEventListener('click', () => {
-        _rrgShowTicker = !_rrgShowTicker;
-        localStorage.setItem('rrgShowTicker', _rrgShowTicker);
-        document.getElementById('rrg-ticker-toggle').classList.toggle('active', _rrgShowTicker);
-        const info = DataHelpers.findTickerInfo(AppState.currentTickerSymbol);
-        if (!info) return;
-        const canvas = document.getElementById('rrg-popup-canvas');
-        fetchAndDrawRrg(info, canvas);
-    });
 
     // ============================================================
     // APPLICATION INITIALIZATION
@@ -2924,6 +2514,7 @@
 
     initializeApp();
 </script>
+<script type="module" src="/assets/stocks_themes/application.js"></script>
 </body>
 
 </html>
