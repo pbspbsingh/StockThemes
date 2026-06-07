@@ -1051,6 +1051,8 @@
                 });
                 container.appendChild(item);
             });
+
+            container.querySelector('.item.selected')?.scrollIntoView({ block: 'nearest' });
         },
 
         highlightTickerContext() {
@@ -1188,6 +1190,7 @@
         _instances: {},
         _timeframe: null,
         _splitReady: false,
+        _showTimer: null,
 
         _destroy(containerId) {
             const w = this._instances[containerId];
@@ -1198,6 +1201,8 @@
         },
 
         reset() {
+            clearTimeout(this._showTimer);
+            this._showTimer = null;
             Object.keys(this._instances).forEach(containerId => this._destroy(containerId));
             this._instances = {};
             this._splitReady = false;
@@ -1231,6 +1236,7 @@
         },
 
         show(tickerSymbol) {
+            clearTimeout(this._showTimer);
             AppState.currentTickerSymbol = tickerSymbol;
             const info = getTickerInfo(tickerSymbol);
             PreviewManager.updateHeader(info);
@@ -1239,6 +1245,21 @@
             }
             Renderers.highlightTickerContext();
             this._renderComparison('preview', 'tv-main', tickerSymbol, AppState.timeframe);
+        },
+
+        showDebounced(tickerSymbol) {
+            clearTimeout(this._showTimer);
+            AppState.currentTickerSymbol = tickerSymbol;
+            const info = getTickerInfo(tickerSymbol);
+            PreviewManager.updateHeader(info);
+            if (AppState.selectedTags.size === 0 && !STOCK_METRICS.has(tickerSymbol)) {
+                loadMetricsForTickers([tickerSymbol]);
+            }
+            Renderers.highlightTickerContext();
+            this._showTimer = setTimeout(() => {
+                this._showTimer = null;
+                this._renderComparison('preview', 'tv-main', tickerSymbol, AppState.timeframe);
+            }, 250);
         },
 
         createWidget(tickerSymbol, containerId, interval) {
@@ -1318,7 +1339,7 @@
             if (AppState.selectedTickerIndex < AppState.currentTickers.length - 1) {
                 AppState.selectedTickerIndex++;
                 const ticker = AppState.currentTickers[AppState.selectedTickerIndex].ticker;
-                TradingViewWidget.show(ticker);
+                TradingViewWidget.showDebounced(ticker);
                 Renderers.renderTickers();
             }
         } else if (e.key === 'ArrowUp') {
@@ -1326,7 +1347,7 @@
             if (AppState.selectedTickerIndex > 0) {
                 AppState.selectedTickerIndex--;
                 const ticker = AppState.currentTickers[AppState.selectedTickerIndex].ticker;
-                TradingViewWidget.show(ticker);
+                TradingViewWidget.showDebounced(ticker);
                 Renderers.renderTickers();
             }
         }
