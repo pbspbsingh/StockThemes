@@ -117,6 +117,7 @@ export default class extends Controller {
                     ${this.optionHtml("pending", "Pending", state.batch.suggestionState)}
                     ${this.optionHtml("ready_nonempty", "Ready with tags", state.batch.suggestionState)}
                     ${this.optionHtml("ready_empty", "Ready empty", state.batch.suggestionState)}
+                    ${this.optionHtml("ignored", "Ignored", state.batch.suggestionState)}
                     ${this.optionHtml("failed", "Failed", state.batch.suggestionState)}
                 </select>
                 <input id="batch-ticker-search" placeholder="Search tickers" value="${escapeAttr(state.batch.tickerSearch)}" data-action="input->workspace#batchFilterChanged">
@@ -132,7 +133,7 @@ export default class extends Controller {
             <div class="batch-table-wrap">
                 <table class="batch-table">
                     <thead>
-                        <tr><th>Check</th><th>Ticker</th><th>Current tags</th><th>Suggestion status</th><th>Apply</th></tr>
+                        <tr><th>Check</th><th>Ticker</th><th>Current tags</th><th>Suggestion status</th><th>Actions</th></tr>
                     </thead>
                     <tbody id="batch-rows"></tbody>
                 </table>
@@ -205,6 +206,7 @@ export default class extends Controller {
     batchSuggestionKind(stock) {
         const suggestion = tagSuggestionFor(stock.ticker);
         if (!suggestion || suggestion.status === "not_requested") return "not_requested";
+        if (suggestion.status === "ignored") return "ignored";
         if (suggestion.status === "pending") return "pending";
         if (suggestion.status === "failed") return "failed";
         if (suggestion.status === "ready") {
@@ -231,16 +233,22 @@ export default class extends Controller {
 
     batchRowHtml(stock) {
         const suggestion = tagSuggestionFor(stock.ticker);
-        const readyWithTags = suggestion?.status === "ready" && (suggestion.suggested_tags || []).length > 0;
+        const ready = suggestion?.status === "ready";
+        const ignored = suggestion?.status === "ignored";
+        const readyWithTags = ready && !ignored && (suggestion.suggested_tags || []).length > 0;
         const matchesCurrent = readyWithTags && this.suggestionMatchesCurrentTags(stock, suggestion);
         const checked = state.batch.selectedTickers.has(stock.ticker);
+        const actionPending = state.batch.activeSuggestionTickers.has(stock.ticker);
         return `
             <tr data-batch-row-ticker="${stock.ticker}">
                 <td><input type="checkbox" data-batch-ticker="${stock.ticker}" ${checked ? "checked" : ""} data-action="change->workspace#toggleBatchTicker"></td>
                 <td class="ticker"><a class="ticker-link" href="/tags_mgmt.html?selectedTicker=${encodeURIComponent(stock.ticker)}" target="_blank" rel="noopener noreferrer">${stock.ticker}</a></td>
                 <td><div class="stock-tags">${this.tagsHtml(stock.tags)}</div></td>
                 <td>${this.batchSuggestionStatusHtml(suggestion)}</td>
-                <td><button class="btn" data-apply-ticker="${stock.ticker}" ${readyWithTags && !matchesCurrent ? "" : "disabled"} data-action="click->workspace#applyOneBatchSuggestion">${matchesCurrent ? "Applied" : "Apply"}</button></td>
+                <td><div class="row-actions">
+                    <button class="btn" data-apply-ticker="${stock.ticker}" ${readyWithTags && !matchesCurrent && !actionPending ? "" : "disabled"} data-action="click->workspace#applyOneBatchSuggestion">${matchesCurrent ? "Applied" : "Apply"}</button>
+                    <button class="btn" data-ignore-ticker="${stock.ticker}" ${ready && !ignored && !matchesCurrent && !actionPending ? "" : "disabled"} data-action="click->workspace#ignoreOneBatchSuggestion">${ignored ? "Ignored" : "Ignore"}</button>
+                </div></td>
             </tr>
         `;
     }
@@ -297,6 +305,13 @@ export default class extends Controller {
 
     batchSuggestionStatusHtml(suggestion) {
         if (!suggestion || suggestion.status === "not_requested") return '<span class="no-tags">Not requested</span>';
+        if (suggestion.status === "ignored") {
+            const tags = suggestion.suggested_tags || [];
+            return `<div class="batch-suggestion">
+                <span class="chip warn"><span>Ignored</span></span>
+                ${tags.length ? `<div class="stock-tags">${tags.map(tag => `<span class="chip new"><span>${escapeHtml(tag)}</span></span>`).join("")}</div>` : ""}
+            </div>`;
+        }
         if (suggestion.status === "pending") return '<span class="chip warn"><span>Pending</span></span>';
         if (suggestion.status === "failed") {
             return `<div class="batch-suggestion"><span class="chip warn"><span>Failed</span></span>${suggestion.error ? `<div class="profile-error">${escapeHtml(suggestion.error)}</div>` : ""}</div>`;
@@ -383,6 +398,27 @@ export default class extends Controller {
         await this.applyBatchSuggestions(tickers);
     }
 
+    async ignoreOneBatchSuggestion(event) {
+        const ticker = event.currentTarget.dataset.ignoreTicker;
+        if (!ticker || state.batch.activeSuggestionTickers.has(ticker)) return;
+        state.batch.activeSuggestionTickers.add(ticker);
+        this.renderBatchRowsForTickers([ticker]);
+        try {
+            const response = await api("/api/stock-tags/suggest/ignore", {
+                method: "POST",
+                body: JSON.stringify({ tickers: [ticker] }),
+            });
+            this.storeSuggestionItems(response.items || []);
+            this.renderBatchRowsForTickers([ticker]);
+            showStatus(`Ignored suggestion for ${ticker}`, "ok");
+        } catch (err) {
+            showStatus(err.message || "Failed to ignore suggestion", "error");
+        } finally {
+            state.batch.activeSuggestionTickers.delete(ticker);
+            this.renderBatchRowsForTickers([ticker]);
+        }
+    }
+
     selectedApplyableBatchTickers() {
         const visible = new Set(state.batch.visibleTickers);
         return [...state.batch.selectedTickers].filter(ticker => {
@@ -394,12 +430,16 @@ export default class extends Controller {
     }
 
     async applyBatchSuggestions(tickers) {
+        const actionableTickers = tickers.filter(ticker => !state.batch.activeSuggestionTickers.has(ticker));
+        if (!actionableTickers.length) return;
+        actionableTickers.forEach(ticker => state.batch.activeSuggestionTickers.add(ticker));
+        this.renderBatchRowsForTickers(actionableTickers);
         state.batch.applyingSuggestions = true;
         this.renderBatchActions();
         try {
             const response = await api("/api/stock-tags/suggest/apply", {
                 method: "POST",
-                body: JSON.stringify({ tickers }),
+                body: JSON.stringify({ tickers: actionableTickers }),
             });
             const applied = (response.items || []).filter(item => item.applied).length;
             const failed = (response.items || []).length - applied;
@@ -416,6 +456,8 @@ export default class extends Controller {
         } catch (err) {
             showStatus(err.message || "Failed to apply suggestions", "error");
         } finally {
+            actionableTickers.forEach(ticker => state.batch.activeSuggestionTickers.delete(ticker));
+            this.renderBatchRowsForTickers(actionableTickers);
             state.batch.applyingSuggestions = false;
             this.renderBatchActions();
         }

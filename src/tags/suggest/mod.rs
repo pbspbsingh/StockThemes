@@ -18,6 +18,7 @@ pub enum SuggestionStatus {
     Pending,
     Ready,
     Failed,
+    Ignored,
 }
 
 #[derive(Debug, Clone, Serialize)]

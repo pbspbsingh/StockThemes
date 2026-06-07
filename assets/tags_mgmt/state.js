@@ -29,6 +29,7 @@ export const state = {
         selectedTickers: new Set(),
         requestingSuggestions: false,
         applyingSuggestions: false,
+        activeSuggestionTickers: new Set(),
         pollTimer: null,
     },
 };

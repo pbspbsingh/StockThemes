@@ -10,6 +10,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
+use tokio::sync::Mutex;
 use tracing::info;
 
 use crate::config::APP_CONFIG;
@@ -25,6 +26,7 @@ static YF: LazyLock<YFinance> = LazyLock::new(YFinance::new);
 struct TagState {
     store: Arc<Store>,
     tag_suggestions: Option<TagSuggestionHandle>,
+    suggestion_action_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Template)]
@@ -66,6 +68,11 @@ struct SuggestTagsStatusRequest {
 
 #[derive(Debug, Deserialize)]
 struct ApplySuggestionsRequest {
+    tickers: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IgnoreSuggestionsRequest {
     tickers: Vec<String>,
 }
 
@@ -127,6 +134,7 @@ enum BatchSuggestionStatus {
     Pending,
     Ready,
     Failed,
+    Ignored,
 }
 
 #[derive(Debug, Serialize)]
@@ -225,6 +233,7 @@ pub fn router(store: Arc<Store>) -> Router {
     let state = TagState {
         store,
         tag_suggestions,
+        suggestion_action_lock: Arc::new(Mutex::new(())),
     };
     Router::new()
         .route("/tags_mgmt.html", routing::get(tag_mgmt_home))
@@ -250,6 +259,10 @@ pub fn router(store: Arc<Store>) -> Router {
         .route(
             "/api/stock-tags/suggest/apply",
             routing::post(apply_tag_suggestions),
+        )
+        .route(
+            "/api/stock-tags/suggest/ignore",
+            routing::post(ignore_tag_suggestions),
         )
         .route(
             "/api/stock-tags/suggest/{ticker}",
@@ -471,6 +484,7 @@ async fn apply_tag_suggestions(
     State(state): State<TagState>,
     Json(req): Json<ApplySuggestionsRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let _action_guard = state.suggestion_action_lock.lock().await;
     let tickers = normalize_tickers(&req.tickers)?;
     let mut items = Vec::with_capacity(tickers.len());
 
@@ -505,7 +519,6 @@ async fn apply_tag_suggestions(
             });
             continue;
         }
-
         let result = match state
             .store
             .set_tags_for_stock(&ticker, &suggestion.suggested_tags)
@@ -533,6 +546,26 @@ async fn apply_tag_suggestions(
     }
 
     Ok(Json(ApplySuggestionsResponse { items }))
+}
+
+async fn ignore_tag_suggestions(
+    State(state): State<TagState>,
+    Json(req): Json<IgnoreSuggestionsRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let _action_guard = state.suggestion_action_lock.lock().await;
+    let tickers = normalize_tickers(&req.tickers)?;
+    let mut items = Vec::with_capacity(tickers.len());
+
+    for ticker in tickers {
+        if !state.store.ignore_tag_suggestion(&ticker).await? {
+            return Err(ApiError::bad_request(format!(
+                "Only unapplied ready suggestions can be ignored: {ticker}"
+            )));
+        }
+        items.push(suggestion_status_item(&state.store, &ticker).await?);
+    }
+
+    Ok(Json(BatchSuggestionsResponse { items }))
 }
 
 async fn delete_tag_suggestion(
@@ -635,6 +668,7 @@ impl From<crate::tags::suggest::CachedTagSuggestion> for BatchSuggestionItem {
             SuggestionStatus::Pending => BatchSuggestionStatus::Pending,
             SuggestionStatus::Ready => BatchSuggestionStatus::Ready,
             SuggestionStatus::Failed => BatchSuggestionStatus::Failed,
+            SuggestionStatus::Ignored => BatchSuggestionStatus::Ignored,
         };
         Self {
             ticker: suggestion.ticker,

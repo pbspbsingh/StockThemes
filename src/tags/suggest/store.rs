@@ -153,6 +153,47 @@ impl Store {
         Ok(result.rows_affected() > 0)
     }
 
+    pub async fn ignore_tag_suggestion(&self, ticker: &str) -> sqlx::Result<bool> {
+        let ticker = ticker.trim().to_uppercase();
+        let result = sqlx::query!(
+            r#"
+            UPDATE tag_suggestions
+            SET status = 'ignored'
+            WHERE ticker = $1
+              AND status = 'ready'
+              AND (
+                  json_array_length(suggested_tags) = 0
+                  OR EXISTS (
+                      SELECT 1
+                      FROM stock_tags
+                      JOIN tags ON tags.id = stock_tags.tag_id
+                      WHERE stock_tags.ticker = $1
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM json_each(tag_suggestions.suggested_tags)
+                            WHERE lower(json_each.value) = lower(tags.name)
+                        )
+                  )
+                  OR EXISTS (
+                      SELECT 1
+                      FROM json_each(tag_suggestions.suggested_tags)
+                      WHERE NOT EXISTS (
+                          SELECT 1
+                          FROM stock_tags
+                          JOIN tags ON tags.id = stock_tags.tag_id
+                          WHERE stock_tags.ticker = $1
+                            AND lower(tags.name) = lower(json_each.value)
+                      )
+                  )
+              )
+            "#,
+            ticker,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn delete_tag_suggestion(&self, ticker: &str) -> sqlx::Result<()> {
         let ticker = ticker.trim().to_uppercase();
         sqlx::query!(
@@ -185,6 +226,7 @@ fn cached_suggestion_from_row(row: CachedSuggestionRow) -> sqlx::Result<CachedTa
         "pending" => SuggestionStatus::Pending,
         "ready" => SuggestionStatus::Ready,
         "failed" => SuggestionStatus::Failed,
+        "ignored" => SuggestionStatus::Ignored,
         _ => SuggestionStatus::Failed,
     };
     let suggested_tags =
