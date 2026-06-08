@@ -22,20 +22,28 @@ export default class extends Controller {
 
     connect() {
         this.handleRender = () => this.render();
+        this.handleVisibilityChange = () => this.syncBatchPolling();
+        this.batchWorkspaceVisible = true;
+        this.batchPollInFlight = false;
         window.addEventListener("tags:render", this.handleRender);
+        document.addEventListener("visibilitychange", this.handleVisibilityChange);
+        this.visibilityObserver = new IntersectionObserver(entries => {
+            this.batchWorkspaceVisible = entries.some(entry => entry.isIntersecting);
+            this.syncBatchPolling();
+        });
+        this.visibilityObserver.observe(this.element);
         this.render();
     }
 
     disconnect() {
         window.removeEventListener("tags:render", this.handleRender);
+        document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+        this.visibilityObserver?.disconnect();
         for (const timer of state.tagSuggestionPollTimers.values()) {
             clearInterval(timer);
         }
         state.tagSuggestionPollTimers.clear();
-        if (state.batch.pollTimer) {
-            clearInterval(state.batch.pollTimer);
-            state.batch.pollTimer = null;
-        }
+        this.stopBatchPolling();
     }
 
     render() {
@@ -49,13 +57,15 @@ export default class extends Controller {
         } else {
             this.renderWorkflowIntro();
         }
+        this.syncBatchPolling();
     }
 
     renderWorkflowIntro() {
+        if (!state.tagSuggestionEnabled) state.homeTab = "manual";
         this.bodyTarget.innerHTML = `
             <div class="home-tabs">
                 <button class="${state.homeTab === "manual" ? "active" : ""}" data-tab="manual" data-action="click->workspace#switchHomeTab">Manual</button>
-                <button class="${state.homeTab === "batch" ? "active" : ""}" data-tab="batch" data-action="click->workspace#switchHomeTab">Batch</button>
+                ${state.tagSuggestionEnabled ? `<button class="${state.homeTab === "batch" ? "active" : ""}" data-tab="batch" data-action="click->workspace#switchHomeTab">Batch</button>` : ""}
             </div>
             <div id="home-tab-body"></div>
         `;
@@ -63,6 +73,7 @@ export default class extends Controller {
             this.renderBatchWorkflow();
         } else {
             this.renderManualWorkflow();
+            this.stopBatchPolling();
         }
     }
 
@@ -98,7 +109,7 @@ export default class extends Controller {
         this.renderWorkflowIntro();
     }
 
-    async renderBatchWorkflow() {
+    renderBatchWorkflow() {
         const body = document.getElementById("home-tab-body");
         body.innerHTML = `
             <div class="section">
@@ -139,9 +150,8 @@ export default class extends Controller {
                 </table>
             </div>
         `;
-        await this.refreshBatchStatuses({ silent: true });
-        this.startBatchPolling();
         this.renderBatchRows();
+        this.syncBatchPolling();
     }
 
     renderBatchActions() {
@@ -168,7 +178,6 @@ export default class extends Controller {
         state.batch.tagSearch = document.getElementById("batch-tag-search")?.value || "";
         this.applyBatchFilters();
         this.pruneBatchSelectionToVisible();
-        this.startBatchPolling();
         this.renderBatchRows();
     }
 
@@ -346,23 +355,6 @@ export default class extends Controller {
         this.renderBatchRows();
     }
 
-    async refreshBatchStatuses(options = {}) {
-        const silent = Boolean(options.silent);
-        const tickers = state.stocks.map(stock => stock.ticker);
-        if (!tickers.length) return;
-        try {
-            const response = await api("/api/stock-tags/suggest/status", {
-                method: "POST",
-                body: JSON.stringify({ tickers }),
-            });
-            this.storeSuggestionItems(response.items || []);
-        } catch (err) {
-            if (!silent) showStatus(err.message || "Failed to refresh suggestion statuses", "error");
-        } finally {
-            this.renderBatchRows();
-        }
-    }
-
     async requestSelectedBatchSuggestions() {
         const visible = new Set(state.batch.visibleTickers);
         const tickers = [...state.batch.selectedTickers].filter(ticker => visible.has(ticker));
@@ -376,7 +368,6 @@ export default class extends Controller {
             });
             this.storeSuggestionItems(response.items || []);
             showStatus(`Requested suggestions for ${tickers.length} tickers`, "ok");
-            this.startBatchPolling();
         } catch (err) {
             showStatus(err.message || "Failed to request suggestions", "error");
         } finally {
@@ -472,26 +463,67 @@ export default class extends Controller {
 
     startBatchPolling() {
         if (state.batch.pollTimer) return;
-        state.batch.pollTimer = setInterval(async () => {
-            const pending = state.batch.visibleTickers.filter(ticker => tagSuggestionFor(ticker)?.status === "pending");
-            if (!pending.length) {
-                clearInterval(state.batch.pollTimer);
-                state.batch.pollTimer = null;
-                return;
-            }
-            try {
+        state.batch.pollTimer = setInterval(() => this.pollBatch(), 10000);
+        this.pollBatch();
+    }
+
+    stopBatchPolling() {
+        if (!state.batch.pollTimer) return;
+        clearInterval(state.batch.pollTimer);
+        state.batch.pollTimer = null;
+    }
+
+    syncBatchPolling() {
+        const visible = state.homeTab === "batch"
+            && !state.selectedTicker
+            && !state.selectedTagIds.size
+            && !state.untaggedSelected
+            && document.visibilityState === "visible"
+            && this.batchWorkspaceVisible
+            && Boolean(document.getElementById("batch-rows"));
+        if (visible) {
+            this.startBatchPolling();
+        } else {
+            this.stopBatchPolling();
+        }
+    }
+
+    async pollBatch() {
+        if (this.batchPollInFlight) return;
+        if (!this.isBatchVisible()) {
+            this.stopBatchPolling();
+            return;
+        }
+
+        this.batchPollInFlight = true;
+        try {
+            const refreshed = await fetchAllTagData();
+            setData(refreshed);
+            const tickers = state.stocks.map(stock => stock.ticker);
+            if (tickers.length) {
                 const response = await api("/api/stock-tags/suggest/status", {
                     method: "POST",
-                    body: JSON.stringify({ tickers: pending }),
+                    body: JSON.stringify({ tickers }),
                 });
                 this.storeSuggestionItems(response.items || []);
-                this.renderBatchRows();
-            } catch (err) {
-                showStatus(err.message || "Failed to poll suggestion statuses", "error");
-                clearInterval(state.batch.pollTimer);
-                state.batch.pollTimer = null;
             }
-        }, 3000);
+            window.dispatchEvent(new CustomEvent("tags:sidebar-render"));
+            if (this.isBatchVisible()) this.renderBatchRows();
+        } catch (err) {
+            showStatus(err.message || "Failed to refresh batch data", "error");
+        } finally {
+            this.batchPollInFlight = false;
+        }
+    }
+
+    isBatchVisible() {
+        return state.homeTab === "batch"
+            && !state.selectedTicker
+            && !state.selectedTagIds.size
+            && !state.untaggedSelected
+            && document.visibilityState === "visible"
+            && this.batchWorkspaceVisible
+            && Boolean(document.getElementById("batch-rows"));
     }
 
     renderStockDetails() {

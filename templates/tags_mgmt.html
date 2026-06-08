@@ -144,8 +144,16 @@ body {
 }
 
 .ticker { color: #e0e0e0; letter-spacing: 0.2px; }
-.ticker-link { color: inherit; text-decoration: none; }
-.ticker-link:hover { color: #9dccff; text-decoration: underline; }
+.ticker-link {
+    color: #72b7ff;
+    text-decoration: underline;
+    text-decoration-color: #416d99;
+    text-underline-offset: 2px;
+}
+.ticker-link:hover {
+    color: #b8dcff;
+    text-decoration-color: currentColor;
+}
 .count { color: #666; font-size: 11px; flex-shrink: 0; }
 
 .stock-tags {
@@ -294,12 +302,6 @@ body {
     cursor: pointer;
     user-select: none;
 }
-.prompt-options input[type="checkbox"] {
-    width: 14px;
-    height: 14px;
-    accent-color: #4a9eff;
-}
-
 #ai-prompt {
     width: 100%;
     min-height: 380px;
@@ -376,6 +378,13 @@ input, textarea, select {
     border-radius: 4px;
     font: inherit;
     outline: none;
+}
+input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #4a9eff;
+    color-scheme: dark;
+    cursor: pointer;
 }
 input { padding: 6px 8px; min-width: 0; }
 textarea {
@@ -497,7 +506,7 @@ select { padding: 5px 8px; }
 }
 .profile-summary {
     color: #d0d0d0;
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.5;
 }
 .profile-status {
@@ -648,11 +657,23 @@ select { padding: 5px 8px; }
 .batch-table td {
     padding: 8px;
     border-bottom: 1px solid #2a2a2a;
-    vertical-align: top;
+    vertical-align: middle;
+}
+.batch-table .stock-tags {
+    margin-top: 0;
+}
+.batch-table tbody tr:nth-child(even) {
+    background: #212121;
+}
+.batch-table tbody tr:hover {
+    background: #26394a;
+    box-shadow: inset 3px 0 #4a9eff;
 }
 .batch-table th:first-child,
 .batch-table td:first-child {
     width: 54px;
+    text-align: center;
+    vertical-align: middle;
 }
 .batch-table th:nth-child(2),
 .batch-table td:nth-child(2) {
