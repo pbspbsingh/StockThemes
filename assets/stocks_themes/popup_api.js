@@ -15,7 +15,7 @@ export const popupApi = {
         if (controller === currentController) controller = null;
     },
 
-    open(info, tab = "charts") {
+    open(info, tab = "fundamentals") {
         if (controller) {
             controller.open(info, tab);
         } else {
@@ -31,6 +31,10 @@ export const popupApi = {
         }
     },
 
+    move(direction) {
+        controller?.move(direction);
+    },
+
     close() {
         pendingOpen = null;
         controller?.close();
@@ -41,6 +45,6 @@ export const popupApi = {
     },
 
     activeTab() {
-        return controller?.activeTab() ?? pendingOpen?.tab ?? "charts";
+        return controller?.activeTab() ?? pendingOpen?.tab ?? "fundamentals";
     },
 };

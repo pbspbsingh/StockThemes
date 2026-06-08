@@ -113,6 +113,7 @@ pub async fn start_http_server(store: Arc<Store>, home: String) -> anyhow::Resul
         );
     }
 
+    let fundamentals_client = tv::fundamentals::FundamentalsClient::new();
     let app = Router::new()
         .route("/", routing::get(async || Html(home)))
         .route("/rrg.html", routing::get(rrg_util::rrg_home))
@@ -125,8 +126,17 @@ pub async fn start_http_server(store: Arc<Store>, home: String) -> anyhow::Resul
             routing::get(tags::stock_tags::stock_tag_metrics_stream),
         )
         .route("/api/rrg/{ticker}", routing::get(rrg_util::rrg_handler))
+        .route(
+            "/api/fundamentals/{exchange}/{ticker}",
+            routing::get(tv::fundamentals_api::get),
+        )
+        .route(
+            "/api/fundamentals/{exchange}/{ticker}/refresh",
+            routing::post(tv::fundamentals_api::refresh),
+        )
         .route("/assets/{*path}", routing::get(static_asset))
         .merge(tags::router(store.clone()))
+        .layer(Extension(fundamentals_client))
         .layer(Extension(store))
         .layer(middleware::from_fn(no_cache));
     axum::serve(listener, app).await?;

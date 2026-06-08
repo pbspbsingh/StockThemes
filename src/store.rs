@@ -57,6 +57,12 @@ pub struct CompanyProfile {
     pub fetched_at: DateTime<Local>,
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct FundamentalsCacheEntry {
+    pub payload: String,
+    pub last_updated: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum DeleteTagResult {
     Deleted,
@@ -247,6 +253,45 @@ impl Store {
         .execute(&self.pool)
         .await?;
 
+        Ok(())
+    }
+
+    pub async fn get_fundamentals(
+        &self,
+        exchange: &str,
+        ticker: &str,
+    ) -> sqlx::Result<Option<FundamentalsCacheEntry>> {
+        sqlx::query_as::<_, FundamentalsCacheEntry>(
+            "SELECT payload, last_updated FROM fundamentals WHERE exchange = ? AND ticker = ?",
+        )
+        .bind(exchange)
+        .bind(ticker)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn save_fundamentals(
+        &self,
+        exchange: &str,
+        ticker: &str,
+        payload: &str,
+        last_updated: DateTime<Utc>,
+    ) -> sqlx::Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO fundamentals (exchange, ticker, payload, last_updated)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(exchange, ticker) DO UPDATE SET
+                payload = excluded.payload,
+                last_updated = excluded.last_updated
+            "#,
+        )
+        .bind(exchange)
+        .bind(ticker)
+        .bind(payload)
+        .bind(last_updated)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
