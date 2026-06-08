@@ -11,9 +11,11 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
+use tracing::{debug, info, warn};
 
 const WEBSOCKET_URL: &str = "wss://data.tradingview.com/socket.io/websocket";
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
+const IDLE_SOCKET_TIMEOUT: Duration = Duration::from_secs(60);
 const ACTOR_CHANNEL_CAPACITY: usize = 64;
 
 const FIELDS: [&str; 9] = [
@@ -34,7 +36,7 @@ type FetchResult = anyhow::Result<Vec<Fundamentals>>;
 /// A clonable handle to a single actor-owned TradingView connection.
 ///
 /// The actor opens the WebSocket on the first active fetch, shares it across
-/// concurrent fetches, and closes it when no fetches remain.
+/// concurrent fetches, and retains the idle connection briefly for reuse.
 #[derive(Clone)]
 pub struct FundamentalsClient {
     commands: mpsc::Sender<Command>,
@@ -60,8 +62,8 @@ impl FundamentalsClient {
 
     /// Fetches fundamentals while preserving the order of `tickers`.
     ///
-    /// Returns an error unless every symbol has eight complete historical
-    /// quarters and both next-quarter EPS and revenue forecasts.
+    /// Missing fundamentals are returned as `None` so callers can render the
+    /// partial data TradingView has available for a symbol.
     pub async fn fetch(&self, tickers: &[Ticker]) -> FetchResult {
         if tickers.is_empty() {
             return Ok(Vec::new());
@@ -86,29 +88,42 @@ impl FundamentalsClient {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Fundamentals {
     pub ticker: Ticker,
-    pub currency: String,
+    pub currency: Option<String>,
     pub quarters: Vec<QuarterFundamentals>,
     pub next_quarter: Forecast,
 }
 
+impl Fundamentals {
+    pub fn has_usable_data(&self) -> bool {
+        self.next_quarter.earnings_per_share.is_some()
+            || self.next_quarter.revenue.is_some()
+            || self.quarters.iter().any(|quarter| {
+                quarter.earnings_per_share.is_some()
+                    || quarter.earnings_per_share_estimate.is_some()
+                    || quarter.revenue.is_some()
+                    || quarter.revenue_estimate.is_some()
+            })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QuarterFundamentals {
-    pub fiscal_period: String,
-    pub earnings_release_date: DateTime<Utc>,
-    pub earnings_per_share: f64,
-    pub earnings_per_share_estimate: f64,
-    pub earnings_surprise: f64,
+    pub fiscal_period: Option<String>,
+    pub earnings_release_date: Option<DateTime<Utc>>,
+    pub earnings_per_share: Option<f64>,
+    pub earnings_per_share_estimate: Option<f64>,
+    pub earnings_surprise: Option<f64>,
     pub earnings_surprise_percent: Option<f64>,
-    pub revenue: f64,
-    pub revenue_estimate: f64,
-    pub revenue_surprise: f64,
+    pub revenue: Option<f64>,
+    pub revenue_estimate: Option<f64>,
+    pub revenue_surprise: Option<f64>,
     pub revenue_surprise_percent: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Forecast {
-    pub earnings_per_share: f64,
-    pub revenue: f64,
+    pub earnings_per_share: Option<f64>,
+    pub revenue: Option<f64>,
 }
 
 enum Command {
@@ -150,6 +165,7 @@ struct Actor {
     symbols: HashMap<String, SymbolState>,
     subscribed: HashSet<String>,
     next_request_id: u64,
+    idle_deadline: Option<Instant>,
 }
 
 impl Actor {
@@ -163,6 +179,7 @@ impl Actor {
             symbols: HashMap::new(),
             subscribed: HashSet::new(),
             next_request_id: 0,
+            idle_deadline: None,
         }
     }
 
@@ -180,12 +197,12 @@ impl Actor {
                     }
                 }
             } else {
-                let deadline = self
-                    .requests
-                    .values()
-                    .map(|request| request.deadline)
+                let request_deadline = self.requests.values().map(|request| request.deadline).min();
+                let deadline = request_deadline
+                    .into_iter()
+                    .chain(self.idle_deadline)
                     .min()
-                    .unwrap_or_else(Instant::now);
+                    .expect("connected socket has an active or idle deadline");
 
                 tokio::select! {
                     command = self.commands.recv(), if !self.commands_closed => {
@@ -206,6 +223,7 @@ impl Actor {
             self.finish_ready();
             self.prune_cancelled();
             self.drain_commands().await;
+            self.release_unused_symbols().await;
             self.close_if_idle().await;
         }
     }
@@ -227,9 +245,11 @@ impl Actor {
         if self.socket.is_none()
             && let Err(error) = self.open_socket().await
         {
+            warn!("Failed to open TradingView fundamentals WebSocket: {error}");
             let _ = response.send(Err(error));
             return;
         }
+        self.idle_deadline = None;
 
         let qualified = tickers.iter().map(qualified_symbol).collect::<Vec<_>>();
         let new_symbols = qualified
@@ -253,6 +273,11 @@ impl Actor {
 
         let request_id = self.next_request_id;
         self.next_request_id += 1;
+        debug!(
+            request_id,
+            symbols = ?qualified,
+            "Fetching TradingView fundamentals"
+        );
         self.requests.insert(
             request_id,
             Request {
@@ -292,6 +317,7 @@ impl Actor {
         params.extend(FIELDS.iter().map(|field| json!(field)));
         send_method(&mut socket, "quote_set_fields", params).await?;
         self.socket = Some(socket);
+        info!("Opened TradingView fundamentals WebSocket");
         Ok(())
     }
 
@@ -310,11 +336,27 @@ impl Actor {
         .await
     }
 
+    async fn unsubscribe(&mut self, symbols: &[String]) -> anyhow::Result<()> {
+        if symbols.is_empty() {
+            return Ok(());
+        }
+
+        let mut params = vec![json!(self.session)];
+        params.extend(symbols.iter().map(|symbol| json!(symbol)));
+        send_method(
+            self.socket.as_mut().context("WebSocket is not connected")?,
+            "quote_remove_symbols",
+            params,
+        )
+        .await
+    }
+
     async fn handle_socket_message(
         &mut self,
         message: Option<Result<Message, async_tungstenite::tungstenite::Error>>,
     ) {
         let Some(message) = message else {
+            warn!("TradingView fundamentals WebSocket closed unexpectedly");
             self.fail_all("TradingView fundamentals connection closed");
             self.drop_socket();
             return;
@@ -323,6 +365,7 @@ impl Actor {
         let message = match message {
             Ok(message) => message,
             Err(error) => {
+                warn!("TradingView fundamentals WebSocket error: {error}");
                 self.fail_all(&format!(
                     "TradingView fundamentals WebSocket error: {error}"
                 ));
@@ -344,6 +387,7 @@ impl Actor {
                 }
             }
             Message::Close(_) => {
+                warn!("TradingView fundamentals WebSocket closed unexpectedly");
                 self.fail_all("TradingView fundamentals connection closed");
                 self.drop_socket();
             }
@@ -403,6 +447,13 @@ impl Actor {
             .collect::<Vec<_>>();
 
         for id in expired {
+            if let Some(request) = self.requests.get(&id) {
+                warn!(
+                    request_id = id,
+                    symbols = ?request.qualified,
+                    "TradingView fundamentals fetch timed out"
+                );
+            }
             self.finish_request(id);
         }
     }
@@ -411,6 +462,11 @@ impl Actor {
         let Some(request) = self.requests.remove(&id) else {
             return;
         };
+        debug!(
+            request_id = id,
+            symbols = ?request.qualified,
+            "Completed TradingView fundamentals fetch"
+        );
         let results = request
             .tickers
             .into_iter()
@@ -448,14 +504,56 @@ impl Actor {
         }
     }
 
+    async fn release_unused_symbols(&mut self) {
+        if self.socket.is_none() {
+            return;
+        }
+
+        let unused = self.unused_symbols();
+
+        if let Err(error) = self.unsubscribe(&unused).await {
+            warn!("Failed to unsubscribe from TradingView fundamentals symbols: {error}");
+            self.fail_all(&format!(
+                "Failed to unsubscribe from TradingView symbols: {error}"
+            ));
+            self.drop_socket();
+            return;
+        }
+        for symbol in unused {
+            self.subscribed.remove(&symbol);
+            self.symbols.remove(&symbol);
+        }
+    }
+
+    fn unused_symbols(&self) -> Vec<String> {
+        let active = self
+            .requests
+            .values()
+            .flat_map(|request| request.qualified.iter().cloned())
+            .collect::<HashSet<_>>();
+        self.subscribed.difference(&active).cloned().collect()
+    }
+
     async fn close_if_idle(&mut self) {
         if !self.requests.is_empty() {
+            self.idle_deadline = None;
+            return;
+        }
+        if !self.idle_close_due(Instant::now()) {
             return;
         }
         if let Some(mut socket) = self.socket.take() {
             let _ = socket.close(None).await;
         }
+        info!("Closed TradingView fundamentals WebSocket");
         self.drop_socket();
+    }
+
+    fn idle_close_due(&mut self, now: Instant) -> bool {
+        if self.commands_closed {
+            return true;
+        }
+        *self.idle_deadline.get_or_insert(now + IDLE_SOCKET_TIMEOUT) <= now
     }
 
     fn fail_all(&mut self, message: &str) {
@@ -471,6 +569,7 @@ impl Actor {
         self.session.clear();
         self.symbols.clear();
         self.subscribed.clear();
+        self.idle_deadline = None;
     }
 }
 
@@ -523,19 +622,6 @@ fn fundamentals_from_fields(
     ticker: Ticker,
     fields: &Map<String, Value>,
 ) -> anyhow::Result<Fundamentals> {
-    let symbol = qualified_symbol(&ticker);
-    let invalid_fields = FIELDS
-        .iter()
-        .filter(|field| field_missing_or_invalid(fields, field))
-        .copied()
-        .collect::<Vec<_>>();
-    if !invalid_fields.is_empty() {
-        anyhow::bail!(
-            "{symbol} is missing required TradingView fundamentals fields: {}",
-            invalid_fields.join(", ")
-        );
-    }
-
     let eps = number_array(fields.get("earnings_per_share_fq_h"));
     let eps_estimates = number_array(fields.get("earnings_per_share_forecast_fq_h"));
     let revenue = number_array(fields.get("revenue_fq_h"));
@@ -543,64 +629,40 @@ fn fundamentals_from_fields(
     let release_dates = timestamp_array(fields.get("earnings_release_date_fq_h"));
     let fiscal_periods = string_array(fields.get("fiscal_period_fq_h"));
 
-    let historical_lengths = [
+    let quarter_count = [
         eps.len(),
         eps_estimates.len(),
         revenue.len(),
         revenue_estimates.len(),
-    ];
-    if historical_lengths
-        .iter()
-        .any(|length| *length != historical_lengths[0])
-    {
-        anyhow::bail!(
-            "{symbol} returned mismatched historical array lengths: EPS={}, EPS estimates={}, revenue={}, revenue estimates={}",
-            eps.len(),
-            eps_estimates.len(),
-            revenue.len(),
-            revenue_estimates.len()
-        );
-    }
-    let quarter_count = historical_lengths[0];
-    if quarter_count < 8 {
-        anyhow::bail!(
-            "{symbol} returned only {quarter_count} complete historical quarters; expected at least 8"
-        );
-    }
-    if release_dates.len() < quarter_count || fiscal_periods.len() < quarter_count {
-        anyhow::bail!(
-            "{symbol} returned insufficient quarter metadata: history={quarter_count}, release dates={}, fiscal periods={}",
-            release_dates.len(),
-            fiscal_periods.len()
-        );
-    }
+        release_dates.len(),
+        fiscal_periods.len(),
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or_default();
 
-    let mut latest_indices = (0..quarter_count)
-        .map(|index| {
-            required_at(&release_dates, index, &symbol, "earnings release date")
-                .map(|release_date| (index, release_date))
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    latest_indices.sort_unstable_by(|(_, left), (_, right)| right.cmp(left));
+    let mut latest_indices = (0..quarter_count).collect::<Vec<_>>();
+    latest_indices.sort_unstable_by(|left, right| {
+        option_at(&release_dates, *right)
+            .cmp(&option_at(&release_dates, *left))
+            .then_with(|| right.cmp(left))
+    });
     latest_indices.truncate(8);
 
     let quarters = latest_indices
         .into_iter()
-        .map(|(index, earnings_release_date)| {
-            let fiscal_period = required_at(&fiscal_periods, index, &symbol, "fiscal period")?;
-            let earnings_per_share = required_at(&eps, index, &symbol, "EPS")?;
-            let earnings_per_share_estimate =
-                required_at(&eps_estimates, index, &symbol, "EPS estimate")?;
-            let revenue = required_at(&revenue, index, &symbol, "revenue")?;
-            let revenue_estimate =
-                required_at(&revenue_estimates, index, &symbol, "revenue estimate")?;
+        .map(|index| {
+            let earnings_per_share = option_at(&eps, index);
+            let earnings_per_share_estimate = option_at(&eps_estimates, index);
+            let revenue = option_at(&revenue, index);
+            let revenue_estimate = option_at(&revenue_estimates, index);
             let (earnings_surprise, earnings_surprise_percent) =
                 surprise(earnings_per_share, earnings_per_share_estimate);
             let (revenue_surprise, revenue_surprise_percent) = surprise(revenue, revenue_estimate);
 
-            Ok(QuarterFundamentals {
-                fiscal_period,
-                earnings_release_date,
+            QuarterFundamentals {
+                fiscal_period: option_at(&fiscal_periods, index),
+                earnings_release_date: option_at(&release_dates, index),
                 earnings_per_share,
                 earnings_per_share_estimate,
                 earnings_surprise,
@@ -609,50 +671,26 @@ fn fundamentals_from_fields(
                 revenue_estimate,
                 revenue_surprise,
                 revenue_surprise_percent,
-            })
+            }
         })
-        .collect::<anyhow::Result<Vec<_>>>()?;
+        .collect();
 
     Ok(Fundamentals {
         ticker,
         currency: fields
             .get("fundamental_currency_code")
             .and_then(Value::as_str)
-            .context("validated currency is missing")?
-            .to_owned(),
+            .map(str::to_owned),
         quarters,
         next_quarter: Forecast {
             earnings_per_share: fields
                 .get("earnings_per_share_forecast_next_fq")
-                .and_then(Value::as_f64)
-                .context("validated next-quarter EPS forecast is missing")?,
+                .and_then(Value::as_f64),
             revenue: fields
                 .get("revenue_forecast_next_fq")
-                .and_then(Value::as_f64)
-                .context("validated next-quarter revenue forecast is missing")?,
+                .and_then(Value::as_f64),
         },
     })
-}
-
-fn field_missing_or_invalid(fields: &Map<String, Value>, field: &str) -> bool {
-    let Some(value) = fields.get(field) else {
-        return true;
-    };
-    if value.is_null() {
-        return true;
-    }
-
-    match field {
-        "earnings_per_share_fq_h"
-        | "earnings_per_share_forecast_fq_h"
-        | "revenue_fq_h"
-        | "revenue_forecast_fq_h"
-        | "earnings_release_date_fq_h"
-        | "fiscal_period_fq_h" => !value.is_array(),
-        "earnings_per_share_forecast_next_fq" | "revenue_forecast_next_fq" => !value.is_number(),
-        "fundamental_currency_code" => !value.is_string(),
-        _ => false,
-    }
 }
 
 fn number_array(value: Option<&Value>) -> Vec<Option<f64>> {
@@ -694,19 +732,13 @@ fn option_at<T: Clone>(values: &[Option<T>], index: usize) -> Option<T> {
     values.get(index).cloned().flatten()
 }
 
-fn required_at<T: Clone>(
-    values: &[Option<T>],
-    index: usize,
-    symbol: &str,
-    field: &str,
-) -> anyhow::Result<T> {
-    option_at(values, index)
-        .with_context(|| format!("{symbol} has no {field} for historical quarter index {index}"))
-}
-
-fn surprise(actual: f64, estimate: f64) -> (f64, Option<f64>) {
-    let absolute = actual - estimate;
-    let percent = (estimate != 0.0).then_some(absolute / estimate.abs() * 100.0);
+fn surprise(actual: Option<f64>, estimate: Option<f64>) -> (Option<f64>, Option<f64>) {
+    let absolute = actual
+        .zip(estimate)
+        .map(|(actual, estimate)| actual - estimate);
+    let percent = actual.zip(estimate).and_then(|(actual, estimate)| {
+        (estimate != 0.0).then_some((actual - estimate) / estimate.abs() * 100.0)
+    });
     (absolute, percent)
 }
 
@@ -739,38 +771,71 @@ mod tests {
     }
 
     #[test]
+    fn idle_socket_closes_after_timeout_or_client_shutdown() {
+        let mut actor = Actor::new(mpsc::channel(1).1);
+        let now = Instant::now();
+
+        assert!(!actor.idle_close_due(now));
+        assert_eq!(actor.idle_deadline, Some(now + IDLE_SOCKET_TIMEOUT));
+        assert!(!actor.idle_close_due(now + IDLE_SOCKET_TIMEOUT - Duration::from_millis(1)));
+        assert!(actor.idle_close_due(now + IDLE_SOCKET_TIMEOUT));
+
+        actor.commands_closed = true;
+        actor.idle_deadline = None;
+        assert!(actor.idle_close_due(now));
+    }
+
+    #[test]
+    fn only_releases_symbols_unused_by_active_requests() {
+        let mut actor = Actor::new(mpsc::channel(1).1);
+        actor.subscribed = ["NASDAQ:AAPL", "NASDAQ:MSFT"]
+            .map(str::to_owned)
+            .into_iter()
+            .collect();
+        let (response, _) = oneshot::channel();
+        actor.requests.insert(
+            0,
+            Request {
+                tickers: vec![nasdaq_ticker("AAPL")],
+                qualified: vec!["NASDAQ:AAPL".to_owned()],
+                deadline: Instant::now() + DEFAULT_TIMEOUT,
+                response,
+            },
+        );
+
+        assert_eq!(actor.unused_symbols(), vec!["NASDAQ:MSFT"]);
+    }
+
+    #[test]
     fn returns_latest_eight_complete_quarters_in_descending_date_order() {
         let fields = complete_fields();
         let result = fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap();
 
-        assert_eq!(result.currency, "USD");
-        assert_eq!(result.next_quarter.earnings_per_share, 2.2);
-        assert_eq!(result.next_quarter.revenue, 120.0);
+        assert_eq!(result.currency.as_deref(), Some("USD"));
+        assert_eq!(result.next_quarter.earnings_per_share, Some(2.2));
+        assert_eq!(result.next_quarter.revenue, Some(120.0));
         assert_eq!(result.quarters.len(), 8);
-        assert_eq!(result.quarters[0].fiscal_period, "Q9");
-        assert_eq!(result.quarters[7].fiscal_period, "Q2");
-        assert!((result.quarters[0].earnings_surprise - 0.5).abs() < f64::EPSILON);
+        assert_eq!(result.quarters[0].fiscal_period.as_deref(), Some("Q9"));
+        assert_eq!(result.quarters[7].fiscal_period.as_deref(), Some("Q2"));
+        assert!((result.quarters[0].earnings_surprise.unwrap() - 0.5).abs() < f64::EPSILON);
         assert!((result.quarters[0].earnings_surprise_percent.unwrap() - 25.0).abs() < 1e-10);
         assert!((result.quarters[0].revenue_surprise_percent.unwrap() - 10.0).abs() < 1e-10);
     }
 
     #[test]
-    fn rejects_mismatched_historical_arrays() {
+    fn preserves_mismatched_historical_arrays() {
         let mut fields = complete_fields();
         fields["revenue_fq_h"].as_array_mut().unwrap().pop();
 
-        let error =
-            fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap_err();
+        let result = fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap();
 
-        assert!(
-            error
-                .to_string()
-                .contains("mismatched historical array lengths")
-        );
+        assert_eq!(result.quarters.len(), 8);
+        assert_eq!(result.quarters[0].revenue, None);
+        assert_eq!(result.quarters[0].earnings_per_share, Some(2.5));
     }
 
     #[test]
-    fn rejects_fewer_than_eight_historical_quarters() {
+    fn preserves_fewer_than_eight_historical_quarters() {
         let mut fields = complete_fields();
         for field in [
             "earnings_per_share_fq_h",
@@ -781,36 +846,87 @@ mod tests {
             fields[field].as_array_mut().unwrap().truncate(7);
         }
 
-        let error =
-            fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap_err();
+        let result = fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap();
 
+        assert_eq!(result.quarters.len(), 8);
+        assert_eq!(result.quarters[0].earnings_per_share, None);
+        assert_eq!(result.quarters[2].earnings_per_share, Some(1.6));
+    }
+
+    #[test]
+    fn preserves_incomplete_historical_quarter() {
+        let mut fields = complete_fields();
+        fields["revenue_forecast_fq_h"][3] = Value::Null;
+
+        let result = fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap();
+
+        let quarter = result
+            .quarters
+            .iter()
+            .find(|quarter| quarter.fiscal_period.as_deref() == Some("Q4"))
+            .unwrap();
+        assert_eq!(quarter.revenue_estimate, None);
+        assert_eq!(quarter.revenue_surprise, None);
+        assert_eq!(quarter.revenue_surprise_percent, None);
+    }
+
+    #[test]
+    fn preserves_missing_next_quarter_forecast() {
+        let mut fields = complete_fields();
+        fields["revenue_forecast_next_fq"] = Value::Null;
+
+        let result = fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap();
+
+        assert_eq!(result.next_quarter.revenue, None);
+        assert_eq!(result.next_quarter.earnings_per_share, Some(2.2));
+    }
+
+    #[test]
+    fn preserves_entirely_missing_fields() {
+        let mut fields = complete_fields();
+        let fields = fields.as_object_mut().unwrap();
+        fields.remove("earnings_per_share_forecast_fq_h");
+        fields.remove("earnings_per_share_forecast_next_fq");
+        fields.remove("fundamental_currency_code");
+
+        let result = fundamentals_from_fields(test_ticker(), fields).unwrap();
+
+        assert_eq!(result.currency, None);
+        assert_eq!(result.next_quarter.earnings_per_share, None);
         assert!(
-            error
-                .to_string()
-                .contains("only 7 complete historical quarters")
+            result
+                .quarters
+                .iter()
+                .all(|quarter| quarter.earnings_per_share_estimate.is_none())
         );
     }
 
     #[test]
-    fn rejects_incomplete_historical_quarter() {
-        let mut fields = complete_fields();
-        fields["revenue_forecast_fq_h"][3] = Value::Null;
+    fn empty_or_metadata_only_fundamentals_are_not_usable() {
+        let empty = fundamentals_from_fields(test_ticker(), &Map::new()).unwrap();
+        assert!(!empty.has_usable_data());
 
-        let error =
-            fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap_err();
-
-        assert!(error.to_string().contains("no revenue estimate"));
+        let metadata_only = json!({
+            "earnings_release_date_fq_h": [1780000000],
+            "fiscal_period_fq_h": ["Q1"],
+            "fundamental_currency_code": "USD"
+        });
+        let metadata_only =
+            fundamentals_from_fields(test_ticker(), metadata_only.as_object().unwrap()).unwrap();
+        assert!(!metadata_only.has_usable_data());
     }
 
     #[test]
-    fn rejects_missing_next_quarter_forecast() {
-        let mut fields = complete_fields();
-        fields["revenue_forecast_next_fq"] = Value::Null;
+    fn forecast_or_partial_quarter_fundamentals_are_usable() {
+        let forecast_only = json!({ "revenue_forecast_next_fq": 120.0 });
+        let forecast_only =
+            fundamentals_from_fields(test_ticker(), forecast_only.as_object().unwrap()).unwrap();
+        assert!(forecast_only.has_usable_data());
 
-        let error =
-            fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap_err();
-
-        assert!(error.to_string().contains("revenue_forecast_next_fq"));
+        let partial_quarter = json!({ "earnings_per_share_fq_h": [1.0] });
+        let partial_quarter =
+            fundamentals_from_fields(test_ticker(), partial_quarter.as_object().unwrap()).unwrap();
+        assert!(partial_quarter.has_usable_data());
     }
 
     #[tokio::test]
@@ -830,12 +946,15 @@ mod tests {
         for result in results {
             assert_eq!(result.quarters.len(), 8, "{}", result.ticker.ticker);
             assert!(
-                result.next_quarter.earnings_per_share.is_finite(),
+                result
+                    .next_quarter
+                    .earnings_per_share
+                    .is_some_and(f64::is_finite),
                 "{}",
                 result.ticker.ticker
             );
             assert!(
-                result.next_quarter.revenue.is_finite(),
+                result.next_quarter.revenue.is_some_and(f64::is_finite),
                 "{}",
                 result.ticker.ticker
             );
@@ -847,6 +966,31 @@ mod tests {
                 result.ticker.ticker
             );
         }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_partial_fetch() {
+        let result = FundamentalsClient::new()
+            .fetch(&[nasdaq_ticker("NBIS")])
+            .await
+            .unwrap()
+            .pop()
+            .unwrap();
+
+        assert!(!result.quarters.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_sequential_fetch_reuses_idle_session() {
+        let client = FundamentalsClient::new();
+
+        let first = client.fetch(&[nasdaq_ticker("AAPL")]).await.unwrap();
+        let second = client.fetch(&[nasdaq_ticker("MSFT")]).await.unwrap();
+
+        assert_eq!(first[0].ticker.ticker, "AAPL");
+        assert_eq!(second[0].ticker.ticker, "MSFT");
     }
 
     fn test_ticker() -> Ticker {
