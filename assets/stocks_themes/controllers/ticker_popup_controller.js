@@ -95,7 +95,7 @@ export default class extends Controller {
 
         if (!this.isOpen()) this.tagsOpened = false;
         this.info = info;
-        const financialsUrl = `https://www.tradingview.com/symbols/${encodeURIComponent(info.exchange)}-${encodeURIComponent(info.ticker)}/financials-income-statement/`;
+        const financialsUrl = `https://www.tradingview.com/symbols/${encodeURIComponent(info.exchange)}-${encodeURIComponent(info.ticker)}/financials-income-statement/?statements-period=FQ`;
         this.titleTarget.innerHTML =
             `<a href="${financialsUrl}" target="_blank" rel="noopener noreferrer" style="color:#4a9eff;font-weight:600">${this.escapeHtml(info.ticker)}</a>`;
         this.backdropTarget.classList.add("open");
