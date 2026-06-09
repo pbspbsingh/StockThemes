@@ -14,8 +14,10 @@ use tokio::time::Instant;
 use tracing::{debug, info, warn};
 
 const WEBSOCKET_URL: &str = "wss://data.tradingview.com/socket.io/websocket";
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
+
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const IDLE_SOCKET_TIMEOUT: Duration = Duration::from_secs(60);
+
 const ACTOR_CHANNEL_CAPACITY: usize = 64;
 
 const FIELDS: [&str; 9] = [
