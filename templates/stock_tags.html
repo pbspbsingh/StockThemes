@@ -184,6 +184,9 @@
         }
 
         .preview-title {
+            display: flex;
+            align-items: center;
+            gap: 3px;
             min-width: 0;
             overflow: hidden;
             white-space: nowrap;
@@ -204,6 +207,11 @@
             align-items: center;
             gap: 6px;
             margin-left: auto;
+        }
+
+        #preview-tags {
+            min-width: 0;
+            overflow: hidden;
         }
 
         .ticker-tag-chips {
@@ -231,6 +239,28 @@
             line-height: 1.2;
             text-align: center;
             white-space: nowrap;
+        }
+
+        .chart-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border: none;
+            border-radius: 3px;
+            background: transparent;
+            color: #4a9eff;
+            cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
+            opacity: 0.55;
+            transition: background 0.15s, opacity 0.15s, transform 0.15s;
+        }
+        .chart-icon-btn:hover {
+            background: rgba(74,158,255,0.18);
+            opacity: 1;
+            transform: scale(1.12);
         }
 
         .ticker-tag-tooltip {
@@ -467,6 +497,132 @@
             height: 100%;
         }
 
+        .fundamentals-popup-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.72);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .fundamentals-popup-backdrop.open { display: flex; }
+        .fundamentals-popup-modal {
+            width: calc(100vw - 24px);
+            height: calc(100vh - 144px);
+            max-width: 1920px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #1e1e1e;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.8);
+        }
+        .fundamentals-popup-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 14px;
+            background: #2d2d2d;
+            border-bottom: 1px solid #3a3a3a;
+            flex-shrink: 0;
+        }
+        .fundamentals-popup-title { flex: 1; font-size: 12px; }
+        .fundamentals-popup-title a { color: #4a9eff; font-weight: 600; text-decoration: none; }
+        .fundamentals-popup-hint { color: #666; font-size: 11px; }
+        .fundamentals-popup-close {
+            width: 26px;
+            height: 26px;
+            border: none;
+            border-radius: 4px;
+            background: #3a3a3a;
+            color: #aaa;
+            cursor: pointer;
+            font-size: 15px;
+        }
+        .fundamentals-popup-close:hover { background: #e74c3c; color: #fff; }
+        .fundamentals-popup-content {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            flex-direction: column;
+        }
+        .fundamentals-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 10px;
+            background: #252525;
+            border-bottom: 1px solid #333;
+            color: #777;
+            font-size: 11px;
+        }
+        .fundamentals-toolbar .error { color: #e74c3c; }
+        .fundamentals-toolbar .loading::before {
+            content: "";
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            margin-right: 5px;
+            border: 1px solid #555;
+            border-top-color: #4a9eff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        .fundamentals-updated { margin-left: auto; }
+        .fundamentals-refresh {
+            padding: 3px 10px;
+            border: 1px solid #444;
+            border-radius: 3px;
+            background: #333;
+            color: #bbb;
+            cursor: pointer;
+        }
+        .fundamentals-refresh:disabled { opacity: 0.45; cursor: wait; }
+        .fundamentals-grid {
+            flex: 1;
+            min-height: 0;
+            margin: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            border: 1px solid #2a2a2a;
+        }
+        .fundamentals-panel {
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #2a2a2a;
+        }
+        .fundamentals-panel-label {
+            padding: 8px 10px;
+            background: #252525;
+            border-bottom: 1px solid #2a2a2a;
+            color: #888;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .fundamentals-canvas-wrap { flex: 1; min-height: 0; padding: 5px; }
+        .fundamentals-canvas-wrap canvas { width: 100%; height: 100%; }
+        .fundamentals-summary {
+            min-height: 26px;
+            padding: 5px 8px;
+            overflow: hidden;
+            border-top: 1px solid #2a2a2a;
+            color: #777;
+            font-size: 10px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .fundamentals-summary .summary-label { color: #aaa; font-weight: 600; }
+        .fundamentals-summary .positive { color: #27ae60; }
+        .fundamentals-summary .negative { color: #e74c3c; }
+        .fundamentals-summary .forecast { color: #4a9eff; }
+        .fundamentals-summary .na { color: #666; }
+        .fundamentals-summary .separator { color: #555; padding: 0 4px; }
+
         .toast {
             position: fixed;
             bottom: 28px;
@@ -513,6 +669,7 @@
         <div class="column-header preview-header">
             <span id="preview-title" class="preview-title">Preview</span>
             <div class="preview-actions">
+                <span id="preview-tags"></span>
                 <span id="preview-metrics"></span>
                 <div id="chart-controls" style="display:flex;gap:6px;visibility:hidden;pointer-events:none;">
                     <div class="chart-toggle" id="timeframe-toggle">
@@ -534,6 +691,51 @@
 </div>
 
 <div id="ticker-tag-tooltip" class="ticker-tag-tooltip"></div>
+
+<div class="fundamentals-popup-backdrop"
+     data-controller="fundamentals-popup"
+     data-fundamentals-popup-target="backdrop"
+     data-action="click->fundamentals-popup#closeFromBackdrop keydown.esc@window->fundamentals-popup#closeOnEscape">
+    <div class="fundamentals-popup-modal">
+        <div class="fundamentals-popup-header">
+            <div class="fundamentals-popup-title" data-fundamentals-popup-target="title"></div>
+            <span class="fundamentals-popup-hint">Esc to close</span>
+            <button class="fundamentals-popup-close" title="Close (Esc)"
+                    data-action="click->fundamentals-popup#close">✕</button>
+        </div>
+        <div class="fundamentals-popup-content">
+            <div class="fundamentals-toolbar">
+                <span data-fundamentals-popup-target="status"></span>
+                <span data-fundamentals-popup-target="earnings"></span>
+                <span class="fundamentals-updated" data-fundamentals-popup-target="updated"></span>
+                <button class="fundamentals-refresh" data-fundamentals-popup-target="refresh"
+                        data-action="click->fundamentals-popup#refreshFundamentals">Refresh</button>
+            </div>
+            <div class="fundamentals-grid">
+                <div class="fundamentals-panel">
+                    <div class="fundamentals-panel-label">EPS YoY Growth</div>
+                    <div class="fundamentals-canvas-wrap"><canvas data-fundamentals-popup-target="epsGrowth"></canvas></div>
+                    <div class="fundamentals-summary" data-fundamentals-popup-target="epsGrowthSummary"></div>
+                </div>
+                <div class="fundamentals-panel">
+                    <div class="fundamentals-panel-label">Revenue YoY Growth</div>
+                    <div class="fundamentals-canvas-wrap"><canvas data-fundamentals-popup-target="revenueGrowth"></canvas></div>
+                    <div class="fundamentals-summary" data-fundamentals-popup-target="revenueGrowthSummary"></div>
+                </div>
+                <div class="fundamentals-panel">
+                    <div class="fundamentals-panel-label">EPS Actual / Estimate / Forecast</div>
+                    <div class="fundamentals-canvas-wrap"><canvas data-fundamentals-popup-target="epsEstimate"></canvas></div>
+                    <div class="fundamentals-summary" data-fundamentals-popup-target="epsEstimateSummary"></div>
+                </div>
+                <div class="fundamentals-panel">
+                    <div class="fundamentals-panel-label">Revenue Actual / Estimate / Forecast</div>
+                    <div class="fundamentals-canvas-wrap"><canvas data-fundamentals-popup-target="revenueEstimate"></canvas></div>
+                    <div class="fundamentals-summary" data-fundamentals-popup-target="revenueEstimateSummary"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -914,6 +1116,22 @@
         return TICKER_INFO.get(ticker) || { exchange: '', tags: [] };
     }
 
+    function popupTickerInfo(ticker) {
+        return { ...getTickerInfo(ticker), ticker };
+    }
+
+    const CANDLE_SVG = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <line x1="2.5" y1="1" x2="2.5" y2="3" stroke="currentColor" stroke-width="1"/>
+  <rect x="1" y="3" width="3" height="4" rx="0.5" fill="currentColor"/>
+  <line x1="2.5" y1="7" x2="2.5" y2="9" stroke="currentColor" stroke-width="1"/>
+  <line x1="6.5" y1="3" x2="6.5" y2="5" stroke="currentColor" stroke-width="1"/>
+  <rect x="5" y="5" width="3" height="5" rx="0.5" fill="currentColor"/>
+  <line x1="6.5" y1="10" x2="6.5" y2="12" stroke="currentColor" stroke-width="1"/>
+  <line x1="10.5" y1="1" x2="10.5" y2="4" stroke="currentColor" stroke-width="1"/>
+  <rect x="9" y="4" width="3" height="3" rx="0.5" fill="currentColor"/>
+  <line x1="10.5" y1="7" x2="10.5" y2="10" stroke="currentColor" stroke-width="1"/>
+</svg>`;
+
     const Templates = {
         stat(label, value) {
             return `<div class="stat"><span class="stat-label">${label}:</span><span class="stat-value">${value}</span></div>`;
@@ -1089,12 +1307,14 @@
             const title = DOM.get('preview-title');
             const controls = DOM.get('chart-controls');
             const metrics = DOM.get('preview-metrics');
+            const tags = DOM.get('preview-tags');
             const navLinks = DOM.get('preview-nav-links');
             const tagMgmtLink = DOM.get('ticker-tag-mgmt-link');
 
             if (!tickerInfo) {
                 title.textContent = 'Preview';
                 metrics.innerHTML = '';
+                tags.innerHTML = '';
                 controls.style.visibility = 'hidden';
                 controls.style.pointerEvents = 'none';
                 if (navLinks) navLinks.style.display = 'flex';
@@ -1108,7 +1328,8 @@
                 : encodeURIComponent(AppState.currentTickerSymbol);
             const tickerHref = `https://www.tradingview.com/symbols/${tvSymbol}/`;
             title.innerHTML =
-                `${escapeHtml(label)} \\ <a href="${tickerHref}" target="_blank" rel="noopener noreferrer">${escapeHtml(AppState.currentTickerSymbol)}</a>${tickerTagChips(tickerInfo.tags)}`;
+                `${escapeHtml(label)} \\ <a href="${tickerHref}" target="_blank" rel="noopener noreferrer">${escapeHtml(AppState.currentTickerSymbol)}</a><button class="chart-icon-btn" title="Fundamentals">${CANDLE_SVG}</button>`;
+            tags.innerHTML = tickerTagChips(tickerInfo.tags);
             metrics.innerHTML = metricChipsHtml(AppState.currentTickerSymbol);
             if (tagMgmtLink) {
                 tagMgmtLink.href = `/tags_mgmt.html?ticker=${encodeURIComponent(AppState.currentTickerSymbol)}`;
@@ -1133,6 +1354,9 @@
                 tooltipEl.onmouseenter = () => clearTimeout(tickerTagTooltipHideTimer);
                 tooltipEl.onmouseleave = () => hideTickerTagTooltip(120);
             }
+            title.querySelector('.chart-icon-btn')?.addEventListener('click', () => {
+                window.StockTagsPopup.open(popupTickerInfo(AppState.currentTickerSymbol));
+            });
         },
 
         showTagsOverview(tagRows) {
@@ -1240,6 +1464,9 @@
             AppState.currentTickerSymbol = tickerSymbol;
             const info = getTickerInfo(tickerSymbol);
             PreviewManager.updateHeader(info);
+            if (window.StockTagsPopup?.isOpen()) {
+                window.StockTagsPopup.open(popupTickerInfo(tickerSymbol));
+            }
             if (AppState.selectedTags.size === 0 && !STOCK_METRICS.has(tickerSymbol)) {
                 loadMetricsForTickers([tickerSymbol]);
             }
@@ -1252,6 +1479,9 @@
             AppState.currentTickerSymbol = tickerSymbol;
             const info = getTickerInfo(tickerSymbol);
             PreviewManager.updateHeader(info);
+            if (window.StockTagsPopup?.isOpen()) {
+                window.StockTagsPopup.open(popupTickerInfo(tickerSymbol));
+            }
             if (AppState.selectedTags.size === 0 && !STOCK_METRICS.has(tickerSymbol)) {
                 loadMetricsForTickers([tickerSymbol]);
             }
@@ -1333,6 +1563,15 @@
 
     document.addEventListener('keydown', e => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            if (!AppState.currentTickerSymbol) {
+                showToast('No stock selected');
+                return;
+            }
+            window.StockTagsPopup.open(popupTickerInfo(AppState.currentTickerSymbol));
+            return;
+        }
         if (AppState.currentTickers.length === 0) return;
         if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -1379,5 +1618,6 @@
 
     initializeApp();
 </script>
+<script type="module" src="/assets/stock_tags/application.js"></script>
 </body>
 </html>
