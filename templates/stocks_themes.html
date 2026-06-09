@@ -1313,6 +1313,7 @@
 </script>
 <!-- DATA Ends -->
 
+<script src="/assets/stocks_themes/tag_mappings.js"></script>
 <script>
     // ============================================================
     // Data Loader
@@ -1348,8 +1349,6 @@
     const stockMetrics = new Map(
         Object.entries(JSON.parse(document.getElementById('stock-metrics').textContent))
     );
-    const tickerTags = new Map();
-
     const stockData = JSON.parse(document.getElementById('stock-data').textContent);
     const pageTickers = new Set(
         stockData.sectors.flatMap(sector =>
@@ -1358,6 +1357,7 @@
             )
         )
     );
+    const tagMappings = new TagMappings(pageTickers);
 
     function escapeHtml(value) {
         return String(value)
@@ -1386,7 +1386,7 @@
     }
 
     function tickerTagChipsHtml(ticker) {
-        const tags = tickerTags.get(ticker) || [];
+        const tags = tagMappings.tagsForTicker(ticker);
         if (tags.length === 0) return '';
         return `<span class="ticker-tag-chips">${
             tags.map(tag => {
@@ -1448,20 +1448,6 @@
         return `/stock_tags.html?${params.toString()}`;
     }
 
-    async function fetchJsonOrThrow(url) {
-        const response = await fetch(url);
-        if (response.ok) return response.json();
-
-        let message = `HTTP ${response.status}`;
-        try {
-            const body = await response.json();
-            if (body?.error) message = body.error;
-        } catch (_) {
-            // Keep the HTTP status when the response body is not JSON.
-        }
-        throw new Error(message);
-    }
-
     async function refreshTickerTagMappings() {
         const buttons = document.querySelectorAll('[data-refresh-tags]');
         if ([...buttons].some(button => button.disabled)) return;
@@ -1472,26 +1458,7 @@
         });
 
         try {
-            const [stockViews, tags] = await Promise.all([
-                fetchJsonOrThrow('/api/stock-tags'),
-                fetchJsonOrThrow('/api/tags')
-            ]);
-            const tagCounts = new Map(tags.map(tag => [tag.name.toLowerCase(), tag.stock_count ?? 0]));
-
-            tickerTags.clear();
-            stockViews.forEach(stock => {
-                if (!pageTickers.has(stock.ticker)) return;
-
-                const tagNames = (stock.tags || [])
-                    .map(tag => tag.name)
-                    .filter(Boolean)
-                    .sort((a, b) => {
-                        const countDiff = (tagCounts.get(b.toLowerCase()) ?? 0) - (tagCounts.get(a.toLowerCase()) ?? 0);
-                        return countDiff || a.localeCompare(b);
-                    });
-
-                tickerTags.set(stock.ticker, tagNames);
-            });
+            await tagMappings.refresh();
 
             hideTickerTagTooltip(0);
             if (AppState.currentTickerSymbol) {
@@ -1987,7 +1954,7 @@
                 }
                 const tickerLinkEl = titleElement.querySelector('.preview-ticker-link');
                 if (tickerLinkEl) {
-                    const tags = tickerTags.get(tickerInfo.ticker) || [];
+                    const tags = tagMappings.tagsForTicker(tickerInfo.ticker);
                     tickerLinkEl.onmouseenter = () => {
                         showTickerTagTooltip(tags);
                         positionTickerTagTooltip(tickerLinkEl);
@@ -2431,6 +2398,7 @@
         document.querySelectorAll('[data-refresh-tags]').forEach(button => {
             button.addEventListener('click', refreshTickerTagMappings);
         });
+        document.addEventListener('stock-themes:tags-dismissed', refreshTickerTagMappings);
         refreshTickerTagMappings();
     }
 

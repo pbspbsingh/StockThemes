@@ -42,6 +42,7 @@ export default class extends Controller {
 
     connect() {
         this.info = null;
+        this.tagsOpened = false;
         this.activeTabName = "fundamentals";
         this.popupCharts = new PopupCharts({
             sectorLabel: this.sectorLabelTarget,
@@ -92,6 +93,7 @@ export default class extends Controller {
     open(info, tab = "fundamentals") {
         if (!info) return;
 
+        if (!this.isOpen()) this.tagsOpened = false;
         this.info = info;
         const financialsUrl = `https://www.tradingview.com/symbols/${encodeURIComponent(info.exchange)}-${encodeURIComponent(info.ticker)}/financials-income-statement/`;
         this.titleTarget.innerHTML =
@@ -152,6 +154,7 @@ export default class extends Controller {
     }
 
     renderTags(info) {
+        this.tagsOpened = true;
         const src = `/tags_mgmt.html?ticker=${encodeURIComponent(info.ticker)}`;
         if (this.tagsFrameTarget.getAttribute("src") !== src) {
             this.tagsFrameTarget.setAttribute("src", src);
@@ -177,12 +180,15 @@ export default class extends Controller {
     close() {
         if (!this.isOpen()) return;
 
+        const tagsOpened = this.tagsOpened;
         this.backdropTarget.classList.remove("open");
         document.body.style.overflow = "";
         this.popupCharts.destroy();
         this.rrgChart.cancel();
         this.fundamentalsChart.cancel();
         this.info = null;
+        this.tagsOpened = false;
+        if (tagsOpened) this.dispatch("tags-dismissed", { prefix: "stock-themes" });
     }
 
     toggleRrgTicker() {
