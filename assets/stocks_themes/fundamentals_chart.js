@@ -107,13 +107,13 @@ export class FundamentalsChart {
 
     draw(data) {
         this.destroyCharts();
-        const quarters = data.quarters.slice().reverse();
+        const allQuarters = data.quarters.slice(0, 16).reverse();
         const growth = field => {
-            const historicalQuarters = quarters.slice(4);
+            const historicalQuarters = allQuarters.slice(4);
             const historical = historicalQuarters.map((quarter, index) =>
-                this.growthPercent(quarter[field], quarters[index]?.[field])
+                this.growthPercent(quarter[field], allQuarters[index]?.[field])
             );
-            const forecastPrior = quarters.at(-4)?.[field];
+            const forecastPrior = allQuarters.at(-4)?.[field];
             return {
                 labels: [...historicalQuarters.map((quarter, index) =>
                     quarter.fiscal_period ?? `Quarter ${index + 1}`
@@ -130,14 +130,14 @@ export class FundamentalsChart {
         this.renderEstimateSummary(
             this.summaries.epsEstimate,
             "EPS Surprise",
-            quarters,
+            allQuarters,
             "earnings_per_share",
             "earnings_per_share_estimate",
         );
         this.renderEstimateSummary(
             this.summaries.revenueEstimate,
             "Revenue Surprise",
-            quarters,
+            allQuarters,
             "revenue",
             "revenue_estimate",
         );
@@ -147,7 +147,7 @@ export class FundamentalsChart {
             this.growthChart(this.canvases.revenueGrowth, revenueGrowth, "#f39c12"),
             this.estimateChart(
                 this.canvases.epsEstimate,
-                quarters,
+                allQuarters,
                 "earnings_per_share",
                 "earnings_per_share_estimate",
                 data.next_quarter.earnings_per_share,
@@ -155,7 +155,7 @@ export class FundamentalsChart {
             ),
             this.estimateChart(
                 this.canvases.revenueEstimate,
-                quarters,
+                allQuarters,
                 "revenue",
                 "revenue_estimate",
                 data.next_quarter.revenue,

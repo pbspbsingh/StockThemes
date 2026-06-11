@@ -20,13 +20,10 @@ const IDLE_SOCKET_TIMEOUT: Duration = Duration::from_secs(60);
 
 const ACTOR_CHANNEL_CAPACITY: usize = 64;
 
-const FIELDS: [&str; 9] = [
-    "earnings_per_share_fq_h",
-    "earnings_per_share_forecast_fq_h",
-    "revenue_fq_h",
-    "revenue_forecast_fq_h",
+const FIELDS: [&str; 6] = [
+    "earnings_fq_h",
+    "revenues_fq_h",
     "earnings_release_date_fq_h",
-    "fiscal_period_fq_h",
     "earnings_per_share_forecast_next_fq",
     "revenue_forecast_next_fq",
     "fundamental_currency_code",
@@ -624,58 +621,58 @@ fn fundamentals_from_fields(
     ticker: Ticker,
     fields: &Map<String, Value>,
 ) -> anyhow::Result<Fundamentals> {
-    let eps = number_array(fields.get("earnings_per_share_fq_h"));
-    let eps_estimates = number_array(fields.get("earnings_per_share_forecast_fq_h"));
-    let revenue = number_array(fields.get("revenue_fq_h"));
-    let revenue_estimates = number_array(fields.get("revenue_forecast_fq_h"));
-    let release_dates = timestamp_array(fields.get("earnings_release_date_fq_h"));
-    let fiscal_periods = string_array(fields.get("fiscal_period_fq_h"));
-
-    let quarter_count = [
-        eps.len(),
-        eps_estimates.len(),
-        revenue.len(),
-        revenue_estimates.len(),
-        release_dates.len(),
-        fiscal_periods.len(),
-    ]
-    .into_iter()
-    .max()
-    .unwrap_or_default();
-
-    let mut latest_indices = (0..quarter_count).collect::<Vec<_>>();
-    latest_indices.sort_unstable_by(|left, right| {
-        option_at(&release_dates, *right)
-            .cmp(&option_at(&release_dates, *left))
-            .then_with(|| right.cmp(left))
-    });
-    latest_indices.truncate(8);
-
-    let quarters = latest_indices
+    // TradingView sends structured history oldest-first, but only the latest
+    // release dates and in newest-first order.
+    let mut release_dates = timestamp_array(fields.get("earnings_release_date_fq_h"));
+    release_dates.reverse();
+    let earnings = structured_quarters(fields.get("earnings_fq_h"));
+    let revenues = structured_quarters(fields.get("revenues_fq_h"));
+    let mut quarters = HashMap::<String, QuarterFundamentals>::new();
+    let reported_earnings = earnings
         .into_iter()
-        .map(|index| {
-            let earnings_per_share = option_at(&eps, index);
-            let earnings_per_share_estimate = option_at(&eps_estimates, index);
-            let revenue = option_at(&revenue, index);
-            let revenue_estimate = option_at(&revenue_estimates, index);
-            let (earnings_surprise, earnings_surprise_percent) =
-                surprise(earnings_per_share, earnings_per_share_estimate);
-            let (revenue_surprise, revenue_surprise_percent) = surprise(revenue, revenue_estimate);
+        .filter(|quarter| quarter.is_reported)
+        .collect::<Vec<_>>();
+    let release_date_offset = reported_earnings.len().saturating_sub(release_dates.len());
 
-            QuarterFundamentals {
-                fiscal_period: option_at(&fiscal_periods, index),
-                earnings_release_date: option_at(&release_dates, index),
-                earnings_per_share,
-                earnings_per_share_estimate,
-                earnings_surprise,
-                earnings_surprise_percent,
-                revenue,
-                revenue_estimate,
-                revenue_surprise,
-                revenue_surprise_percent,
-            }
-        })
-        .collect();
+    for (index, earnings) in reported_earnings.into_iter().enumerate() {
+        let Some(fiscal_period) = earnings.fiscal_period else {
+            continue;
+        };
+        let quarter = quarters
+            .entry(fiscal_period.clone())
+            .or_insert_with(|| empty_quarter(fiscal_period));
+        quarter.earnings_release_date = index
+            .checked_sub(release_date_offset)
+            .and_then(|index| option_at(&release_dates, index));
+        quarter.earnings_per_share = earnings.actual;
+        quarter.earnings_per_share_estimate = earnings.estimate;
+    }
+
+    for revenue in revenues.into_iter().filter(|quarter| quarter.is_reported) {
+        let Some(fiscal_period) = revenue.fiscal_period else {
+            continue;
+        };
+        let quarter = quarters
+            .entry(fiscal_period.clone())
+            .or_insert_with(|| empty_quarter(fiscal_period));
+        quarter.revenue = revenue.actual;
+        quarter.revenue_estimate = revenue.estimate;
+    }
+
+    let mut quarters = quarters.into_values().collect::<Vec<_>>();
+    quarters.sort_unstable_by(|left, right| right.fiscal_period.cmp(&left.fiscal_period));
+    for quarter in &mut quarters {
+        let (earnings_surprise, earnings_surprise_percent) = surprise(
+            quarter.earnings_per_share,
+            quarter.earnings_per_share_estimate,
+        );
+        let (revenue_surprise, revenue_surprise_percent) =
+            surprise(quarter.revenue, quarter.revenue_estimate);
+        quarter.earnings_surprise = earnings_surprise;
+        quarter.earnings_surprise_percent = earnings_surprise_percent;
+        quarter.revenue_surprise = revenue_surprise;
+        quarter.revenue_surprise_percent = revenue_surprise_percent;
+    }
 
     Ok(Fundamentals {
         ticker,
@@ -695,23 +692,41 @@ fn fundamentals_from_fields(
     })
 }
 
-fn number_array(value: Option<&Value>) -> Vec<Option<f64>> {
-    value
-        .and_then(Value::as_array)
-        .map(|values| values.iter().map(Value::as_f64).collect())
-        .unwrap_or_default()
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct StructuredQuarter {
+    actual: Option<f64>,
+    estimate: Option<f64>,
+    fiscal_period: Option<String>,
+    #[serde(default)]
+    is_reported: bool,
 }
 
-fn string_array(value: Option<&Value>) -> Vec<Option<String>> {
+fn structured_quarters(value: Option<&Value>) -> Vec<StructuredQuarter> {
     value
         .and_then(Value::as_array)
         .map(|values| {
             values
                 .iter()
-                .map(|value| value.as_str().map(str::to_owned))
+                .filter_map(|value| serde_json::from_value(value.clone()).ok())
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn empty_quarter(fiscal_period: String) -> QuarterFundamentals {
+    QuarterFundamentals {
+        fiscal_period: Some(fiscal_period),
+        earnings_release_date: None,
+        earnings_per_share: None,
+        earnings_per_share_estimate: None,
+        earnings_surprise: None,
+        earnings_surprise_percent: None,
+        revenue: None,
+        revenue_estimate: None,
+        revenue_surprise: None,
+        revenue_surprise_percent: None,
+    }
 }
 
 fn timestamp_array(value: Option<&Value>) -> Vec<Option<DateTime<Utc>>> {
@@ -761,14 +776,14 @@ mod tests {
     fn merges_partial_qsd_updates() {
         let mut actor = Actor::new(mpsc::channel(1).1);
         actor.merge_qsd(
-            r#"{"m":"qsd","p":["qs_test",{"n":"NASDAQ:AAPL","v":{"revenue_fq_h":[1,2]}}]}"#,
+            r#"{"m":"qsd","p":["qs_test",{"n":"NASDAQ:AAPL","v":{"revenues_fq_h":[1,2]}}]}"#,
         );
         actor.merge_qsd(
             r#"{"m":"qsd","p":["qs_test",{"n":"NASDAQ:AAPL","v":{"fundamental_currency_code":"USD"}}]}"#,
         );
 
         let fields = &actor.symbols["NASDAQ:AAPL"].fields;
-        assert_eq!(fields["revenue_fq_h"], json!([1, 2]));
+        assert_eq!(fields["revenues_fq_h"], json!([1, 2]));
         assert_eq!(fields["fundamental_currency_code"], json!("USD"));
     }
 
@@ -809,63 +824,89 @@ mod tests {
     }
 
     #[test]
-    fn returns_latest_eight_complete_quarters_in_descending_date_order() {
+    fn returns_all_reported_quarters_in_descending_fiscal_period_order() {
         let fields = complete_fields();
         let result = fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap();
 
         assert_eq!(result.currency.as_deref(), Some("USD"));
         assert_eq!(result.next_quarter.earnings_per_share, Some(2.2));
         assert_eq!(result.next_quarter.revenue, Some(120.0));
-        assert_eq!(result.quarters.len(), 8);
-        assert_eq!(result.quarters[0].fiscal_period.as_deref(), Some("Q9"));
-        assert_eq!(result.quarters[7].fiscal_period.as_deref(), Some("Q2"));
+        assert_eq!(result.quarters.len(), 9);
+        assert_eq!(result.quarters[0].fiscal_period.as_deref(), Some("2026-Q1"));
+        assert_eq!(result.quarters[8].fiscal_period.as_deref(), Some("2024-Q1"));
         assert!((result.quarters[0].earnings_surprise.unwrap() - 0.5).abs() < f64::EPSILON);
         assert!((result.quarters[0].earnings_surprise_percent.unwrap() - 25.0).abs() < 1e-10);
         assert!((result.quarters[0].revenue_surprise_percent.unwrap() - 10.0).abs() < 1e-10);
     }
 
     #[test]
-    fn preserves_mismatched_historical_arrays() {
+    fn joins_earnings_and_revenue_by_fiscal_period() {
         let mut fields = complete_fields();
-        fields["revenue_fq_h"].as_array_mut().unwrap().pop();
+        fields["revenues_fq_h"].as_array_mut().unwrap().reverse();
+        fields["revenues_fq_h"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|quarter| quarter["FiscalPeriod"] != "2026-Q1");
 
         let result = fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap();
 
-        assert_eq!(result.quarters.len(), 8);
         assert_eq!(result.quarters[0].revenue, None);
         assert_eq!(result.quarters[0].earnings_per_share, Some(2.5));
+        assert_eq!(result.quarters[1].revenue, Some(110.0));
+        assert_eq!(result.quarters[1].earnings_per_share, Some(1.7));
     }
 
     #[test]
-    fn preserves_fewer_than_eight_historical_quarters() {
+    fn maps_short_release_date_history_to_latest_reported_quarters() {
         let mut fields = complete_fields();
-        for field in [
-            "earnings_per_share_fq_h",
-            "earnings_per_share_forecast_fq_h",
-            "revenue_fq_h",
-            "revenue_forecast_fq_h",
-        ] {
-            fields[field].as_array_mut().unwrap().truncate(7);
-        }
+        fields["earnings_release_date_fq_h"] = json!([1780000000, 1770000000]);
 
         let result = fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap();
 
-        assert_eq!(result.quarters.len(), 8);
-        assert_eq!(result.quarters[0].earnings_per_share, None);
-        assert_eq!(result.quarters[2].earnings_per_share, Some(1.6));
+        assert_eq!(
+            result.quarters[0].earnings_release_date,
+            DateTime::from_timestamp(1780000000, 0)
+        );
+        assert!(result.quarters[1].earnings_release_date.is_some());
+        assert!(
+            result.quarters[2..]
+                .iter()
+                .all(|quarter| quarter.earnings_release_date.is_none())
+        );
+    }
+
+    #[test]
+    fn excludes_forecasts_from_historical_quarters() {
+        let mut fields = complete_fields();
+        fields["earnings_fq_h"].as_array_mut().unwrap().push(json!({
+            "Actual": null, "Estimate": 2.2, "FiscalPeriod": "2026-Q2", "IsReported": false
+        }));
+        fields["revenues_fq_h"].as_array_mut().unwrap().push(json!({
+            "Actual": null, "Estimate": 120.0, "FiscalPeriod": "2026-Q2", "IsReported": false
+        }));
+
+        let result = fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap();
+
+        assert_eq!(result.quarters.len(), 9);
+        assert!(
+            result
+                .quarters
+                .iter()
+                .all(|quarter| quarter.fiscal_period.as_deref() != Some("2026-Q2"))
+        );
     }
 
     #[test]
     fn preserves_incomplete_historical_quarter() {
         let mut fields = complete_fields();
-        fields["revenue_forecast_fq_h"][3] = Value::Null;
+        fields["revenues_fq_h"][3]["Estimate"] = Value::Null;
 
         let result = fundamentals_from_fields(test_ticker(), fields.as_object().unwrap()).unwrap();
 
         let quarter = result
             .quarters
             .iter()
-            .find(|quarter| quarter.fiscal_period.as_deref() == Some("Q4"))
+            .find(|quarter| quarter.fiscal_period.as_deref() == Some("2024-Q4"))
             .unwrap();
         assert_eq!(quarter.revenue_estimate, None);
         assert_eq!(quarter.revenue_surprise, None);
@@ -887,7 +928,7 @@ mod tests {
     fn preserves_entirely_missing_fields() {
         let mut fields = complete_fields();
         let fields = fields.as_object_mut().unwrap();
-        fields.remove("earnings_per_share_forecast_fq_h");
+        fields.remove("earnings_fq_h");
         fields.remove("earnings_per_share_forecast_next_fq");
         fields.remove("fundamental_currency_code");
 
@@ -899,7 +940,8 @@ mod tests {
             result
                 .quarters
                 .iter()
-                .all(|quarter| quarter.earnings_per_share_estimate.is_none())
+                .all(|quarter| quarter.earnings_per_share.is_none()
+                    && quarter.earnings_per_share_estimate.is_none())
         );
     }
 
@@ -910,7 +952,6 @@ mod tests {
 
         let metadata_only = json!({
             "earnings_release_date_fq_h": [1780000000],
-            "fiscal_period_fq_h": ["Q1"],
             "fundamental_currency_code": "USD"
         });
         let metadata_only =
@@ -919,16 +960,23 @@ mod tests {
     }
 
     #[test]
-    fn forecast_or_partial_quarter_fundamentals_are_usable() {
+    fn forecast_partial_or_malformed_quarter_fundamentals_are_handled() {
         let forecast_only = json!({ "revenue_forecast_next_fq": 120.0 });
         let forecast_only =
             fundamentals_from_fields(test_ticker(), forecast_only.as_object().unwrap()).unwrap();
         assert!(forecast_only.has_usable_data());
 
-        let partial_quarter = json!({ "earnings_per_share_fq_h": [1.0] });
+        let partial_quarter = json!({
+            "earnings_fq_h": [
+                {"Actual": 1.0, "Estimate": null, "FiscalPeriod": "2026-Q1", "IsReported": true},
+                "malformed",
+                {"Actual": 2.0, "Estimate": 1.0, "IsReported": true}
+            ]
+        });
         let partial_quarter =
             fundamentals_from_fields(test_ticker(), partial_quarter.as_object().unwrap()).unwrap();
         assert!(partial_quarter.has_usable_data());
+        assert_eq!(partial_quarter.quarters.len(), 1);
     }
 
     #[tokio::test]
@@ -946,7 +994,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(results.len(), 10);
         for result in results {
-            assert_eq!(result.quarters.len(), 8, "{}", result.ticker.ticker);
+            assert!(!result.quarters.is_empty(), "{}", result.ticker.ticker);
             assert!(
                 result
                     .next_quarter
@@ -1008,15 +1056,32 @@ mod tests {
 
     fn complete_fields() -> Value {
         json!({
-            "earnings_per_share_fq_h": [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 2.5],
-            "earnings_per_share_forecast_fq_h": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 2.0],
-            "revenue_fq_h": [110.0, 110.0, 110.0, 110.0, 110.0, 110.0, 110.0, 110.0, 110.0],
-            "revenue_forecast_fq_h": [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
-            "earnings_release_date_fq_h": [
-                1700000000, 1710000000, 1720000000, 1730000000, 1740000000,
-                1750000000, 1760000000, 1770000000, 1780000000
+            "earnings_fq_h": [
+                {"Actual": 1.0, "Estimate": 0.5, "FiscalPeriod": "2024-Q1", "IsReported": true},
+                {"Actual": 1.1, "Estimate": 0.6, "FiscalPeriod": "2024-Q2", "IsReported": true},
+                {"Actual": 1.2, "Estimate": 0.7, "FiscalPeriod": "2024-Q3", "IsReported": true},
+                {"Actual": 1.3, "Estimate": 0.8, "FiscalPeriod": "2024-Q4", "IsReported": true},
+                {"Actual": 1.4, "Estimate": 0.9, "FiscalPeriod": "2025-Q1", "IsReported": true},
+                {"Actual": 1.5, "Estimate": 1.0, "FiscalPeriod": "2025-Q2", "IsReported": true},
+                {"Actual": 1.6, "Estimate": 1.1, "FiscalPeriod": "2025-Q3", "IsReported": true},
+                {"Actual": 1.7, "Estimate": 1.2, "FiscalPeriod": "2025-Q4", "IsReported": true},
+                {"Actual": 2.5, "Estimate": 2.0, "FiscalPeriod": "2026-Q1", "IsReported": true}
             ],
-            "fiscal_period_fq_h": ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "Q9"],
+            "revenues_fq_h": [
+                {"Actual": 110.0, "Estimate": 100.0, "FiscalPeriod": "2024-Q1", "IsReported": true},
+                {"Actual": 110.0, "Estimate": 100.0, "FiscalPeriod": "2024-Q2", "IsReported": true},
+                {"Actual": 110.0, "Estimate": 100.0, "FiscalPeriod": "2024-Q3", "IsReported": true},
+                {"Actual": 110.0, "Estimate": 100.0, "FiscalPeriod": "2024-Q4", "IsReported": true},
+                {"Actual": 110.0, "Estimate": 100.0, "FiscalPeriod": "2025-Q1", "IsReported": true},
+                {"Actual": 110.0, "Estimate": 100.0, "FiscalPeriod": "2025-Q2", "IsReported": true},
+                {"Actual": 110.0, "Estimate": 100.0, "FiscalPeriod": "2025-Q3", "IsReported": true},
+                {"Actual": 110.0, "Estimate": 100.0, "FiscalPeriod": "2025-Q4", "IsReported": true},
+                {"Actual": 110.0, "Estimate": 100.0, "FiscalPeriod": "2026-Q1", "IsReported": true}
+            ],
+            "earnings_release_date_fq_h": [
+                1780000000, 1770000000, 1760000000, 1750000000, 1740000000,
+                1730000000, 1720000000, 1710000000, 1700000000
+            ],
             "earnings_per_share_forecast_next_fq": 2.2,
             "revenue_forecast_next_fq": 120.0,
             "fundamental_currency_code": "USD"
